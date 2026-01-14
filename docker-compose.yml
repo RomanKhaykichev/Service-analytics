@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: service-analytics-db
+    environment:
+      POSTGRES_DB: ${PGDATABASE:-service_analytics}
+      POSTGRES_USER: ${PGUSER:-postgres}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-postgres}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${PGPORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-service_analytics}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - service-analytics-network
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        - BUILDKIT_INLINE_CACHE=1
+    container_name: service-analytics-backend
+    environment:
+      # Database connection
+      PGHOST: db
+      PGPORT: 5432
+      PGDATABASE: ${PGDATABASE:-service_analytics}
+      PGUSER: ${PGUSER:-postgres}
+      PGPASSWORD: ${PGPASSWORD:-postgres}
+      # App settings
+      APP_ENV: ${APP_ENV:-production}
+      ENV: ${ENV:-production}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # Mount db directory for migrations (read-only)
+      - ./db:/app/db:ro
+      # Mount import directory (read-only)
+      - ./import:/app/import:ro
+    command: >
+      sh -c "
+        echo 'Waiting for database to be ready...' &&
+        python /app/scripts/migrate.py &&
+        echo 'Starting backend server...' &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000
+      "
+    restart: unless-stopped
+    networks:
+      - service-analytics-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  pgdata:
+    driver: local
+
+networks:
+  service-analytics-network:
+    driver: bridge
