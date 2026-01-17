@@ -1,0 +1,1144 @@
+﻿{
+    "filters":  {
+                    "shop_id":  null,
+                    "q":  null
+                },
+    "items":  [
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-LIGHT-Ð¡ÐÐÐÐ",
+                      "product_name":  "ÐÐ¸Ð±ÐºÐ°Ñ Ð½ÐµÐ¾Ð½Ð¾Ð²Ð°Ñ Ð»ÐµÐ½ÑÐ°, Ð´Ð»Ñ Ð¿Ð¾Ð´ÑÐ²ÐµÑÐºÐ¸ ÑÐ°Ð»Ð¾Ð½Ð° Ð°Ð²ÑÐ¾Ð¼Ð¾Ð±Ð¸Ð»Ñ, Led, 3 Ð¼",
+                      "stock_qty":  78.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-TV-8KHD-2I16",
+                      "product_name":  "Ð¡Ð¼Ð°ÑÑ Ð¢Ð Ð±Ð¾ÐºÑ, Ð¿ÑÐ¸ÑÑÐ°Ð²ÐºÐ° , 8K HD, 4 ÐÐ Ð¿Ð¾Ð´Ð°ÑÐ¾Ðº",
+                      "stock_qty":  42.0,
+                      "coverage_days":  17.0,
+                      "turnover_days":  14.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "AOELMNT-SLIP-ÐÐÐÐ«Ð-XL",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ, ÐºÐ¾Ð¼Ð¿Ð»ÐµÐºÑ 3 ÑÑ",
+                      "stock_qty":  37.0,
+                      "coverage_days":  250.0,
+                      "turnover_days":  356.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-TV-X98PLUS-4I64",
+                      "product_name":  "Ð¡Ð¼Ð°ÑÑ Ð¢Ð Ð±Ð¾ÐºÑ, Ð¿ÑÐ¸ÑÑÐ°Ð²ÐºÐ° , 8K HD, 4 ÐÐ Ð¿Ð¾Ð´Ð°ÑÐ¾Ðº",
+                      "stock_qty":  35.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-LIGHT-ÐÐ ÐÐ¡Ð",
+                      "product_name":  "ÐÐ¸Ð±ÐºÐ°Ñ Ð½ÐµÐ¾Ð½Ð¾Ð²Ð°Ñ Ð»ÐµÐ½ÑÐ°, Ð´Ð»Ñ Ð¿Ð¾Ð´ÑÐ²ÐµÑÐºÐ¸ ÑÐ°Ð»Ð¾Ð½Ð° Ð°Ð²ÑÐ¾Ð¼Ð¾Ð±Ð¸Ð»Ñ, Led, 3 Ð¼",
+                      "stock_qty":  33.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-LEG-L-Ð§ÐÐ Ð-6600",
+                      "product_name":  "ÐÐµÐ³Ð³Ð¸Ð½ÑÑ Ñ ÑÑÑÐµÐºÑÐ¾Ð¼ Push Up Ð¸ Ð²ÑÑÐ¾ÐºÐ¾Ð¹ Ð¿Ð¾ÑÐ°Ð´ÐºÐ¾Ð¹, ÐºÐ¾ÑÑÐµÐºÑÐ¸ÑÑÑÑÐ¸Ðµ, ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐµ",
+                      "stock_qty":  32.0,
+                      "coverage_days":  21.0,
+                      "turnover_days":  69.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SLIP-Ð§ÐÐ Ð-XL",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ",
+                      "stock_qty":  30.0,
+                      "coverage_days":  215.0,
+                      "turnover_days":  162.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SLIPBIG-Ð§ÐÐ Ð-M",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ, Ð½Ð°Ð±Ð¾Ñ 3 ÑÑ",
+                      "stock_qty":  29.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  303.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SLIP-Ð§ÐÐ Ð-M",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ",
+                      "stock_qty":  29.0,
+                      "coverage_days":  21.0,
+                      "turnover_days":  48.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-LEG-S-Ð§ÐÐ Ð-6600",
+                      "product_name":  "ÐÐµÐ³Ð³Ð¸Ð½ÑÑ Ñ ÑÑÑÐµÐºÑÐ¾Ð¼ Push Up Ð¸ Ð²ÑÑÐ¾ÐºÐ¾Ð¹ Ð¿Ð¾ÑÐ°Ð´ÐºÐ¾Ð¹, ÐºÐ¾ÑÑÐµÐºÑÐ¸ÑÑÑÑÐ¸Ðµ, ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐµ",
+                      "stock_qty":  28.0,
+                      "coverage_days":  211.0,
+                      "turnover_days":  213.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SLIPBIG-Ð§ÐÐ Ð-XXL",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ, Ð½Ð°Ð±Ð¾Ñ 3 ÑÑ",
+                      "stock_qty":  27.0,
+                      "coverage_days":  44.0,
+                      "turnover_days":  43.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "AOELMNT-SLIP-Ð§ÐÐ Ð-XL",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ, ÐºÐ¾Ð¼Ð¿Ð»ÐµÐºÑ 3 ÑÑ",
+                      "stock_qty":  26.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SKIMS-Ð§ÐÐ Ð-L",
+                      "product_name":  "Ð¤ÑÑÐ±Ð¾Ð»ÐºÐ° Ð¶ÐµÐ½ÑÐºÐ°Ñ, ÑÐºÐ¸Ð¼Ñ, Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼ ÑÑÐºÐ°Ð²Ð¾Ð¼, Ð¾Ð±Ð»ÐµÐ³Ð°ÑÑÐ°Ñ",
+                      "stock_qty":  25.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SLIP-ÐÐÐÐ«Ð-M",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ",
+                      "stock_qty":  25.0,
+                      "coverage_days":  111.0,
+                      "turnover_days":  53.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SKIMS-Ð§ÐÐ Ð-M",
+                      "product_name":  "Ð¤ÑÑÐ±Ð¾Ð»ÐºÐ° Ð¶ÐµÐ½ÑÐºÐ°Ñ, ÑÐºÐ¸Ð¼Ñ, Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼ ÑÑÐºÐ°Ð²Ð¾Ð¼, Ð¾Ð±Ð»ÐµÐ³Ð°ÑÑÐ°Ñ",
+                      "stock_qty":  25.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SKIMS-Ð§ÐÐ Ð-XL",
+                      "product_name":  "Ð¤ÑÑÐ±Ð¾Ð»ÐºÐ° Ð¶ÐµÐ½ÑÐºÐ°Ñ, ÑÐºÐ¸Ð¼Ñ, Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼ ÑÑÐºÐ°Ð²Ð¾Ð¼, Ð¾Ð±Ð»ÐµÐ³Ð°ÑÑÐ°Ñ",
+                      "stock_qty":  24.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  199.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SLIPBIG-Ð§ÐÐ Ð-XL",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ, Ð½Ð°Ð±Ð¾Ñ 3 ÑÑ",
+                      "stock_qty":  24.0,
+                      "coverage_days":  62.0,
+                      "turnover_days":  67.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SLIP-ÐÐÐÐ«Ð-L",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ",
+                      "stock_qty":  24.0,
+                      "coverage_days":  143.0,
+                      "turnover_days":  106.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SKIMS-Ð§ÐÐ Ð-S",
+                      "product_name":  "Ð¤ÑÑÐ±Ð¾Ð»ÐºÐ° Ð¶ÐµÐ½ÑÐºÐ°Ñ, ÑÐºÐ¸Ð¼Ñ, Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼ ÑÑÐºÐ°Ð²Ð¾Ð¼, Ð¾Ð±Ð»ÐµÐ³Ð°ÑÑÐ°Ñ",
+                      "stock_qty":  24.0,
+                      "coverage_days":  300.0,
+                      "turnover_days":  193.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SLIP-ÐÐÐÐ«Ð-S",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ",
+                      "stock_qty":  22.0,
+                      "coverage_days":  20.0,
+                      "turnover_days":  41.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "AOELMNT-SLIP-ÐÐÐÐ«Ð-L",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ, ÐºÐ¾Ð¼Ð¿Ð»ÐµÐºÑ 3 ÑÑ",
+                      "stock_qty":  22.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  108.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SLIP-Ð§ÐÐ Ð-S",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ",
+                      "stock_qty":  22.0,
+                      "coverage_days":  94.0,
+                      "turnover_days":  56.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-BASSIC-Ð§ÐÐ Ð-L",
+                      "product_name":  "ÐÑÑÐºÐ¸ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÐºÐ»Ð°ÑÑÐ¸ÑÐµÑÐºÐ¸Ðµ, ÑÐ¸ÑÐ¾ÐºÐ¸Ðµ Ð¿Ð°Ð»Ð°ÑÑÐ¾",
+                      "stock_qty":  22.0,
+                      "coverage_days":  300.0,
+                      "turnover_days":  207.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-LEG-M-Ð§ÐÐ Ð-6600",
+                      "product_name":  "ÐÐµÐ³Ð³Ð¸Ð½ÑÑ Ñ ÑÑÑÐµÐºÑÐ¾Ð¼ Push Up Ð¸ Ð²ÑÑÐ¾ÐºÐ¾Ð¹ Ð¿Ð¾ÑÐ°Ð´ÐºÐ¾Ð¹, ÐºÐ¾ÑÑÐµÐºÑÐ¸ÑÑÑÑÐ¸Ðµ, ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐµ",
+                      "stock_qty":  21.0,
+                      "coverage_days":  7.0,
+                      "turnover_days":  15.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-HUDI-Ð§ÐÐ Ð-XL",
+                      "product_name":  "ÐÐµÐ½ÑÐºÐ°Ñ ÑÐ»Ð¸ÑÐ¾Ð²Ð°Ñ ÐºÑÑÑÐºÐ°, ÑÐ¿Ð¾ÑÑÐ¸Ð²ÐºÐ° ÑÐ²Ð¾Ð±Ð¾Ð´Ð½Ð¾Ð³Ð¾ ÐºÑÐ¾Ñ, ÑÑÐ¿Ð»Ð°Ñ ÑÐ¾Ð»ÑÑÐ¾Ð²ÐºÐ° Ð´Ð»Ñ ÑÐ¿Ð¾ÑÑÐ°",
+                      "stock_qty":  20.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-HUDI-Ð§ÐÐ Ð-M",
+                      "product_name":  "ÐÐµÐ½ÑÐºÐ°Ñ ÑÐ»Ð¸ÑÐ¾Ð²Ð°Ñ ÐºÑÑÑÐºÐ°, ÑÐ¿Ð¾ÑÑÐ¸Ð²ÐºÐ° ÑÐ²Ð¾Ð±Ð¾Ð´Ð½Ð¾Ð³Ð¾ ÐºÑÐ¾Ñ, ÑÑÐ¿Ð»Ð°Ñ ÑÐ¾Ð»ÑÑÐ¾Ð²ÐºÐ° Ð´Ð»Ñ ÑÐ¿Ð¾ÑÑÐ°",
+                      "stock_qty":  20.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-HUDI-Ð§ÐÐ Ð-S",
+                      "product_name":  "ÐÐµÐ½ÑÐºÐ°Ñ ÑÐ»Ð¸ÑÐ¾Ð²Ð°Ñ ÐºÑÑÑÐºÐ°, ÑÐ¿Ð¾ÑÑÐ¸Ð²ÐºÐ° ÑÐ²Ð¾Ð±Ð¾Ð´Ð½Ð¾Ð³Ð¾ ÐºÑÐ¾Ñ, ÑÑÐ¿Ð»Ð°Ñ ÑÐ¾Ð»ÑÑÐ¾Ð²ÐºÐ° Ð´Ð»Ñ ÑÐ¿Ð¾ÑÑÐ°",
+                      "stock_qty":  20.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SKIMS-Ð¡ÐÐÐÐÐ¡Ð¢-L",
+                      "product_name":  "Ð¤ÑÑÐ±Ð¾Ð»ÐºÐ° Ð¶ÐµÐ½ÑÐºÐ°Ñ, ÑÐºÐ¸Ð¼Ñ, Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼ ÑÑÐºÐ°Ð²Ð¾Ð¼, Ð¾Ð±Ð»ÐµÐ³Ð°ÑÑÐ°Ñ",
+                      "stock_qty":  20.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "AOELMNT-SLIP-Ð§ÐÐ Ð-L",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ, ÐºÐ¾Ð¼Ð¿Ð»ÐµÐºÑ 3 ÑÑ",
+                      "stock_qty":  20.0,
+                      "coverage_days":  86.0,
+                      "turnover_days":  189.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-HUDI-Ð§ÐÐ Ð-L",
+                      "product_name":  "ÐÐµÐ½ÑÐºÐ°Ñ ÑÐ»Ð¸ÑÐ¾Ð²Ð°Ñ ÐºÑÑÑÐºÐ°, ÑÐ¿Ð¾ÑÑÐ¸Ð²ÐºÐ° ÑÐ²Ð¾Ð±Ð¾Ð´Ð½Ð¾Ð³Ð¾ ÐºÑÐ¾Ñ, ÑÑÐ¿Ð»Ð°Ñ ÑÐ¾Ð»ÑÑÐ¾Ð²ÐºÐ° Ð´Ð»Ñ ÑÐ¿Ð¾ÑÑÐ°",
+                      "stock_qty":  20.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SKIMS-Ð¡ÐÐÐÐÐ¡Ð¢-XL",
+                      "product_name":  "Ð¤ÑÑÐ±Ð¾Ð»ÐºÐ° Ð¶ÐµÐ½ÑÐºÐ°Ñ, ÑÐºÐ¸Ð¼Ñ, Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼ ÑÑÐºÐ°Ð²Ð¾Ð¼, Ð¾Ð±Ð»ÐµÐ³Ð°ÑÑÐ°Ñ",
+                      "stock_qty":  20.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-LEG-L-Ð¡ÐÐ Ð«Ð-6600",
+                      "product_name":  "ÐÐµÐ³Ð³Ð¸Ð½ÑÑ Ñ ÑÑÑÐµÐºÑÐ¾Ð¼ Push Up Ð¸ Ð²ÑÑÐ¾ÐºÐ¾Ð¹ Ð¿Ð¾ÑÐ°Ð´ÐºÐ¾Ð¹, ÐºÐ¾ÑÑÐµÐºÑÐ¸ÑÑÑÑÐ¸Ðµ, ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐµ",
+                      "stock_qty":  20.0,
+                      "coverage_days":  122.0,
+                      "turnover_days":  177.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SKIMS-Ð¡ÐÐÐÐÐ¡Ð¢-M",
+                      "product_name":  "Ð¤ÑÑÐ±Ð¾Ð»ÐºÐ° Ð¶ÐµÐ½ÑÐºÐ°Ñ, ÑÐºÐ¸Ð¼Ñ, Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼ ÑÑÐºÐ°Ð²Ð¾Ð¼, Ð¾Ð±Ð»ÐµÐ³Ð°ÑÑÐ°Ñ",
+                      "stock_qty":  20.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-BASSIC-Ð§ÐÐ ÐÐ¡Ð¢Ð-L",
+                      "product_name":  "ÐÑÑÐºÐ¸ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÐºÐ»Ð°ÑÑÐ¸ÑÐµÑÐºÐ¸Ðµ, ÑÐ¸ÑÐ¾ÐºÐ¸Ðµ Ð¿Ð°Ð»Ð°ÑÑÐ¾",
+                      "stock_qty":  20.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-BASSIC-Ð§ÐÐ ÐÐ¡Ð¢Ð-XL",
+                      "product_name":  "ÐÑÑÐºÐ¸ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÐºÐ»Ð°ÑÑÐ¸ÑÐµÑÐºÐ¸Ðµ, ÑÐ¸ÑÐ¾ÐºÐ¸Ðµ Ð¿Ð°Ð»Ð°ÑÑÐ¾",
+                      "stock_qty":  20.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-RASH-Ð¢ÐÐÐÐ¡ÐÐ -L",
+                      "product_name":  "Ð Ð°ÑÐ³Ð°ÑÐ´ Ð¶ÐµÐ½ÑÐºÐ¸Ð¹, ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐ¹ Ð»Ð¾Ð½Ð³ÑÐ»Ð¸Ð² Ð¾Ð±Ð»Ð¸Ð³Ð°ÑÑÐ¸Ð¹ Ð½Ð° Ð¼Ð¾Ð»Ð½Ð¸Ð¸",
+                      "stock_qty":  20.0,
+                      "coverage_days":  13.0,
+                      "turnover_days":  47.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-LEG-S-Ð¡ÐÐ Ð«Ð-6600",
+                      "product_name":  "ÐÐµÐ³Ð³Ð¸Ð½ÑÑ Ñ ÑÑÑÐµÐºÑÐ¾Ð¼ Push Up Ð¸ Ð²ÑÑÐ¾ÐºÐ¾Ð¹ Ð¿Ð¾ÑÐ°Ð´ÐºÐ¾Ð¹, ÐºÐ¾ÑÑÐµÐºÑÐ¸ÑÑÑÑÐ¸Ðµ, ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐµ",
+                      "stock_qty":  19.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  95.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SLIPBIG-ÐÐÐÐÐ-L",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ, Ð½Ð°Ð±Ð¾Ñ 3 ÑÑ",
+                      "stock_qty":  19.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SKIMS-Ð¡ÐÐÐÐÐ¡Ð¢-S",
+                      "product_name":  "Ð¤ÑÑÐ±Ð¾Ð»ÐºÐ° Ð¶ÐµÐ½ÑÐºÐ°Ñ, ÑÐºÐ¸Ð¼Ñ, Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼ ÑÑÐºÐ°Ð²Ð¾Ð¼, Ð¾Ð±Ð»ÐµÐ³Ð°ÑÑÐ°Ñ",
+                      "stock_qty":  19.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-BASSIC-Ð§ÐÐ ÐÐ¡Ð¢Ð-M",
+                      "product_name":  "ÐÑÑÐºÐ¸ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÐºÐ»Ð°ÑÑÐ¸ÑÐµÑÐºÐ¸Ðµ, ÑÐ¸ÑÐ¾ÐºÐ¸Ðµ Ð¿Ð°Ð»Ð°ÑÑÐ¾",
+                      "stock_qty":  18.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-BASSIC-Ð§ÐÐ Ð-XL",
+                      "product_name":  "ÐÑÑÐºÐ¸ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÐºÐ»Ð°ÑÑÐ¸ÑÐµÑÐºÐ¸Ðµ, ÑÐ¸ÑÐ¾ÐºÐ¸Ðµ Ð¿Ð°Ð»Ð°ÑÑÐ¾",
+                      "stock_qty":  18.0,
+                      "coverage_days":  77.0,
+                      "turnover_days":  169.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-RASH-Ð¢ÐÐÐÐ¡ÐÐ -M",
+                      "product_name":  "Ð Ð°ÑÐ³Ð°ÑÐ´ Ð¶ÐµÐ½ÑÐºÐ¸Ð¹, ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐ¹ Ð»Ð¾Ð½Ð³ÑÐ»Ð¸Ð² Ð¾Ð±Ð»Ð¸Ð³Ð°ÑÑÐ¸Ð¹ Ð½Ð° Ð¼Ð¾Ð»Ð½Ð¸Ð¸",
+                      "stock_qty":  18.0,
+                      "coverage_days":  26.0,
+                      "turnover_days":  30.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-ÐÐÐÐ¬Ð¦Ð-Ð¡ÐÐ ÐÐÐ Ð",
+                      "product_name":  "ÐÐ¾Ð¼Ð¿Ð»ÐµÐºÑ Ð¶ÐµÐ½ÑÐºÐ¸Ñ\u0085 ÐºÐ¾Ð»ÐµÑ, 5 ÑÑ",
+                      "stock_qty":  18.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SLIPBIG-Ð§ÐÐ Ð-L",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ, Ð½Ð°Ð±Ð¾Ñ 3 ÑÑ",
+                      "stock_qty":  17.0,
+                      "coverage_days":  115.0,
+                      "turnover_days":  62.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-BASSIC-Ð¢ÐÐÐÐ¡ÐÐ-M",
+                      "product_name":  "ÐÑÑÐºÐ¸ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÐºÐ»Ð°ÑÑÐ¸ÑÐµÑÐºÐ¸Ðµ, ÑÐ¸ÑÐ¾ÐºÐ¸Ðµ Ð¿Ð°Ð»Ð°ÑÑÐ¾",
+                      "stock_qty":  17.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "AOELMNT-GAMAK-Ð§ÐÐ Ð-XXXL",
+                      "product_name":  "ÐÑÐ¶ÑÐºÐ¸Ðµ ÑÑÑÑÑ, Ð½Ð¸Ð¶Ð½ÐµÐµ Ð±ÐµÐ»ÑÐµ, Ð±Ð¾ÐºÑÐµÑÑ Ñ Ð¿Ð¾Ð´Ð´ÐµÑÐ¶ÐºÐ¾Ð¹",
+                      "stock_qty":  17.0,
+                      "coverage_days":  2.0,
+                      "turnover_days":  3.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SLIP-Ð§ÐÐ Ð-L",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ",
+                      "stock_qty":  16.0,
+                      "coverage_days":  186.0,
+                      "turnover_days":  60.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "AOELMNT-SLIP-Ð§ÐÐ Ð-S",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ, ÐºÐ¾Ð¼Ð¿Ð»ÐµÐºÑ 3 ÑÑ",
+                      "stock_qty":  16.0,
+                      "coverage_days":  172.0,
+                      "turnover_days":  111.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-TV-8KHD-4I32",
+                      "product_name":  "Ð¡Ð¼Ð°ÑÑ Ð¢Ð Ð±Ð¾ÐºÑ, Ð¿ÑÐ¸ÑÑÐ°Ð²ÐºÐ° , 8K HD, 4 ÐÐ Ð¿Ð¾Ð´Ð°ÑÐ¾Ðº",
+                      "stock_qty":  16.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-BASSIC-Ð§ÐÐ Ð-M",
+                      "product_name":  "ÐÑÑÐºÐ¸ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÐºÐ»Ð°ÑÑÐ¸ÑÐµÑÐºÐ¸Ðµ, ÑÐ¸ÑÐ¾ÐºÐ¸Ðµ Ð¿Ð°Ð»Ð°ÑÑÐ¾",
+                      "stock_qty":  15.0,
+                      "coverage_days":  158.0,
+                      "turnover_days":  126.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-RASH-Ð§ÐÐ Ð-S",
+                      "product_name":  "Ð Ð°ÑÐ³Ð°ÑÐ´ Ð¶ÐµÐ½ÑÐºÐ¸Ð¹, ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐ¹ Ð»Ð¾Ð½Ð³ÑÐ»Ð¸Ð² Ð¾Ð±Ð»Ð¸Ð³Ð°ÑÑÐ¸Ð¹ Ð½Ð° Ð¼Ð¾Ð»Ð½Ð¸Ð¸",
+                      "stock_qty":  15.0,
+                      "coverage_days":  11.0,
+                      "turnover_days":  32.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-TOP-6600-Ð¡ÐÐ Ð«Ð-M",
+                      "product_name":  "Ð¡Ð¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐ¹ ÑÐ¾Ð¿ Ð¶ÐµÐ½ÑÐºÐ¸Ð¹ Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼Ð¸ ÑÑÐºÐ°Ð²Ð°Ð¼Ð¸, Ñ Push up ÑÑÑÐµÐºÑÐ¾Ð¼",
+                      "stock_qty":  14.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  75.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "AOELMNT-SLIP-ÐÐÐÐ«Ð-S",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ, ÐºÐ¾Ð¼Ð¿Ð»ÐµÐºÑ 3 ÑÑ",
+                      "stock_qty":  14.0,
+                      "coverage_days":  72.0,
+                      "turnover_days":  121.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-LEG-M-Ð¡ÐÐ Ð«Ð-6600",
+                      "product_name":  "ÐÐµÐ³Ð³Ð¸Ð½ÑÑ Ñ ÑÑÑÐµÐºÑÐ¾Ð¼ Push Up Ð¸ Ð²ÑÑÐ¾ÐºÐ¾Ð¹ Ð¿Ð¾ÑÐ°Ð´ÐºÐ¾Ð¹, ÐºÐ¾ÑÑÐµÐºÑÐ¸ÑÑÑÑÐ¸Ðµ, ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐµ",
+                      "stock_qty":  14.0,
+                      "coverage_days":  43.0,
+                      "turnover_days":  39.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-RASH-Ð¢ÐÐÐÐ¡ÐÐ -S",
+                      "product_name":  "Ð Ð°ÑÐ³Ð°ÑÐ´ Ð¶ÐµÐ½ÑÐºÐ¸Ð¹, ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐ¹ Ð»Ð¾Ð½Ð³ÑÐ»Ð¸Ð² Ð¾Ð±Ð»Ð¸Ð³Ð°ÑÑÐ¸Ð¹ Ð½Ð° Ð¼Ð¾Ð»Ð½Ð¸Ð¸",
+                      "stock_qty":  14.0,
+                      "coverage_days":  18.0,
+                      "turnover_days":  33.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SLIPBIG-ÐÐÐÐÐ-M",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ, Ð½Ð°Ð±Ð¾Ñ 3 ÑÑ",
+                      "stock_qty":  13.0,
+                      "coverage_days":  62.0,
+                      "turnover_days":  51.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-ÐÐÐ-XXL-Ð§ÐÐ Ð-A",
+                      "product_name":  "ÐÐµÐ³Ð³Ð¸Ð½ÑÑ Ð¸Ð· ÑÐºÐ¾ ÐºÐ¾Ð¶Ð¸, Ð¶ÐµÐ½ÑÐºÐ¸Ðµ",
+                      "stock_qty":  12.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-BASSIC-Ð¢ÐÐÐÐ¡ÐÐ-S",
+                      "product_name":  "ÐÑÑÐºÐ¸ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÐºÐ»Ð°ÑÑÐ¸ÑÐµÑÐºÐ¸Ðµ, ÑÐ¸ÑÐ¾ÐºÐ¸Ðµ Ð¿Ð°Ð»Ð°ÑÑÐ¾",
+                      "stock_qty":  12.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-RASH-Ð§ÐÐ Ð-M",
+                      "product_name":  "Ð Ð°ÑÐ³Ð°ÑÐ´ Ð¶ÐµÐ½ÑÐºÐ¸Ð¹, ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐ¹ Ð»Ð¾Ð½Ð³ÑÐ»Ð¸Ð² Ð¾Ð±Ð»Ð¸Ð³Ð°ÑÑÐ¸Ð¹ Ð½Ð° Ð¼Ð¾Ð»Ð½Ð¸Ð¸",
+                      "stock_qty":  12.0,
+                      "coverage_days":  5.0,
+                      "turnover_days":  18.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-ÐÐÐÐ¬Ð¦Ð-ÐÐÐÐÐ¢",
+                      "product_name":  "ÐÐ¾Ð¼Ð¿Ð»ÐµÐºÑ Ð¶ÐµÐ½ÑÐºÐ¸Ñ\u0085 ÐºÐ¾Ð»ÐµÑ, 5 ÑÑ",
+                      "stock_qty":  12.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-ÐÐÐ-XXL-Ð¢ÐÐÐÐÐÐ-A",
+                      "product_name":  "ÐÐµÐ³Ð³Ð¸Ð½ÑÑ Ð¸Ð· ÑÐºÐ¾ ÐºÐ¾Ð¶Ð¸, Ð¶ÐµÐ½ÑÐºÐ¸Ðµ",
+                      "stock_qty":  11.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SKIMS-ÐÐÐ Ð¡ÐÐ-L",
+                      "product_name":  "Ð¤ÑÑÐ±Ð¾Ð»ÐºÐ° Ð¶ÐµÐ½ÑÐºÐ°Ñ, ÑÐºÐ¸Ð¼Ñ, Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼ ÑÑÐºÐ°Ð²Ð¾Ð¼, Ð¾Ð±Ð»ÐµÐ³Ð°ÑÑÐ°Ñ",
+                      "stock_qty":  10.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SKIMS-ÐÐÐ Ð¡ÐÐ-XL",
+                      "product_name":  "Ð¤ÑÑÐ±Ð¾Ð»ÐºÐ° Ð¶ÐµÐ½ÑÐºÐ°Ñ, ÑÐºÐ¸Ð¼Ñ, Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼ ÑÑÐºÐ°Ð²Ð¾Ð¼, Ð¾Ð±Ð»ÐµÐ³Ð°ÑÑÐ°Ñ",
+                      "stock_qty":  10.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SKIMS-ÐÐÐ Ð¡ÐÐ-S",
+                      "product_name":  "Ð¤ÑÑÐ±Ð¾Ð»ÐºÐ° Ð¶ÐµÐ½ÑÐºÐ°Ñ, ÑÐºÐ¸Ð¼Ñ, Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼ ÑÑÐºÐ°Ð²Ð¾Ð¼, Ð¾Ð±Ð»ÐµÐ³Ð°ÑÑÐ°Ñ",
+                      "stock_qty":  10.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-TOP-6600-Ð¡ÐÐ Ð«Ð-S",
+                      "product_name":  "Ð¡Ð¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐ¹ ÑÐ¾Ð¿ Ð¶ÐµÐ½ÑÐºÐ¸Ð¹ Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼Ð¸ ÑÑÐºÐ°Ð²Ð°Ð¼Ð¸, Ñ Push up ÑÑÑÐµÐºÑÐ¾Ð¼",
+                      "stock_qty":  10.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-TOP-6600-Ð§ÐÐ Ð-M",
+                      "product_name":  "Ð¡Ð¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐ¹ ÑÐ¾Ð¿ Ð¶ÐµÐ½ÑÐºÐ¸Ð¹ Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼Ð¸ ÑÑÐºÐ°Ð²Ð°Ð¼Ð¸, Ñ Push up ÑÑÑÐµÐºÑÐ¾Ð¼",
+                      "stock_qty":  9.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SKIMS-ÐÐÐ Ð¡ÐÐ-M",
+                      "product_name":  "Ð¤ÑÑÐ±Ð¾Ð»ÐºÐ° Ð¶ÐµÐ½ÑÐºÐ°Ñ, ÑÐºÐ¸Ð¼Ñ, Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼ ÑÑÐºÐ°Ð²Ð¾Ð¼, Ð¾Ð±Ð»ÐµÐ³Ð°ÑÑÐ°Ñ",
+                      "stock_qty":  9.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  77.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "AOELMNT-GAMAK-Ð§ÐÐ Ð-XL",
+                      "product_name":  "ÐÑÐ¶ÑÐºÐ¸Ðµ ÑÑÑÑÑ, Ð½Ð¸Ð¶Ð½ÐµÐµ Ð±ÐµÐ»ÑÐµ, Ð±Ð¾ÐºÑÐµÑÑ Ñ Ð¿Ð¾Ð´Ð´ÐµÑÐ¶ÐºÐ¾Ð¹",
+                      "stock_qty":  9.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SLIPBIG-ÐÐÐÐÐ-XXL",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ, Ð½Ð°Ð±Ð¾Ñ 3 ÑÑ",
+                      "stock_qty":  9.0,
+                      "coverage_days":  23.0,
+                      "turnover_days":  36.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SLIPBIG-ÐÐÐÐÐ-XL",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ, Ð½Ð°Ð±Ð¾Ñ 3 ÑÑ",
+                      "stock_qty":  9.0,
+                      "coverage_days":  28.0,
+                      "turnover_days":  31.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SUIT-Ð§ÐÐ Ð-L",
+                      "product_name":  "Ð¡Ð¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐ¹ Ð¶ÐµÐ½ÑÐºÐ¸Ð¹ ÐºÐ¾ÑÑÑÐ¼, Ð´Ð»Ñ ÑÐ¸ÑÐ½ÐµÑÐ° Ð¸ Ð¹Ð¾Ð³Ð¸, ÑÐ°ÑÐ³Ð°ÑÐ´ Ð¸ Ð»ÐµÐ³Ð³Ð¸Ð½ÑÑ, Ð´Ð²Ð¾Ð¹ÐºÐ°",
+                      "stock_qty":  9.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-RASH-Ð¢ÐÐÐÐ¡ÐÐ -XL",
+                      "product_name":  "Ð Ð°ÑÐ³Ð°ÑÐ´ Ð¶ÐµÐ½ÑÐºÐ¸Ð¹, ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐ¹ Ð»Ð¾Ð½Ð³ÑÐ»Ð¸Ð² Ð¾Ð±Ð»Ð¸Ð³Ð°ÑÑÐ¸Ð¹ Ð½Ð° Ð¼Ð¾Ð»Ð½Ð¸Ð¸",
+                      "stock_qty":  9.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  95.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-RASH-Ð§ÐÐ Ð-L",
+                      "product_name":  "Ð Ð°ÑÐ³Ð°ÑÐ´ Ð¶ÐµÐ½ÑÐºÐ¸Ð¹, ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐ¹ Ð»Ð¾Ð½Ð³ÑÐ»Ð¸Ð² Ð¾Ð±Ð»Ð¸Ð³Ð°ÑÑÐ¸Ð¹ Ð½Ð° Ð¼Ð¾Ð»Ð½Ð¸Ð¸",
+                      "stock_qty":  9.0,
+                      "coverage_days":  3.0,
+                      "turnover_days":  7.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SLIP-ÐÐÐÐ«Ð-XL",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ",
+                      "stock_qty":  8.0,
+                      "coverage_days":  108.0,
+                      "turnover_days":  34.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-RASH-Ð§ÐÐ Ð-XL",
+                      "product_name":  "Ð Ð°ÑÐ³Ð°ÑÐ´ Ð¶ÐµÐ½ÑÐºÐ¸Ð¹, ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐ¹ Ð»Ð¾Ð½Ð³ÑÐ»Ð¸Ð² Ð¾Ð±Ð»Ð¸Ð³Ð°ÑÑÐ¸Ð¹ Ð½Ð° Ð¼Ð¾Ð»Ð½Ð¸Ð¸",
+                      "stock_qty":  8.0,
+                      "coverage_days":  115.0,
+                      "turnover_days":  90.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-TOP-6600-Ð¥ÐÐÐ-S",
+                      "product_name":  "Ð¡Ð¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐ¹ ÑÐ¾Ð¿ Ð¶ÐµÐ½ÑÐºÐ¸Ð¹ Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼Ð¸ ÑÑÐºÐ°Ð²Ð°Ð¼Ð¸, Ñ Push up ÑÑÑÐµÐºÑÐ¾Ð¼",
+                      "stock_qty":  8.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-ÐÐÐ-XL-Ð§ÐÐ Ð-A",
+                      "product_name":  "ÐÐµÐ³Ð³Ð¸Ð½ÑÑ Ð¸Ð· ÑÐºÐ¾ ÐºÐ¾Ð¶Ð¸, Ð¶ÐµÐ½ÑÐºÐ¸Ðµ",
+                      "stock_qty":  7.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-TOP-6600-Ð§ÐÐ Ð-L",
+                      "product_name":  "Ð¡Ð¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐ¹ ÑÐ¾Ð¿ Ð¶ÐµÐ½ÑÐºÐ¸Ð¹ Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼Ð¸ ÑÑÐºÐ°Ð²Ð°Ð¼Ð¸, Ñ Push up ÑÑÑÐµÐºÑÐ¾Ð¼",
+                      "stock_qty":  7.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-LEG-S-Ð¥ÐÐÐ-6600",
+                      "product_name":  "ÐÐµÐ³Ð³Ð¸Ð½ÑÑ Ñ ÑÑÑÐµÐºÑÐ¾Ð¼ Push Up Ð¸ Ð²ÑÑÐ¾ÐºÐ¾Ð¹ Ð¿Ð¾ÑÐ°Ð´ÐºÐ¾Ð¹, ÐºÐ¾ÑÑÐµÐºÑÐ¸ÑÑÑÑÐ¸Ðµ, ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐµ",
+                      "stock_qty":  7.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-BASSIC-Ð¢ÐÐÐÐ¡ÐÐ-XL",
+                      "product_name":  "ÐÑÑÐºÐ¸ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÐºÐ»Ð°ÑÑÐ¸ÑÐµÑÐºÐ¸Ðµ, ÑÐ¸ÑÐ¾ÐºÐ¸Ðµ Ð¿Ð°Ð»Ð°ÑÑÐ¾",
+                      "stock_qty":  5.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-LIGHT5-Ð¡ÐÐÐÐ",
+                      "product_name":  "ÐÐµÐ¾Ð½Ð¾Ð²Ð°Ñ Ð»ÐµÐ½ÑÐ° Ð´Ð»Ñ Ð¿Ð¾Ð´ÑÐ²ÐµÑÐºÐ¸ ÑÐ°Ð»Ð¾Ð½Ð° Led, 5 Ð¼",
+                      "stock_qty":  5.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-ÐÐÐÐ¨-Ð§ÐÐ Ð-XL",
+                      "product_name":  "ÐÐµÐ½ÑÐºÐ¸Ðµ ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐµ Ð»ÐµÐ³Ð³Ð¸Ð½ÑÑ ÐºÐ»ÐµÑ",
+                      "stock_qty":  5.0,
+                      "coverage_days":  7.0,
+                      "turnover_days":  8.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-WATCH-Ð§ÐÐ Ð",
+                      "product_name":  "Ð§Ð°ÑÑ Ð¼ÑÐ¶ÑÐºÐ¸Ðµ Ð½Ð°ÑÑÑÐ½ÑÐµ Chenxi 948, ÐºÐ²Ð°ÑÑÐµÐ²ÑÐ¹ Ð¼ÐµÑ\u0085Ð°Ð½Ð¸Ð·Ð¼ Ð°Ð²ÑÐ¾Ð¿Ð¾Ð´Ð·Ð°Ð²Ð¾Ð´Ð°",
+                      "stock_qty":  5.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-ÐÐÐ-M-Ð§ÐÐ Ð-A",
+                      "product_name":  "ÐÐµÐ³Ð³Ð¸Ð½ÑÑ Ð¸Ð· ÑÐºÐ¾ ÐºÐ¾Ð¶Ð¸, Ð¶ÐµÐ½ÑÐºÐ¸Ðµ",
+                      "stock_qty":  4.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SUIT-Ð§ÐÐ Ð-M",
+                      "product_name":  "Ð¡Ð¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐ¹ Ð¶ÐµÐ½ÑÐºÐ¸Ð¹ ÐºÐ¾ÑÑÑÐ¼, Ð´Ð»Ñ ÑÐ¸ÑÐ½ÐµÑÐ° Ð¸ Ð¹Ð¾Ð³Ð¸, ÑÐ°ÑÐ³Ð°ÑÐ´ Ð¸ Ð»ÐµÐ³Ð³Ð¸Ð½ÑÑ, Ð´Ð²Ð¾Ð¹ÐºÐ°",
+                      "stock_qty":  4.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-BASSIC-Ð¢ÐÐÐÐ¡ÐÐ -S",
+                      "product_name":  "ÐÑÑÐºÐ¸ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÐºÐ»Ð°ÑÑÐ¸ÑÐµÑÐºÐ¸Ðµ, ÑÐ¸ÑÐ¾ÐºÐ¸Ðµ Ð¿Ð°Ð»Ð°ÑÑÐ¾",
+                      "stock_qty":  4.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-LIGHT-ÐÐÐÐ«Ð",
+                      "product_name":  "ÐÐ¸Ð±ÐºÐ°Ñ Ð½ÐµÐ¾Ð½Ð¾Ð²Ð°Ñ Ð»ÐµÐ½ÑÐ°, Ð´Ð»Ñ Ð¿Ð¾Ð´ÑÐ²ÐµÑÐºÐ¸ ÑÐ°Ð»Ð¾Ð½Ð° Ð°Ð²ÑÐ¾Ð¼Ð¾Ð±Ð¸Ð»Ñ, Led, 3 Ð¼",
+                      "stock_qty":  4.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-TOP-6600-Ð¥ÐÐÐ-M",
+                      "product_name":  "Ð¡Ð¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐ¹ ÑÐ¾Ð¿ Ð¶ÐµÐ½ÑÐºÐ¸Ð¹ Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼Ð¸ ÑÑÐºÐ°Ð²Ð°Ð¼Ð¸, Ñ Push up ÑÑÑÐµÐºÑÐ¾Ð¼",
+                      "stock_qty":  4.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  17.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-TOP-6600-Ð¥ÐÐÐ-L",
+                      "product_name":  "Ð¡Ð¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐ¹ ÑÐ¾Ð¿ Ð¶ÐµÐ½ÑÐºÐ¸Ð¹ Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼Ð¸ ÑÑÐºÐ°Ð²Ð°Ð¼Ð¸, Ñ Push up ÑÑÑÐµÐºÑÐ¾Ð¼",
+                      "stock_qty":  4.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "AOELMNT-GAMAK-Ð§ÐÐ Ð-XXL",
+                      "product_name":  "ÐÑÐ¶ÑÐºÐ¸Ðµ ÑÑÑÑÑ, Ð½Ð¸Ð¶Ð½ÐµÐµ Ð±ÐµÐ»ÑÐµ, Ð±Ð¾ÐºÑÐµÑÑ Ñ Ð¿Ð¾Ð´Ð´ÐµÑÐ¶ÐºÐ¾Ð¹",
+                      "stock_qty":  4.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-LEG-M-Ð¥ÐÐÐ-6600",
+                      "product_name":  "ÐÐµÐ³Ð³Ð¸Ð½ÑÑ Ñ ÑÑÑÐµÐºÑÐ¾Ð¼ Push Up Ð¸ Ð²ÑÑÐ¾ÐºÐ¾Ð¹ Ð¿Ð¾ÑÐ°Ð´ÐºÐ¾Ð¹, ÐºÐ¾ÑÑÐµÐºÑÐ¸ÑÑÑÑÐ¸Ðµ, ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐµ",
+                      "stock_qty":  4.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-MAS",
+                      "product_name":  "ÐÐ°ÐºÑÑÐ¼Ð½ÑÐ¹ Ð¼Ð°ÑÑÐ°Ð¶ÐµÑ, Ð°Ð½ÑÐ¸ÑÐµÐ»Ð»ÑÐ»Ð¸ÑÐ½ÑÐ¹",
+                      "stock_qty":  4.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-LENTA-Ð¡ÐÐÐÐ-3M-SMOKE",
+                      "product_name":  "ÐÐ¸Ð±ÐºÐ°Ñ Ð½ÐµÐ¾Ð½Ð¾Ð²Ð°Ñ Ð»ÐµÐ½ÑÐ°, Ð´Ð»Ñ Ð¿Ð¾Ð´ÑÐ²ÐµÑÐºÐ¸ ÑÐ°Ð»Ð¾Ð½Ð° Ð°Ð²ÑÐ¾",
+                      "stock_qty":  4.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-ÐÐÐ-L-Ð§ÐÐ Ð-A",
+                      "product_name":  "ÐÐµÐ³Ð³Ð¸Ð½ÑÑ Ð¸Ð· ÑÐºÐ¾ ÐºÐ¾Ð¶Ð¸, Ð¶ÐµÐ½ÑÐºÐ¸Ðµ",
+                      "stock_qty":  4.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-TV-8KHD-4I64",
+                      "product_name":  "Ð¡Ð¼Ð°ÑÑ Ð¢Ð Ð±Ð¾ÐºÑ, Ð¿ÑÐ¸ÑÑÐ°Ð²ÐºÐ° , 8K HD, 4 ÐÐ Ð¿Ð¾Ð´Ð°ÑÐ¾Ðº",
+                      "stock_qty":  3.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-LIGHT5-ÐÐ ÐÐ¡Ð",
+                      "product_name":  "ÐÐµÐ¾Ð½Ð¾Ð²Ð°Ñ Ð»ÐµÐ½ÑÐ° Ð´Ð»Ñ Ð¿Ð¾Ð´ÑÐ²ÐµÑÐºÐ¸ ÑÐ°Ð»Ð¾Ð½Ð° Led, 5 Ð¼",
+                      "stock_qty":  3.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-BASSIC-Ð§ÐÐ Ð-S",
+                      "product_name":  "ÐÑÑÐºÐ¸ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÐºÐ»Ð°ÑÑÐ¸ÑÐµÑÐºÐ¸Ðµ, ÑÐ¸ÑÐ¾ÐºÐ¸Ðµ Ð¿Ð°Ð»Ð°ÑÑÐ¾",
+                      "stock_qty":  3.0,
+                      "coverage_days":  10.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-LENTA-Ð¡ÐÐÐÐ-5M-USB",
+                      "product_name":  "ÐÐ¸Ð±ÐºÐ°Ñ Ð½ÐµÐ¾Ð½Ð¾Ð²Ð°Ñ Ð»ÐµÐ½ÑÐ°, Ð´Ð»Ñ Ð¿Ð¾Ð´ÑÐ²ÐµÑÐºÐ¸ ÑÐ°Ð»Ð¾Ð½Ð° Ð°Ð²ÑÐ¾",
+                      "stock_qty":  3.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "AOELMNT-SLIP-ÐÐÐÐ«Ð-M",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ, ÐºÐ¾Ð¼Ð¿Ð»ÐµÐºÑ 3 ÑÑ",
+                      "stock_qty":  3.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  23.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-TOP-6600-Ð¡ÐÐ Ð«Ð-L",
+                      "product_name":  "Ð¡Ð¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐ¹ ÑÐ¾Ð¿ Ð¶ÐµÐ½ÑÐºÐ¸Ð¹ Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼Ð¸ ÑÑÐºÐ°Ð²Ð°Ð¼Ð¸, Ñ Push up ÑÑÑÐµÐºÑÐ¾Ð¼",
+                      "stock_qty":  3.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-ÐÐÐÐ¨-Ð¢ÐÐÐÐ¡ÐÐ-XL",
+                      "product_name":  "ÐÐµÐ½ÑÐºÐ¸Ðµ ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐµ Ð»ÐµÐ³Ð³Ð¸Ð½ÑÑ ÐºÐ»ÐµÑ",
+                      "stock_qty":  3.0,
+                      "coverage_days":  43.0,
+                      "turnover_days":  39.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-TV-X98PLUS-4I32",
+                      "product_name":  "Ð¡Ð¼Ð°ÑÑ Ð¢Ð Ð±Ð¾ÐºÑ, Ð¿ÑÐ¸ÑÑÐ°Ð²ÐºÐ° , 8K HD, 4 ÐÐ Ð¿Ð¾Ð´Ð°ÑÐ¾Ðº",
+                      "stock_qty":  3.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-WATCH-ÐÐÐÐÐ¢",
+                      "product_name":  "Ð§Ð°ÑÑ Ð¼ÑÐ¶ÑÐºÐ¸Ðµ Ð½Ð°ÑÑÑÐ½ÑÐµ Chenxi 948, ÐºÐ²Ð°ÑÑÐµÐ²ÑÐ¹ Ð¼ÐµÑ\u0085Ð°Ð½Ð¸Ð·Ð¼ Ð°Ð²ÑÐ¾Ð¿Ð¾Ð´Ð·Ð°Ð²Ð¾Ð´Ð°",
+                      "stock_qty":  3.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-ÐÐÐÐ¨-Ð§ÐÐ Ð-L",
+                      "product_name":  "ÐÐµÐ½ÑÐºÐ¸Ðµ ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐµ Ð»ÐµÐ³Ð³Ð¸Ð½ÑÑ ÐºÐ»ÐµÑ",
+                      "stock_qty":  3.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-KAF-Ð¡ÐÐ ÐÐÐ Ð",
+                      "product_name":  "Ð¡ÐµÑÑÐ³Ð°-ÐºÐ°ÑÑ, Ñ ÑÐµÐ¿ÑÑ",
+                      "stock_qty":  2.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-LENTA-ÐÐ ÐÐ¡Ð-3M-SMOKE",
+                      "product_name":  "ÐÐ¸Ð±ÐºÐ°Ñ Ð½ÐµÐ¾Ð½Ð¾Ð²Ð°Ñ Ð»ÐµÐ½ÑÐ°, Ð´Ð»Ñ Ð¿Ð¾Ð´ÑÐ²ÐµÑÐºÐ¸ ÑÐ°Ð»Ð¾Ð½Ð° Ð°Ð²ÑÐ¾",
+                      "stock_qty":  2.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-TV-X98PLUS-2I16",
+                      "product_name":  "Ð¡Ð¼Ð°ÑÑ Ð¢Ð Ð±Ð¾ÐºÑ, Ð¿ÑÐ¸ÑÑÐ°Ð²ÐºÐ° , 8K HD, 4 ÐÐ Ð¿Ð¾Ð´Ð°ÑÐ¾Ðº",
+                      "stock_qty":  2.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-LEG-L-Ð¥ÐÐÐ-6600",
+                      "product_name":  "ÐÐµÐ³Ð³Ð¸Ð½ÑÑ Ñ ÑÑÑÐµÐºÑÐ¾Ð¼ Push Up Ð¸ Ð²ÑÑÐ¾ÐºÐ¾Ð¹ Ð¿Ð¾ÑÐ°Ð´ÐºÐ¾Ð¹, ÐºÐ¾ÑÑÐµÐºÑÐ¸ÑÑÑÑÐ¸Ðµ, ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐµ",
+                      "stock_qty":  2.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-KAF-ÐÐÐÐÐ¢",
+                      "product_name":  "Ð¡ÐµÑÑÐ³Ð°-ÐºÐ°ÑÑ, Ñ ÑÐµÐ¿ÑÑ",
+                      "stock_qty":  2.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "AOELMNT-GAMAK-Ð§ÐÐ Ð-L",
+                      "product_name":  "ÐÑÐ¶ÑÐºÐ¸Ðµ ÑÑÑÑÑ, Ð½Ð¸Ð¶Ð½ÐµÐµ Ð±ÐµÐ»ÑÐµ, Ð±Ð¾ÐºÑÐµÑÑ Ñ Ð¿Ð¾Ð´Ð´ÐµÑÐ¶ÐºÐ¾Ð¹",
+                      "stock_qty":  2.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-NEON-ÐÐÐÐ«Ð",
+                      "product_name":  "ÐÐ¸Ð±ÐºÐ°Ñ Ð½ÐµÐ¾Ð½Ð¾Ð²Ð°Ñ Ð»ÐµÐ½ÑÐ° LED, 3 Ð¼",
+                      "stock_qty":  1.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "AOELMNT-SLIP-Ð§ÐÐ Ð-M",
+                      "product_name":  "Ð¢ÑÑÑÑ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÑÐ»Ð¸Ð¿Ñ Ð±ÐµÑÑÐ¾Ð²Ð½ÑÐµ, ÐºÐ¾Ð¼Ð¿Ð»ÐµÐºÑ 3 ÑÑ",
+                      "stock_qty":  1.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-SUIT-Ð§ÐÐ Ð-S",
+                      "product_name":  "Ð¡Ð¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐ¹ Ð¶ÐµÐ½ÑÐºÐ¸Ð¹ ÐºÐ¾ÑÑÑÐ¼, Ð´Ð»Ñ ÑÐ¸ÑÐ½ÐµÑÐ° Ð¸ Ð¹Ð¾Ð³Ð¸, ÑÐ°ÑÐ³Ð°ÑÐ´ Ð¸ Ð»ÐµÐ³Ð³Ð¸Ð½ÑÑ, Ð´Ð²Ð¾Ð¹ÐºÐ°",
+                      "stock_qty":  1.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-ÐÐÐ-XL-Ð¢ÐÐÐÐÐÐ-A",
+                      "product_name":  "ÐÐµÐ³Ð³Ð¸Ð½ÑÑ Ð¸Ð· ÑÐºÐ¾ ÐºÐ¾Ð¶Ð¸, Ð¶ÐµÐ½ÑÐºÐ¸Ðµ",
+                      "stock_qty":  1.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-ÐÐÐÐ¨-Ð§ÐÐ Ð-S",
+                      "product_name":  "ÐÐµÐ½ÑÐºÐ¸Ðµ ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐµ Ð»ÐµÐ³Ð³Ð¸Ð½ÑÑ ÐºÐ»ÐµÑ",
+                      "stock_qty":  1.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-ÐÐÐÐ¨-Ð¢ÐÐÐÐ¡ÐÐ-L",
+                      "product_name":  "ÐÐµÐ½ÑÐºÐ¸Ðµ ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐµ Ð»ÐµÐ³Ð³Ð¸Ð½ÑÑ ÐºÐ»ÐµÑ",
+                      "stock_qty":  1.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-BASSIC-Ð¢ÐÐÐÐ¡ÐÐ -XL",
+                      "product_name":  "ÐÑÑÐºÐ¸ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÐºÐ»Ð°ÑÑÐ¸ÑÐµÑÐºÐ¸Ðµ, ÑÐ¸ÑÐ¾ÐºÐ¸Ðµ Ð¿Ð°Ð»Ð°ÑÑÐ¾",
+                      "stock_qty":  1.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-BASSIC-Ð¢ÐÐÐÐ¡ÐÐ -L",
+                      "product_name":  "ÐÑÑÐºÐ¸ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÐºÐ»Ð°ÑÑÐ¸ÑÐµÑÐºÐ¸Ðµ, ÑÐ¸ÑÐ¾ÐºÐ¸Ðµ Ð¿Ð°Ð»Ð°ÑÑÐ¾",
+                      "stock_qty":  1.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-ZIPPACK-ÐÐÐÐ«Ð",
+                      "product_name":  "ÐÐ°ÐºÐµÑÑ Ñ Ð·Ð°ÑÑÐµÐ¶ÐºÐ¾Ð¹, Ð·Ð¸Ð¿Ð»Ð¾Ðº Ð·Ð°Ð¼Ð¾Ðº 10 ÑÑ",
+                      "stock_qty":  1.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-LENTA-ÐÐ ÐÐ¡Ð-5M-USB",
+                      "product_name":  "ÐÐ¸Ð±ÐºÐ°Ñ Ð½ÐµÐ¾Ð½Ð¾Ð²Ð°Ñ Ð»ÐµÐ½ÑÐ°, Ð´Ð»Ñ Ð¿Ð¾Ð´ÑÐ²ÐµÑÐºÐ¸ ÑÐ°Ð»Ð¾Ð½Ð° Ð°Ð²ÑÐ¾",
+                      "stock_qty":  1.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-RING-Ð¡ÐÐ ÐÐÐ Ð",
+                      "product_name":  "ÐÐ°Ð±Ð¾Ñ ÐºÐ¾Ð»ÐµÑ, 11 ÑÑ",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-BASSIC-Ð§ÐÐ ÐÐ¡Ð¢Ð-S",
+                      "product_name":  "ÐÑÑÐºÐ¸ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÐºÐ»Ð°ÑÑÐ¸ÑÐµÑÐºÐ¸Ðµ, ÑÐ¸ÑÐ¾ÐºÐ¸Ðµ Ð¿Ð°Ð»Ð°ÑÑÐ¾",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-BASSIC-Ð¢ÐÐÐÐ¡ÐÐ -M",
+                      "product_name":  "ÐÑÑÐºÐ¸ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÐºÐ»Ð°ÑÑÐ¸ÑÐµÑÐºÐ¸Ðµ, ÑÐ¸ÑÐ¾ÐºÐ¸Ðµ Ð¿Ð°Ð»Ð°ÑÑÐ¾",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-BASSIC-Ð¢ÐÐÐÐ¡ÐÐ-L",
+                      "product_name":  "ÐÑÑÐºÐ¸ Ð¶ÐµÐ½ÑÐºÐ¸Ðµ ÐºÐ»Ð°ÑÑÐ¸ÑÐµÑÐºÐ¸Ðµ, ÑÐ¸ÑÐ¾ÐºÐ¸Ðµ Ð¿Ð°Ð»Ð°ÑÑÐ¾",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "AOELMNT-GAMAK-Ð¡ÐÐÐÐ-XL",
+                      "product_name":  "ÐÑÐ¶ÑÐºÐ¸Ðµ ÑÑÑÑÑ, Ð½Ð¸Ð¶Ð½ÐµÐµ Ð±ÐµÐ»ÑÐµ, Ð±Ð¾ÐºÑÐµÑÑ Ñ Ð¿Ð¾Ð´Ð´ÐµÑÐ¶ÐºÐ¾Ð¹",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-ÐÐÐÐ¨-Ð¢ÐÐÐÐ¡ÐÐ-M",
+                      "product_name":  "ÐÐµÐ½ÑÐºÐ¸Ðµ ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐµ Ð»ÐµÐ³Ð³Ð¸Ð½ÑÑ ÐºÐ»ÐµÑ",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-ÐÐÐÐ¨-Ð¢ÐÐÐÐ¡ÐÐ-S",
+                      "product_name":  "ÐÐµÐ½ÑÐºÐ¸Ðµ ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐµ Ð»ÐµÐ³Ð³Ð¸Ð½ÑÑ ÐºÐ»ÐµÑ",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-TV-8KHD14-4I32",
+                      "product_name":  "Ð¡Ð¼Ð°ÑÑ Ð¢Ð Ð±Ð¾ÐºÑ, Ð¿ÑÐ¸ÑÑÐ°Ð²ÐºÐ° , 8K HD, 4 ÐÐ Ð¿Ð¾Ð´Ð°ÑÐ¾Ðº",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-LENTA-ÐÐ ÐÐ¡Ð-5M-SMOKE",
+                      "product_name":  "ÐÐ¸Ð±ÐºÐ°Ñ Ð½ÐµÐ¾Ð½Ð¾Ð²Ð°Ñ Ð»ÐµÐ½ÑÐ°, Ð´Ð»Ñ Ð¿Ð¾Ð´ÑÐ²ÐµÑÐºÐ¸ ÑÐ°Ð»Ð¾Ð½Ð° Ð°Ð²ÑÐ¾",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-LENTA-ÐÐ ÐÐ¡Ð-3M-USB",
+                      "product_name":  "ÐÐ¸Ð±ÐºÐ°Ñ Ð½ÐµÐ¾Ð½Ð¾Ð²Ð°Ñ Ð»ÐµÐ½ÑÐ°, Ð´Ð»Ñ Ð¿Ð¾Ð´ÑÐ²ÐµÑÐºÐ¸ ÑÐ°Ð»Ð¾Ð½Ð° Ð°Ð²ÑÐ¾",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-ÐÐÐÐ¨-Ð§ÐÐ Ð-M",
+                      "product_name":  "ÐÐµÐ½ÑÐºÐ¸Ðµ ÑÐ¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐµ Ð»ÐµÐ³Ð³Ð¸Ð½ÑÑ ÐºÐ»ÐµÑ",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-LENTA-Ð¡ÐÐÐÐ-5M-SMOKE",
+                      "product_name":  "ÐÐ¸Ð±ÐºÐ°Ñ Ð½ÐµÐ¾Ð½Ð¾Ð²Ð°Ñ Ð»ÐµÐ½ÑÐ°, Ð´Ð»Ñ Ð¿Ð¾Ð´ÑÐ²ÐµÑÐºÐ¸ ÑÐ°Ð»Ð¾Ð½Ð° Ð°Ð²ÑÐ¾",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-LENTA-Ð¡ÐÐÐÐ-3M-USB",
+                      "product_name":  "ÐÐ¸Ð±ÐºÐ°Ñ Ð½ÐµÐ¾Ð½Ð¾Ð²Ð°Ñ Ð»ÐµÐ½ÑÐ°, Ð´Ð»Ñ Ð¿Ð¾Ð´ÑÐ²ÐµÑÐºÐ¸ ÑÐ°Ð»Ð¾Ð½Ð° Ð°Ð²ÑÐ¾",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-ÐÐÐ-L-Ð¢ÐÐÐÐÐÐ-A",
+                      "product_name":  "ÐÐµÐ³Ð³Ð¸Ð½ÑÑ Ð¸Ð· ÑÐºÐ¾ ÐºÐ¾Ð¶Ð¸, Ð¶ÐµÐ½ÑÐºÐ¸Ðµ",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-ÐÐÐ-M-Ð¢ÐÐÐÐÐÐ-A",
+                      "product_name":  "ÐÐµÐ³Ð³Ð¸Ð½ÑÑ Ð¸Ð· ÑÐºÐ¾ ÐºÐ¾Ð¶Ð¸, Ð¶ÐµÐ½ÑÐºÐ¸Ðµ",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "SKLPTR-TOP-6600-Ð§ÐÐ Ð-S",
+                      "product_name":  "Ð¡Ð¿Ð¾ÑÑÐ¸Ð²Ð½ÑÐ¹ ÑÐ¾Ð¿ Ð¶ÐµÐ½ÑÐºÐ¸Ð¹ Ñ ÐºÐ¾ÑÐ¾ÑÐºÐ¸Ð¼Ð¸ ÑÑÐºÐ°Ð²Ð°Ð¼Ð¸, Ñ Push up ÑÑÑÐµÐºÑÐ¾Ð¼",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "AOELMNT-GAMAK-Ð¡ÐÐÐÐ-XXXL",
+                      "product_name":  "ÐÑÐ¶ÑÐºÐ¸Ðµ ÑÑÑÑÑ, Ð½Ð¸Ð¶Ð½ÐµÐµ Ð±ÐµÐ»ÑÐµ, Ð±Ð¾ÐºÑÐµÑÑ Ñ Ð¿Ð¾Ð´Ð´ÐµÑÐ¶ÐºÐ¾Ð¹",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "AOELMNT-GAMAK-Ð¡ÐÐÐÐ-L",
+                      "product_name":  "ÐÑÐ¶ÑÐºÐ¸Ðµ ÑÑÑÑÑ, Ð½Ð¸Ð¶Ð½ÐµÐµ Ð±ÐµÐ»ÑÐµ, Ð±Ð¾ÐºÑÐµÑÑ Ñ Ð¿Ð¾Ð´Ð´ÐµÑÐ¶ÐºÐ¾Ð¹",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "AOELMNT-GAMAK-Ð¡ÐÐÐÐ-XXL",
+                      "product_name":  "ÐÑÐ¶ÑÐºÐ¸Ðµ ÑÑÑÑÑ, Ð½Ð¸Ð¶Ð½ÐµÐµ Ð±ÐµÐ»ÑÐµ, Ð±Ð¾ÐºÑÐµÑÑ Ñ Ð¿Ð¾Ð´Ð´ÐµÑÐ¶ÐºÐ¾Ð¹",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-TV-8KHD14-2I16",
+                      "product_name":  "Ð¡Ð¼Ð°ÑÑ Ð¢Ð Ð±Ð¾ÐºÑ, Ð¿ÑÐ¸ÑÑÐ°Ð²ÐºÐ° , 8K HD, 4 ÐÐ Ð¿Ð¾Ð´Ð°ÑÐ¾Ðº",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-TV-8KHD14-4I64",
+                      "product_name":  "Ð¡Ð¼Ð°ÑÑ Ð¢Ð Ð±Ð¾ÐºÑ, Ð¿ÑÐ¸ÑÑÐ°Ð²ÐºÐ° , 8K HD, 4 ÐÐ Ð¿Ð¾Ð´Ð°ÑÐ¾Ðº",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  },
+                  {
+                      "barcode":  "",
+                      "sku":  "POPSHOP-RING2-Ð¡ÐÐ ÐÐÐ Ð",
+                      "product_name":  "ÐÐ°Ð±Ð¾Ñ ÐºÐ¾Ð»ÐµÑ, 11 ÑÑÑÐº",
+                      "stock_qty":  0.0,
+                      "coverage_days":  0.0,
+                      "turnover_days":  0.0
+                  }
+              ]
+}
