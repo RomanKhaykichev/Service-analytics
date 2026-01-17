@@ -18,7 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
-import { supabase } from "@/integrations/supabase/client";
+// TODO: Replace supabase with backend API calls
 import { toast } from "sonner";
 
 interface UploadedFile {
@@ -59,27 +59,17 @@ export function ReportUploadDialog() {
   }, [open]);
 
   const loadProducts = async () => {
-    const { data } = await supabase
-      .from('products')
-      .select('id, uzum_product_id, name')
-      .limit(20);
-    
-    if (data) {
-      setProducts(data);
-    }
+    // TODO: Load products from backend API
+    // For now, use empty array
+    setProducts([]);
   };
 
   const loadLastUpload = async () => {
-    const { data } = await supabase
-      .from('report_uploads')
-      .select('created_at')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
-    
-    if (data) {
-      const date = new Date(data.created_at);
-      setLastUploadDate(date.toLocaleDateString('ru-RU'));
+    // TODO: Load last upload date from backend API
+    // For now, use localStorage
+    const stored = localStorage.getItem('last_upload_date');
+    if (stored) {
+      setLastUploadDate(stored);
     }
   };
 
@@ -106,11 +96,8 @@ export function ReportUploadDialog() {
     }));
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('Not authenticated');
-      }
-
+      // TODO: Replace with backend API call
+      // For now, simulate upload
       const formData = new FormData();
       formData.append('file', fileData.file);
       formData.append('reportType', reportId);
@@ -121,12 +108,16 @@ export function ReportUploadDialog() {
       const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes
 
       try {
+        // TODO: Replace with actual backend API endpoint
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        const userId = localStorage.getItem('user_id') || '00000000-0000-0000-0000-000000000001';
+        
         const response = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/import-xlsx`,
+          `${API_URL}/api/import-xlsx`, // TODO: Create this endpoint
           {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${session.access_token}`,
+              'X-User-Id': userId,
             },
             body: formData,
             signal: controller.signal,
@@ -212,16 +203,11 @@ export function ReportUploadDialog() {
       toast.error('Ошибка загрузки отчётов');
     }
 
-    // Save ad mappings
+    // TODO: Save ad mappings to backend API
     if (Object.keys(adIds).length > 0) {
-      for (const [productId, adId] of Object.entries(adIds)) {
-        if (adId) {
-          await supabase.from('product_ad_mappings').upsert({
-            product_id: productId,
-            ad_id: adId,
-          }, { onConflict: 'product_id,ad_id' });
-        }
-      }
+      console.log('Ad mappings to save:', adIds);
+      // For now, save to localStorage
+      localStorage.setItem('product_ad_mappings', JSON.stringify(adIds));
     }
   };
 

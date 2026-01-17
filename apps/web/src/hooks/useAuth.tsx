@@ -1,10 +1,17 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+
+// Simple user interface (replaces Supabase User)
+interface User {
+  id: string;
+  email?: string;
+  user_metadata?: {
+    full_name?: string;
+  };
+}
 
 interface AuthContextType {
   user: User | null;
-  session: Session | null;
+  session: { user: User } | null;
   loading: boolean;
   signUp: (email: string, password: string, fullName?: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
@@ -13,57 +20,81 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const USER_ID_KEY = 'user_id';
+const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
+
+// Get or create user_id from localStorage
+function getOrCreateUserId(): string {
+  const stored = localStorage.getItem(USER_ID_KEY);
+  if (stored) {
+    return stored;
+  }
+  localStorage.setItem(USER_ID_KEY, DEFAULT_USER_ID);
+  return DEFAULT_USER_ID;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<{ user: User } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
-
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
+    // Initialize user from localStorage
+    const userId = getOrCreateUserId();
+    const mockUser: User = {
+      id: userId,
+      email: 'dev@example.com',
+      user_metadata: {
+        full_name: 'Dev User',
+      },
+    };
+    
+    setUser(mockUser);
+    setSession({ user: mockUser });
+    setLoading(false);
   }, []);
 
   const signUp = async (email: string, password: string, fullName?: string) => {
-    const redirectUrl = `${window.location.origin}/`;
+    // TODO: Implement actual signup with backend API
+    // For now, just create a mock user
+    const userId = DEFAULT_USER_ID;
+    localStorage.setItem(USER_ID_KEY, userId);
     
-    const { error } = await supabase.auth.signUp({
+    const mockUser: User = {
+      id: userId,
       email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl,
-        data: {
-          full_name: fullName,
-        },
+      user_metadata: {
+        full_name: fullName,
       },
-    });
-    return { error: error as Error | null };
+    };
+    
+    setUser(mockUser);
+    setSession({ user: mockUser });
+    
+    return { error: null };
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
+    // TODO: Implement actual signin with backend API
+    // For now, just use default user
+    const userId = getOrCreateUserId();
+    
+    const mockUser: User = {
+      id: userId,
       email,
-      password,
-    });
-    return { error: error as Error | null };
+    };
+    
+    setUser(mockUser);
+    setSession({ user: mockUser });
+    
+    return { error: null };
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    // Clear user_id from localStorage
+    localStorage.removeItem(USER_ID_KEY);
+    setUser(null);
+    setSession(null);
   };
 
   return (

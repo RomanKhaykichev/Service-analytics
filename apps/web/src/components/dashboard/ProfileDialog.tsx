@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 interface ProfileDialogProps {
@@ -40,14 +39,11 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
   const loadProfile = async () => {
     if (!user) return;
     
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('phone')
-      .eq('id', user.id)
-      .single();
-    
-    if (data && !error) {
-      setPhone(data.phone || "");
+    // TODO: Load profile from backend API
+    // For now, load from localStorage
+    const storedPhone = localStorage.getItem(`profile_phone_${user.id}`);
+    if (storedPhone) {
+      setPhone(storedPhone);
     }
   };
 
@@ -55,17 +51,16 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
     if (!user) return;
     
     setLoading(true);
-    const { error } = await supabase
-      .from('profiles')
-      .update({ phone })
-      .eq('id', user.id);
     
-    setLoading(false);
-    
-    if (error) {
-      toast.error("Ошибка сохранения телефона");
-    } else {
+    // TODO: Save profile to backend API
+    // For now, save to localStorage
+    try {
+      localStorage.setItem(`profile_phone_${user.id}`, phone);
       toast.success("Телефон сохранён");
+    } catch (error) {
+      toast.error("Ошибка сохранения телефона");
+    } finally {
+      setLoading(false);
     }
   };
 
