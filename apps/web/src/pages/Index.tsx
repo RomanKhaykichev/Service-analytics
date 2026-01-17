@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ShoppingCart, Truck, Package, RotateCcw, Percent, CreditCard, DollarSign, TrendingDown, Wallet, Target, BarChart3, TrendingUp, ArrowDown, AlertTriangle, Boxes, Warehouse, Tag, ShoppingBag } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { SummaryTabs } from "@/components/dashboard/SummaryTabs";
@@ -14,16 +14,44 @@ import { ShipmentView } from "@/components/dashboard/ShipmentView";
 import { HeaderActions } from "@/components/dashboard/HeaderActions";
 import { ProductsView } from "@/components/dashboard/ProductsView";
 import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
+import { useShops } from "@/hooks/useShops";
+import { useRevenueDaily } from "@/hooks/useRevenueDaily";
+import { useStockCurrent } from "@/hooks/useStockCurrent";
 import { formatCurrency, formatQuantity, formatPercent, formatTrend } from "@/lib/formatters";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { PeriodCode } from "@/lib/types";
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState("summary");
-  const [period, setPeriod] = useState("30days");
+  const [periodCode, setPeriodCode] = useState<PeriodCode>("30d");
   const [store, setStore] = useState("all");
   const [viewMode, setViewMode] = useState("day");
 
-  const { metrics, loading, error } = useDashboardMetrics(period, store === "all" ? undefined : store);
+  const { shops } = useShops();
+  
+  const { metrics, loading, error } = useDashboardMetrics(periodCode, store === "all" ? undefined : store);
+  const shopId = store === "all" ? null : store;
+
+  // Load revenue and stock data
+  // useRevenueDaily handles periodCode mapping internally (7d->30d, all->365d)
+  const { points: revenuePoints } = useRevenueDaily({ periodCode, shopId });
+  const { items: stockItems } = useStockCurrent({ limit: 50, shopId });
+
+  // Transform revenue data for RevenueDailyChart (YYYY-MM-DD -> dd.MM)
+  const revenueChartData = revenuePoints.length > 0 ? revenuePoints.map((point) => {
+    const [year, month, day] = point.date.split("-");
+    return {
+      date: `${day}.${month}`,
+      revenue: point.value,
+      orders: 0, // Not available from API
+      avgCheck: 0, // Not available from API
+    };
+  }) : undefined;
+
+  // Debug log
+  useEffect(() => {
+    console.log("periodCode", periodCode, "shopId", shopId);
+  }, [periodCode, shopId]);
 
   // Loading skeleton for metrics
   const LoadingBlock = () => (
@@ -66,7 +94,7 @@ const Index = () => {
     {
       icon: <Percent className="w-4 h-4" />,
       label: "Процент возврата заказов",
-      value: formatPercent(metrics.returnRate),
+      value: formatPercent(metrics?.returnRate),
       tooltip: "Доля возвращённых заказов от общего числа"
     },
     {
@@ -99,13 +127,13 @@ const Index = () => {
     {
       icon: <Target className="w-4 h-4" />,
       label: "Рентабельность продаж",
-      value: formatPercent(metrics.salesProfitability * 100),
+      value: formatPercent(metrics?.salesProfitability != null ? metrics.salesProfitability * 100 : null),
       tooltip: "Выручка / Себестоимость (завершённые заказы)"
     },
     {
       icon: <BarChart3 className="w-4 h-4" />,
       label: "Окупаемость инвестиций",
-      value: formatPercent(metrics.roi),
+      value: formatPercent(metrics?.roi),
       tooltip: "ROI = (Выручка - Себестоимость) / Себестоимость × 100%"
     },
     {
@@ -214,13 +242,14 @@ const Index = () => {
         {/* Filters moved to the right */}
         <div className="flex items-center justify-end gap-4">
           <SummaryFilters 
-            period={period} 
+            period={periodCode} 
             store={store} 
-            onPeriodChange={setPeriod} 
+            onPeriodChange={setPeriodCode} 
             onStoreChange={setStore}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
             showViewMode={activeTab === "daily"}
+            shops={shops}
           />
         </div>
       </div>
@@ -276,7 +305,7 @@ const Index = () => {
 
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-            <RevenueDailyChart />
+            <RevenueDailyChart data={revenueChartData} />
             <StockDailyChart />
           </div>
         </>

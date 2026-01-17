@@ -10,7 +10,15 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-const data = [
+interface StockDailyChartProps {
+  data?: Array<{
+    date: string;
+    orders: number;
+    stock: number;
+  }>;
+}
+
+const defaultData = [
   { date: "01.12", orders: 220, stock: 8500 },
   { date: "02.12", orders: 245, stock: 8200 },
   { date: "03.12", orders: 180, stock: 7900 },
@@ -26,7 +34,7 @@ const data = [
   { date: "13.12", orders: 420, stock: 13161 },
 ];
 
-export function StockDailyChart() {
+export function StockDailyChart({ data = defaultData }: StockDailyChartProps) {
   const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
 
   const handleLegendClick = (dataKey: string) => {

@@ -6,15 +6,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import type { PeriodCode } from "@/lib/types";
+
+interface Shop {
+  shop_id: string;
+  shop_name?: string | null;
+}
+
+const PERIOD_OPTIONS = [
+  { value: "7d", label: "Неделя" },
+  { value: "30d", label: "30 дней" },
+  { value: "90d", label: "90 дней" },
+  { value: "all", label: "Все данные" },
+] as const;
 
 interface SummaryFiltersProps {
-  period: string;
+  period: PeriodCode;
   store: string;
-  onPeriodChange: (period: string) => void;
+  onPeriodChange: (period: PeriodCode) => void;
   onStoreChange: (store: string) => void;
   viewMode?: string;
   onViewModeChange?: (mode: string) => void;
   showViewMode?: boolean;
+  shops?: Shop[];
 }
 
 export function SummaryFilters({
@@ -25,6 +39,7 @@ export function SummaryFilters({
   viewMode = "day",
   onViewModeChange,
   showViewMode = false,
+  shops = [],
 }: SummaryFiltersProps) {
   return (
     <div className="flex items-center gap-3">
@@ -35,23 +50,25 @@ export function SummaryFilters({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">Все продажи</SelectItem>
-          <SelectItem value="store1">Магазин 1</SelectItem>
-          <SelectItem value="store2">Магазин 2</SelectItem>
-          <SelectItem value="store3">Магазин 3</SelectItem>
+          {shops.map((shop) => (
+            <SelectItem key={shop.shop_id} value={shop.shop_id}>
+              {shop.shop_name ?? shop.shop_id}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
 
       <Select value={period} onValueChange={onPeriodChange}>
         <SelectTrigger className="w-[180px] bg-accent text-accent-foreground border-0 hover:bg-accent/90">
           <Calendar className="w-4 h-4 mr-2" />
-          <SelectValue placeholder="Последние 30 дней" />
+          <SelectValue placeholder="30 дней" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="week">Неделя</SelectItem>
-          <SelectItem value="30days">Последние 30 дней</SelectItem>
-          <SelectItem value="60days">60 дней</SelectItem>
-          <SelectItem value="90days">90 дней</SelectItem>
-          <SelectItem value="custom">Произвольный период</SelectItem>
+          {PERIOD_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
         </SelectContent>
       </Select>
 

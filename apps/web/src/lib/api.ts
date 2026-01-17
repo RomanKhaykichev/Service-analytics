@@ -2,76 +2,92 @@
  * API utility for making requests to backend with X-User-Id header
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+/**
+ * Get API base URL from env or default
+ */
+export function getApiBaseUrl(): string {
+  return import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+}
 
 /**
- * Get user_id from localStorage (dev mode)
+ * Get dev user ID from env, localStorage, or default
  */
-function getUserId(): string {
-  const stored = localStorage.getItem('user_id');
+export function getDevUserId(): string {
+  // Try env first
+  const envUserId = import.meta.env.VITE_DEV_USER_ID;
+  if (envUserId) {
+    return envUserId;
+  }
+  
+  // Try localStorage
+  const stored = localStorage.getItem("dev_user_id");
   if (stored) {
     return stored;
   }
   
-  // Default dev user_id
-  const defaultUserId = '00000000-0000-0000-0000-000000000001';
-  localStorage.setItem('user_id', defaultUserId);
+  // Default fallback
+  const defaultUserId = "aa841699-dac6-45a1-b376-9c462719315d";
+  localStorage.setItem("dev_user_id", defaultUserId);
   return defaultUserId;
 }
 
 /**
- * Set user_id in localStorage
+ * Build query params object for API requests
+ * Filters out null, undefined, and empty string values
  */
-export function setUserId(userId: string): void {
-  localStorage.setItem('user_id', userId);
-}
-
-/**
- * Get current user_id
- */
-export function getCurrentUserId(): string {
-  return getUserId();
-}
-
-/**
- * Make API request with X-User-Id header
- */
-export async function apiRequest<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const userId = getUserId();
+export function buildQueryParams(params?: {
+  period?: string;
+  shopId?: string | null;
+  q?: string;
+  limit?: number;
+  [key: string]: any;
+}): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!params) return result;
   
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== null && value !== undefined && value !== "") {
+      // Map shopId to shop_id for API
+      const apiKey = key === "shopId" ? "shop_id" : key;
+      result[apiKey] = String(value);
+    }
+  }
+  return result;
+}
+
+/**
+ * Build URL with query params
+ */
+function buildUrl(baseUrl: string, path: string, params?: Record<string, any>): string {
+  const url = new URL(path, baseUrl);
+  if (params) {
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== null && value !== undefined && value !== "") {
+        url.searchParams.append(key, String(value));
+      }
+    }
+  }
+  return url.toString();
+}
+
+/**
+ * Make GET request to API
+ */
+export async function apiGet<T>(path: string, params?: Record<string, any>): Promise<T> {
+  const baseUrl = getApiBaseUrl();
+  const url = buildUrl(baseUrl, path, params);
+  
+  const response = await fetch(url, {
+    method: "GET",
     headers: {
-      'Content-Type': 'application/json',
-      'X-User-Id': userId,
-      ...options.headers,
+      "X-User-Id": getDevUserId(),
     },
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(error.detail || `HTTP ${response.status}`);
+    const errorText = await response.text();
+    throw new Error(errorText || `HTTP ${response.status}`);
   }
 
   return response.json();
-}
-
-/**
- * Make GET request
- */
-export async function apiGet<T>(endpoint: string): Promise<T> {
-  return apiRequest<T>(endpoint, { method: 'GET' });
-}
-
-/**
- * Make POST request
- */
-export async function apiPost<T>(endpoint: string, data?: unknown): Promise<T> {
-  return apiRequest<T>(endpoint, {
-    method: 'POST',
-    body: data ? JSON.stringify(data) : undefined,
-  });
 }

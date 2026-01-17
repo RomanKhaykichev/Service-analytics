@@ -18,8 +18,14 @@ interface ChartComment {
 interface RevenueDailyChartProps {
   productName?: string;
   showCommentButton?: boolean;
+  data?: Array<{
+    date: string;
+    revenue: number;
+    orders?: number;
+    avgCheck?: number;
+  }>;
 }
-const data = [{
+const defaultData = [{
   date: "01.12",
   avgCheck: 350,
   orders: 220,
@@ -87,7 +93,8 @@ const data = [{
 }];
 export function RevenueDailyChart({
   productName = "Товар",
-  showCommentButton = false
+  showCommentButton = false,
+  data = defaultData
 }: RevenueDailyChartProps) {
   const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
   const [comments, setComments] = useState<ChartComment[]>([]);
