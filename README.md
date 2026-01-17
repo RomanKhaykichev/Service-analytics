@@ -55,9 +55,82 @@ Frontend будет доступен по адресу: http://localhost:8080
 
 ## Backend API (apps/api)
 
-Backend API будет размещен в `apps/api` и будет доступен по префиксу `/api`.
+Backend API на FastAPI размещен в `apps/api`.
+
+### Требования
+
+- Python 3.11+
+- PostgreSQL 16
+
+### Установка и запуск (локально)
+
+```bash
+# Перейти в директорию API
+cd apps/api
+
+# Создать виртуальное окружение
+python -m venv .venv
+
+# Активировать виртуальное окружение
+# Windows PowerShell:
+.\.venv\Scripts\Activate.ps1
+# Linux/Mac:
+# source .venv/bin/activate
+
+# Установить зависимости
+pip install -r requirements.txt
+
+# Запустить сервер
+uvicorn app.main:app --reload --port 8000
+```
+
+API будет доступен по адресу: http://localhost:8000
+
+### Endpoints
+
+- `GET /health` - Health check endpoint
 
 Подробная документация по текущему backend находится в [backend/README.md](backend/README.md).
+
+## Local run with Docker
+
+Для запуска всего стека (PostgreSQL + API) через Docker Compose:
+
+```bash
+# Создать файл .env на основе .env.example
+cp .env.example .env
+# Или в Windows PowerShell:
+# Copy-Item .env.example .env
+
+# Запустить все сервисы
+docker compose up --build
+
+# Или в фоновом режиме:
+docker compose up --build -d
+```
+
+После запуска:
+
+- API будет доступен по адресу: http://localhost:8000
+- PostgreSQL будет доступен на порту 5432
+
+Проверка работоспособности API:
+
+```bash
+# Windows PowerShell:
+Invoke-RestMethod -Uri http://localhost:8000/health
+
+# Или curl:
+curl http://localhost:8000/health
+```
+
+Ожидаемый ответ: `{"ok": true}`
+
+Остановка сервисов:
+
+```bash
+docker compose down
+```
 
 ## Документация
 
