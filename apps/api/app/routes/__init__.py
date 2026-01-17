@@ -1,3 +1,3 @@
-from . import shops, products, charts, auth, debug
+from . import shops, products, charts, auth, debug, kpi
 
-__all__ = ["shops", "products", "charts", "auth", "debug"]
+__all__ = ["shops", "products", "charts", "auth", "debug", "kpi"]

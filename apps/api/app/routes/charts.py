@@ -3,10 +3,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from app.db import get_db, qname
 from app.deps import require_user
+from app.routes.kpi import get_data_end_date, period_range, normalize_period
+from app.utils.statuses import get_status_sql_condition
 from app.schemas import (
     RevenueDailyResponse,
     RevenuePoint,
@@ -26,75 +28,103 @@ router = APIRouter()
 @router.get("/charts/revenue-daily", response_model=RevenueDailyResponse)
 async def get_revenue_daily(
     user_id: UUID = Depends(require_user),
-    period: str = Query(default="30d", regex="^(30d|90d|365d|custom)$"),
-    date_from: Optional[str] = Query(default=None, description="ISO date (YYYY-MM-DD), required for custom period"),
-    date_to: Optional[str] = Query(default=None, description="ISO date (YYYY-MM-DD), required for custom period"),
+    period: str = Query(default="30d", description="Period: 7d, 30d, 90d, or all"),
     shop_id: Optional[str] = Query(default=None, description="Shop UUID"),
+    mode: str = Query(default="completed", description="Mode: completed (only completed) or orders (all except cancelled)"),
     db: Session = Depends(get_db)
 ):
-    """Get daily revenue chart data from v_sales_daily."""
-    logger.info(f"get_revenue_daily: user_id={user_id}, period={period}, shop_id={shop_id}")
+    """Get daily revenue chart data from fact_sales."""
+    # Normalize period
+    period_code = normalize_period(period)
     
-    # Validate custom period
-    if period == "custom":
-        if not date_from or not date_to:
-            raise HTTPException(
-                status_code=400,
-                detail="date_from and date_to are required for custom period"
-            )
+    # Get data_end_date (maximum date from all data tables)
+    data_end_date = get_data_end_date(db, user_id)
+    
+    # For period=all, use 365d before date_to to avoid huge datasets
+    if period_code == "all":
+        date_from_for_chart = data_end_date - timedelta(days=365)
+        period_range_dict = {
+            "code": period_code,
+            "date_from": date_from_for_chart.isoformat(),
+            "date_to": data_end_date.isoformat()
+        }
+    else:
+        # Calculate period range based on data_end_date
+        period_range_dict = period_range(period_code, data_end_date)
+    
+    date_to_iso = period_range_dict["date_to"]
+    date_to_date = datetime.fromisoformat(date_to_iso).date()
+    date_from_iso = period_range_dict["date_from"]
+    date_from = datetime.fromisoformat(date_from_iso).date() if date_from_iso else None
+    
+    # Validate mode
+    if mode not in ['completed', 'orders']:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid mode. Must be 'completed' or 'orders'"
+        )
+    
+    logger.info(f"get_revenue_daily: user_id={user_id}, period={period_code}, shop_id={shop_id}, mode={mode}, period_range={period_range_dict}")
+    
+    # Validate shop_id if provided
+    if shop_id:
         try:
-            date_from_obj = datetime.fromisoformat(date_from).date()
-            date_to_obj = datetime.fromisoformat(date_to).date()
-            if date_from_obj > date_to_obj:
-                raise HTTPException(
-                    status_code=400,
-                    detail="date_from must be <= date_to"
-                )
-        except ValueError as e:
+            UUID(shop_id)
+        except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid date format: {str(e)}. Use YYYY-MM-DD"
+                detail="Invalid shop_id format (must be UUID)"
             )
     
     try:
-        # Build WHERE conditions
-        conditions = ["user_id = CAST(:user_id AS uuid)"]
-        params = {"user_id": str(user_id)}
+        # Ensure date_from is set for query (for period=all use 365d range)
+        if not date_from:
+            # For period=all, date_from was already set to 365 days before
+            # But if somehow it's None, use 365 days before date_to
+            date_from = date_to_date - timedelta(days=365)
+            date_from_iso = date_from.isoformat()
         
-        # Add shop_id filter if provided
+        # Get status condition based on mode
+        status_condition = get_status_sql_condition(mode)
+        
+        # Build parameters
+        params = {
+            "user_id": str(user_id),
+            "date_from": date_from.isoformat(),
+            "date_to": date_to_iso
+        }
+        
+        # Build shop_id filter condition
+        shop_condition = ""
         if shop_id:
-            try:
-                UUID(shop_id)  # Validate UUID format
-                conditions.append("shop_id = CAST(:shop_id AS uuid)")
-                params["shop_id"] = shop_id
-            except ValueError:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Invalid shop_id format (must be UUID)"
-                )
+            params["shop_id"] = shop_id
+            shop_condition = "AND shop_id = CAST(:shop_id AS uuid)"
         
-        # Add date filter based on period
-        if period == "30d":
-            conditions.append("day >= CURRENT_DATE - INTERVAL '30 days'")
-        elif period == "90d":
-            conditions.append("day >= CURRENT_DATE - INTERVAL '90 days'")
-        elif period == "365d":
-            conditions.append("day >= CURRENT_DATE - INTERVAL '365 days'")
-        elif period == "custom":
-            conditions.append("day BETWEEN CAST(:date_from AS date) AND CAST(:date_to AS date)")
-            params["date_from"] = date_from
-            params["date_to"] = date_to
-        
-        # Build query
-        where_clause = " AND ".join(conditions)
+        # Build query with generate_series to always return full calendar
         query = text(f"""
             SELECT 
-                day::text as date,
-                SUM(revenue_net_sum) as value
-            FROM {qname("v_sales_daily")}
-            WHERE {where_clause}
-            GROUP BY day
-            ORDER BY day ASC
+                d.day::date AS day,
+                COALESCE(sales.revenue_sum, 0) AS value
+            FROM (
+                SELECT generate_series(
+                    CAST(:date_from AS date),
+                    CAST(:date_to AS date),
+                    INTERVAL '1 day'
+                )::date AS day
+            ) d
+            LEFT JOIN (
+                SELECT 
+                    date_trunc('day', date_created)::date AS day,
+                    SUM(revenue_sum) AS revenue_sum
+                FROM {qname("fact_sales")}
+                WHERE user_id = CAST(:user_id AS uuid)
+                    AND ({status_condition})
+                    {shop_condition}
+                    AND date_created >= CAST(:date_from AS date)
+                    AND date_created < CAST(:date_to AS date) + INTERVAL '1 day'
+                GROUP BY date_trunc('day', date_created)::date
+            ) sales ON sales.day = d.day
+            ORDER BY d.day ASC
         """)
         
         result = db.execute(query, params)
@@ -105,27 +135,21 @@ async def get_revenue_daily(
         points = []
         for row in rows:
             try:
-                date_str = str(row[0]) if row[0] else ""
+                day = row[0]
+                date_str = day.isoformat() if hasattr(day, 'isoformat') else str(day)
                 value = float(row[1]) if row[1] is not None else 0.0
                 points.append(RevenuePoint(date=date_str, value=value))
             except (IndexError, ValueError, TypeError) as e:
                 logger.warning(f"Error parsing row in revenue-daily: {e}, row: {row}")
                 continue
         
-        # Calculate actual date range from data
-        if points:
-            actual_date_from = points[0].date
-            actual_date_to = points[-1].date
-        else:
-            actual_date_from = date_from if period == "custom" else ""
-            actual_date_to = date_to if period == "custom" else ""
-        
+        # Return period range from calculated values
         return RevenueDailyResponse(
             points=points,
             period=PeriodInfo(
-                code=period,
-                date_from=actual_date_from,
-                date_to=actual_date_to
+                code=period_code,
+                date_from=date_from_iso or "",
+                date_to=date_to_iso
             ),
             filters=RevenueFilters(shop_id=shop_id)
         )

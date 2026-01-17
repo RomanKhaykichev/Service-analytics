@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes import shops, products, charts, auth, debug
+from app.routes import shops, products, charts, auth, debug, kpi
 
 app = FastAPI(
     title="Service Analytics API",
@@ -27,7 +27,8 @@ app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(shops.router, prefix="/api", tags=["shops"])
 app.include_router(products.router, prefix="/api", tags=["products"])
 app.include_router(charts.router, prefix="/api", tags=["charts"])
-app.include_router(debug.router, prefix="/debug", tags=["debug"])
+app.include_router(kpi.router, prefix="/api", tags=["kpi"])
+app.include_router(debug.router, prefix="/api", tags=["debug"])
 
 
 @app.get("/health")

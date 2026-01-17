@@ -1,0 +1,274 @@
+﻿{
+    "openapi":  "3.1.0",
+    "info":  {
+                 "title":  "Service Analytics API",
+                 "version":  "1.0.0"
+             },
+    "paths":  {
+                  "/auth/register":  {
+                                         "post":  {
+                                                      "tags":  "auth",
+                                                      "summary":  "Register",
+                                                      "description":  "Register a new user with email and password.",
+                                                      "operationId":  "register_auth_register_post",
+                                                      "requestBody":  "@{content=; required=True}",
+                                                      "responses":  "@{201=; 422=}"
+                                                  }
+                                     },
+                  "/auth/login":  {
+                                      "post":  {
+                                                   "tags":  "auth",
+                                                   "summary":  "Login",
+                                                   "description":  "Login with email and password.",
+                                                   "operationId":  "login_auth_login_post",
+                                                   "requestBody":  "@{content=; required=True}",
+                                                   "responses":  "@{200=; 422=}"
+                                               }
+                                  },
+                  "/auth/refresh":  {
+                                        "post":  {
+                                                     "tags":  "auth",
+                                                     "summary":  "Refresh",
+                                                     "description":  "Refresh access token using refresh token.\nRotates refresh token (old one is revoked, new one is issued).",
+                                                     "operationId":  "refresh_auth_refresh_post",
+                                                     "requestBody":  "@{content=; required=True}",
+                                                     "responses":  "@{200=; 422=}"
+                                                 }
+                                    },
+                  "/auth/logout":  {
+                                       "post":  {
+                                                    "tags":  "auth",
+                                                    "summary":  "Logout",
+                                                    "description":  "Logout by revoking refresh token.",
+                                                    "operationId":  "logout_auth_logout_post",
+                                                    "requestBody":  "@{content=; required=True}",
+                                                    "responses":  "@{200=; 422=}"
+                                                }
+                                   },
+                  "/auth/me":  {
+                                   "get":  {
+                                               "tags":  "auth",
+                                               "summary":  "Get Current User",
+                                               "description":  "Get current authenticated user.\nRequires Bearer access token or X-User-Id header (dev mode).",
+                                               "operationId":  "get_current_user_auth_me_get",
+                                               "responses":  "@{200=}"
+                                           }
+                               },
+                  "/api/shops":  {
+                                     "get":  {
+                                                 "tags":  "shops",
+                                                 "summary":  "Get Shops",
+                                                 "description":  "Get list of shops from v_sales_daily.",
+                                                 "operationId":  "get_shops_api_shops_get",
+                                                 "responses":  "@{200=}",
+                                                 "security":  ""
+                                             }
+                                 },
+                  "/api/products":  {
+                                        "get":  {
+                                                    "tags":  "products",
+                                                    "summary":  "Get Products",
+                                                    "description":  "Get top products with sales data from v_sales_daily.",
+                                                    "operationId":  "get_products_api_products_get",
+                                                    "parameters":  "      ",
+                                                    "responses":  "@{200=; 422=}"
+                                                }
+                                    },
+                  "/api/charts/revenue-daily":  {
+                                                    "get":  {
+                                                                "tags":  "charts",
+                                                                "summary":  "Get Revenue Daily",
+                                                                "description":  "Get daily revenue chart data from fact_sales (completed sales only).",
+                                                                "operationId":  "get_revenue_daily_api_charts_revenue_daily_get",
+                                                                "security":  "",
+                                                                "parameters":  " ",
+                                                                "responses":  "@{200=; 422=}"
+                                                            }
+                                                },
+                  "/api/charts/stock-current":  {
+                                                    "get":  {
+                                                                "tags":  "charts",
+                                                                "summary":  "Get Stock Current",
+                                                                "description":  "Get current stock snapshot from v_product_current_stock.",
+                                                                "operationId":  "get_stock_current_api_charts_stock_current_get",
+                                                                "security":  "",
+                                                                "parameters":  " ",
+                                                                "responses":  "@{200=; 422=}"
+                                                            }
+                                                },
+                  "/api/kpi/summary":  {
+                                           "get":  {
+                                                       "tags":  "kpi",
+                                                       "summary":  "Kpi Summary",
+                                                       "operationId":  "kpi_summary_api_kpi_summary_get",
+                                                       "parameters":  " ",
+                                                       "responses":  "@{200=; 422=}"
+                                                   }
+                                       },
+                  "/debug/debug/db":  {
+                                          "get":  {
+                                                      "tags":  "debug",
+                                                      "summary":  "Debug Db",
+                                                      "description":  "Debug endpoint to check database connection and schema configuration.\nRequires authentication (JWT or X-User-Id header).",
+                                                      "operationId":  "debug_db_debug_debug_db_get",
+                                                      "responses":  "@{200=}"
+                                                  }
+                                      },
+                  "/debug/debug/period":  {
+                                              "get":  {
+                                                          "tags":  "debug",
+                                                          "summary":  "Debug Period",
+                                                          "description":  "Debug endpoint to check period range calculation.\nReturns: user_id, period, shop_id, period_range, data_end_date, year_start, price_window_from.",
+                                                          "operationId":  "debug_period_debug_debug_period_get",
+                                                          "parameters":  " ",
+                                                          "responses":  "@{200=; 422=}"
+                                                      }
+                                          },
+                  "/health":  {
+                                  "get":  {
+                                              "summary":  "Health",
+                                              "description":  "Health check endpoint.",
+                                              "operationId":  "health_health_get",
+                                              "responses":  "@{200=}"
+                                          }
+                              }
+              },
+    "components":  {
+                       "schemas":  {
+                                       "AuthResponse":  {
+                                                            "properties":  "@{access_token=; refresh_token=; user=}",
+                                                            "type":  "object",
+                                                            "required":  "access_token refresh_token user",
+                                                            "title":  "AuthResponse"
+                                                        },
+                                       "Filters":  {
+                                                       "properties":  "@{shop_id=; q=}",
+                                                       "type":  "object",
+                                                       "title":  "Filters"
+                                                   },
+                                       "HTTPValidationError":  {
+                                                                   "properties":  "@{detail=}",
+                                                                   "type":  "object",
+                                                                   "title":  "HTTPValidationError"
+                                                               },
+                                       "LoginRequest":  {
+                                                            "properties":  "@{email=; password=}",
+                                                            "type":  "object",
+                                                            "required":  "email password",
+                                                            "title":  "LoginRequest"
+                                                        },
+                                       "LogoutRequest":  {
+                                                             "properties":  "@{refresh_token=}",
+                                                             "type":  "object",
+                                                             "required":  "refresh_token",
+                                                             "title":  "LogoutRequest"
+                                                         },
+                                       "Paging":  {
+                                                      "properties":  "@{limit=; offset=; total=}",
+                                                      "type":  "object",
+                                                      "required":  "limit offset total",
+                                                      "title":  "Paging"
+                                                  },
+                                       "PeriodInfo":  {
+                                                          "properties":  "@{code=; date_from=; date_to=}",
+                                                          "type":  "object",
+                                                          "required":  "code date_from date_to",
+                                                          "title":  "PeriodInfo"
+                                                      },
+                                       "ProductItem":  {
+                                                           "properties":  "@{barcode=; sku=; product_name=; category=; orders_cnt=; qty=; returns_qty=; revenue_sum=; profit_sum=; margin_ratio=; stock_qty=; coverage_days=; turnover_days=}",
+                                                           "type":  "object",
+                                                           "required":  "barcode sku orders_cnt qty returns_qty revenue_sum profit_sum",
+                                                           "title":  "ProductItem"
+                                                       },
+                                       "ProductsResponse":  {
+                                                                "properties":  "@{period=; filters=; paging=; items=}",
+                                                                "type":  "object",
+                                                                "required":  "period filters paging items",
+                                                                "title":  "ProductsResponse"
+                                                            },
+                                       "RefreshRequest":  {
+                                                              "properties":  "@{refresh_token=}",
+                                                              "type":  "object",
+                                                              "required":  "refresh_token",
+                                                              "title":  "RefreshRequest"
+                                                          },
+                                       "RegisterRequest":  {
+                                                               "properties":  "@{email=; password=}",
+                                                               "type":  "object",
+                                                               "required":  "email password",
+                                                               "title":  "RegisterRequest"
+                                                           },
+                                       "RevenueDailyResponse":  {
+                                                                    "properties":  "@{points=; period=; filters=}",
+                                                                    "type":  "object",
+                                                                    "required":  "points period filters",
+                                                                    "title":  "RevenueDailyResponse"
+                                                                },
+                                       "RevenueFilters":  {
+                                                              "properties":  "@{shop_id=}",
+                                                              "type":  "object",
+                                                              "title":  "RevenueFilters"
+                                                          },
+                                       "RevenuePoint":  {
+                                                            "properties":  "@{date=; value=}",
+                                                            "type":  "object",
+                                                            "required":  "date value",
+                                                            "title":  "RevenuePoint"
+                                                        },
+                                       "Shop":  {
+                                                    "properties":  "@{shop_id=; shop_name=}",
+                                                    "type":  "object",
+                                                    "required":  "shop_id",
+                                                    "title":  "Shop"
+                                                },
+                                       "ShopsResponse":  {
+                                                             "properties":  "@{shops=}",
+                                                             "type":  "object",
+                                                             "required":  "shops",
+                                                             "title":  "ShopsResponse"
+                                                         },
+                                       "StockCurrentResponse":  {
+                                                                    "properties":  "@{items=; filters=}",
+                                                                    "type":  "object",
+                                                                    "required":  "items filters",
+                                                                    "title":  "StockCurrentResponse"
+                                                                },
+                                       "StockFilters":  {
+                                                            "properties":  "@{shop_id=; q=}",
+                                                            "type":  "object",
+                                                            "title":  "StockFilters"
+                                                        },
+                                       "StockItem":  {
+                                                         "properties":  "@{barcode=; sku=; product_name=; stock_qty=; coverage_days=; turnover_days=; fee_total_30d=; storage_type=; size_group=}",
+                                                         "type":  "object",
+                                                         "required":  "barcode sku",
+                                                         "title":  "StockItem"
+                                                     },
+                                       "TokenResponse":  {
+                                                             "properties":  "@{access_token=; refresh_token=}",
+                                                             "type":  "object",
+                                                             "required":  "access_token refresh_token",
+                                                             "title":  "TokenResponse"
+                                                         },
+                                       "UserResponse":  {
+                                                            "properties":  "@{id=; email=; phone=; is_active=; created_at=}",
+                                                            "type":  "object",
+                                                            "required":  "id email phone is_active created_at",
+                                                            "title":  "UserResponse"
+                                                        },
+                                       "ValidationError":  {
+                                                               "properties":  "@{loc=; msg=; type=}",
+                                                               "type":  "object",
+                                                               "required":  "loc msg type",
+                                                               "title":  "ValidationError"
+                                                           }
+                                   },
+                       "securitySchemes":  {
+                                               "HTTPBearer":  {
+                                                                  "type":  "http",
+                                                                  "scheme":  "bearer"
+                                                              }
+                                           }
+                   }
+}
