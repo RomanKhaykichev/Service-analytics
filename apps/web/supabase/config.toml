@@ -1,0 +1,4 @@
+project_id = "xucxwauhhoiveihqywuq"
+
+[functions.import-xlsx]
+verify_jwt = false

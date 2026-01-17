@@ -1,0 +1,210 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* UZUM Analytics Design Tokens */
+    --background: 220 20% 98%;
+    --foreground: 220 20% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 12%;
+
+    /* Primary: Purple */
+    --primary: 276 89% 37%;
+    --primary-foreground: 0 0% 100%;
+    --primary-light: 276 89% 95%;
+
+    /* Accent: Teal */
+    --accent: 174 72% 48%;
+    --accent-foreground: 0 0% 100%;
+    --accent-light: 174 72% 92%;
+
+    /* Secondary: Cool Gray */
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 220 20% 12%;
+
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 10% 46%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --success: 160 84% 39%;
+    --success-foreground: 0 0% 100%;
+
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 276 89% 37%;
+
+    --radius: 0.75rem;
+
+    /* Chart colors */
+    --chart-1: 276 89% 37%;
+    --chart-2: 174 72% 48%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 220 70% 50%;
+    --chart-5: 340 75% 55%;
+
+    /* Sidebar - Dark UZUM Style */
+    --sidebar-background: 220 20% 10%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 276 89% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 276 89% 55%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 220 20% 18%;
+    --sidebar-ring: 276 89% 55%;
+    --sidebar-muted: 220 14% 70%;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 hsl(220 20% 12% / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(220 20% 12% / 0.1), 0 2px 4px -2px hsl(220 20% 12% / 0.1);
+    --shadow-lg: 0 10px 15px -3px hsl(220 20% 12% / 0.1), 0 4px 6px -4px hsl(220 20% 12% / 0.1);
+    --shadow-glow: 0 0 20px hsl(276 89% 37% / 0.15);
+  }
+
+  .dark {
+    --background: 220 20% 8%;
+    --foreground: 220 14% 96%;
+
+    --card: 220 20% 12%;
+    --card-foreground: 220 14% 96%;
+
+    --popover: 220 20% 12%;
+    --popover-foreground: 220 14% 96%;
+
+    --primary: 276 89% 55%;
+    --primary-foreground: 0 0% 100%;
+    --primary-light: 276 50% 20%;
+
+    --accent: 174 72% 48%;
+    --accent-foreground: 0 0% 100%;
+    --accent-light: 174 40% 15%;
+
+    --secondary: 220 20% 18%;
+    --secondary-foreground: 220 14% 96%;
+
+    --muted: 220 20% 18%;
+    --muted-foreground: 220 14% 65%;
+
+    --border: 220 20% 20%;
+    --input: 220 20% 20%;
+    --ring: 276 89% 55%;
+
+    --sidebar-background: 220 20% 10%;
+    --sidebar-foreground: 220 14% 96%;
+    --sidebar-primary: 276 89% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 276 50% 20%;
+    --sidebar-accent-foreground: 276 89% 70%;
+    --sidebar-border: 220 20% 20%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+@layer components {
+  .kpi-card {
+    @apply bg-card rounded-xl p-5 border border-border shadow-sm transition-all duration-200 hover:shadow-md;
+  }
+
+  .kpi-card-accent {
+    @apply bg-gradient-to-br from-primary to-primary/80 text-primary-foreground rounded-xl p-5 shadow-md;
+  }
+
+  .filter-bar {
+    @apply bg-card rounded-xl p-4 border border-border shadow-sm flex flex-wrap gap-3 items-center;
+  }
+
+  .data-table {
+    @apply w-full bg-card rounded-xl border border-border overflow-hidden;
+  }
+
+  .nav-link {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted-foreground transition-all duration-200;
+  }
+
+  .nav-link:hover {
+    @apply bg-sidebar-accent text-sidebar-accent-foreground;
+  }
+
+  .nav-link.active {
+    @apply bg-primary text-primary-foreground font-medium;
+  }
+
+  .chart-container {
+    @apply bg-card rounded-xl p-5 border border-border shadow-sm;
+  }
+
+  .badge-trend-up {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success;
+  }
+
+  .badge-trend-down {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-destructive/10 text-destructive;
+  }
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  .animate-slide-in {
+    animation: slideIn 0.3s ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.2s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-muted/50 rounded-full;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/20 rounded-full hover:bg-muted-foreground/30;
+  }
+}
