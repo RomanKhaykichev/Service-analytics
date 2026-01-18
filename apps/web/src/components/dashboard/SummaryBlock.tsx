@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useEffect } from "react";
 import { ChevronDown, ChevronUp, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -23,6 +23,8 @@ interface SummaryBlockProps {
   titleColor: string;
   metrics: MetricItem[];
   defaultExpanded?: boolean;
+  showToggleButton?: boolean;
+  onToggle?: () => void;
 }
 
 export function SummaryBlock({
@@ -30,24 +32,41 @@ export function SummaryBlock({
   titleColor,
   metrics,
   defaultExpanded = true,
+  showToggleButton = false,
+  onToggle,
 }: SummaryBlockProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
+  // Синхронизируем локальное состояние с пропсом defaultExpanded
+  useEffect(() => {
+    setIsExpanded(defaultExpanded);
+  }, [defaultExpanded]);
+
   return (
     <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden transition-all duration-200">
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
-      >
+      <div className="w-full flex items-center justify-between p-4">
         <h3 className={cn("text-sm font-bold uppercase tracking-wide", titleColor)}>
           {title}
         </h3>
-        {isExpanded ? (
-          <ChevronUp className="w-4 h-4 text-muted-foreground" />
-        ) : (
-          <ChevronDown className="w-4 h-4 text-muted-foreground" />
+        {showToggleButton && onToggle && (
+          <button
+            onClick={onToggle}
+            className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {isExpanded ? (
+              <>
+                <ChevronUp className="w-4 h-4" />
+                Свернуть блоки
+              </>
+            ) : (
+              <>
+                <ChevronDown className="w-4 h-4" />
+                Развернуть блоки
+              </>
+            )}
+          </button>
         )}
-      </button>
+      </div>
 
       {isExpanded && (
         <div className="px-4 pb-4 space-y-2 animate-fade-in">
