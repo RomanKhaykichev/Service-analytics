@@ -180,14 +180,16 @@ def kpi_summary(
                 -- uzumCommission/uzumLogistics: только completed
                 COALESCE(SUM(CASE WHEN {completed_condition} THEN commission_sum ELSE 0 END), 0) as uzum_commission,
                 COALESCE(SUM(CASE WHEN {completed_condition} THEN logistics_sum ELSE 0 END), 0) as uzum_logistics,
-                -- productCost: completed OR processing
+                -- productCost: completed OR processing (для productCost в ответе)
                 COALESCE(SUM(
                     CASE 
                         WHEN {completed_condition} OR {processing_condition}
                         THEN cogs_sum 
                         ELSE 0 
                     END
-                ), 0) as product_cost
+                ), 0) as product_cost_total,
+                -- productCost: completed (для salesProfitability и ROI)
+                COALESCE(SUM(CASE WHEN {completed_condition} THEN cogs_sum ELSE 0 END), 0) as product_cost_completed
             FROM {qname("fact_sales")}
             WHERE {sales_where_clause}
         """)
@@ -205,7 +207,8 @@ def kpi_summary(
         returns_value = float(sales_row[7] or 0)
         uzum_commission = float(sales_row[8] or 0)
         uzum_logistics = float(sales_row[9] or 0)
-        product_cost = float(sales_row[10] or 0)
+        product_cost_total = float(sales_row[10] or 0)
+        product_cost_completed = float(sales_row[11] or 0)
         
         # Derived metrics from sales
         return_rate = (returns_count / orders_count * 100) if orders_count > 0 else 0.0
@@ -229,15 +232,18 @@ def kpi_summary(
             SELECT 
                 COALESCE(SUM(
                     CASE 
-                        WHEN source ILIKE '%реклам%' OR service ILIKE '%реклам%' OR operation_type ILIKE '%реклам%'
-                        THEN cost_sum
+                        -- uzumAds: source содержит "маркетинг" ИЛИ "marketing" И operation_type содержит "оплат" ИЛИ "payment"
+                        WHEN (COALESCE(source, '') ILIKE '%маркетинг%' OR COALESCE(source, '') ILIKE '%marketing%')
+                             AND (COALESCE(operation_type, '') ILIKE '%оплат%' OR COALESCE(operation_type, '') ILIKE '%payment%')
+                        THEN COALESCE(cost_sum, 0)
                         ELSE 0
                     END
                 ), 0) as uzum_ads,
                 COALESCE(SUM(
                     CASE 
-                        WHEN service ILIKE '%штраф%' OR operation_type ILIKE '%штраф%'
-                        THEN amount_sum
+                        -- uzumFines: service содержит "штраф"
+                        WHEN COALESCE(service, '') ILIKE '%штраф%'
+                        THEN COALESCE(amount_sum, 0)
                         ELSE 0
                     END
                 ), 0) as uzum_fines
@@ -252,10 +258,14 @@ def kpi_summary(
         uzum_fines = float(expenses_row[1] or 0)
         
         # C) Total expenses, profit, ratios
-        total_expenses = uzum_commission + uzum_logistics + uzum_ads + uzum_fines + product_cost
+        # Используем product_cost_total (completed OR processing) для totalExpenses
+        total_expenses = uzum_commission + uzum_logistics + uzum_ads + uzum_fines + product_cost_total
         profit = revenue - total_expenses
-        sales_profitability = (revenue / product_cost * 100) if product_cost > 0 else 0.0
-        roi = ((revenue - product_cost) / product_cost * 100) if product_cost > 0 else 0.0
+        # salesProfitability и ROI используют только product_cost_completed
+        sales_profitability = (revenue / product_cost_completed * 100) if product_cost_completed > 0 else 0.0
+        roi = ((revenue - product_cost_completed) / product_cost_completed * 100) if product_cost_completed > 0 else 0.0
+        
+        logger.info(f"expenses: ads={uzum_ads}, fines={uzum_fines}, product_cost_completed={product_cost_completed}, salesProfitability={sales_profitability}")
         
         # D) Revenue trend (compare with previous period)
         revenue_trend = 0.0
@@ -326,85 +336,117 @@ def kpi_summary(
         
         logger.info(f"cumulativeRevenue: year={date_to_date.year}, year_start={year_start_iso}, date_to={date_to_iso}, value={cumulative_revenue}")
         
-        # F) STOCK aggregation
-        stock_where = ["user_id = CAST(:user_id AS uuid)"]
-        if shop_id:
-            stock_where.append("shop_id = CAST(:shop_id AS uuid)")
+        # F) STOCK aggregation (не зависит от period, только от user_id и shop_id)
+        # Используем fact_leftout_snapshot.marketplace_side вместо fact_storage_snapshot.fbo_stock_total
+        # A) Получить текущий loaded_at (max по user_id и опционально shop_id)
+        stock_params = {
+            "user_id": str(user_id),
+            "shop_id": shop_id  # Can be None
+        }
         
-        stock_where_clause = " AND ".join(stock_where)
-        
-        # Get latest snapshot
         max_loaded_query = text(f"""
-            SELECT MAX(loaded_at)
-            FROM {qname("fact_storage_snapshot")}
-            WHERE {stock_where_clause}
+            SELECT MAX(loaded_at) AS snap_loaded_at
+            FROM {qname("fact_leftout_snapshot")}
+            WHERE user_id = CAST(:user_id AS uuid)
+                AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
         """)
         
-        max_loaded_result = db.execute(max_loaded_query, params_base)
-        max_loaded = max_loaded_result.scalar()
+        max_loaded_result = db.execute(max_loaded_query, stock_params)
+        snap_loaded_at = max_loaded_result.scalar()
         
+        # Инициализация значений по умолчанию
         stock_quantity = 0.0
         stock_cost = 0.0
         stock_retail_price = 0.0
+        stock_sku_total = 0
+        stock_sku_with_stock = 0
+        stock_snapshot_at = None
+        stock_is_zero = False
+        stock_zero_reason = None
         
-        if max_loaded:
-            # Get price and COGS units per SKU (last 90 days)
-            price_cogs_where = [
-                "user_id = CAST(:user_id AS uuid)",
-                f"({completed_condition})",
-                "date_created >= CAST(:price_date_from AS date)"
-            ]
+        if snap_loaded_at:
+            # B) По этому loaded_at посчитать агрегаты склада и цены по SKU/barcode
+            stock_params["snap_loaded_at"] = snap_loaded_at
             
-            if shop_id:
-                price_cogs_where.append("shop_id = CAST(:shop_id AS uuid)")
+            # Price window: последние 90 дней от data_end_date
+            price_window_from_date = date_to_date - timedelta(days=89)
+            price_window_from = price_window_from_date.isoformat()
+            price_window_to = date_to_iso
             
-            price_cogs_where_clause = " AND ".join(price_cogs_where)
-            price_date_from = date_to_date - timedelta(days=90)
+            stock_params["price_window_from"] = price_window_from
+            stock_params["price_window_to"] = price_window_to
             
-            # Prepare params for price_cogs query
-            price_cogs_params = {**params_base, "price_date_from": price_date_from.isoformat()}
-            
-            price_cogs_query = text(f"""
-                SELECT 
-                    sku,
-                    COALESCE(SUM(revenue_sum) / NULLIF(SUM(qty), 0), 0) as price_unit,
-                    COALESCE(SUM(cogs_sum) / NULLIF(SUM(qty), 0), 0) as cogs_unit
-                FROM {qname("fact_sales")}
-                WHERE {price_cogs_where_clause}
-                GROUP BY sku
+            # Полный запрос с JOIN по SKU/barcode для расчета цен и себестоимости
+            stock_query = text(f"""
+                WITH price_cogs AS (
+                    -- Средние цены и себестоимость по SKU/barcode из fact_sales (последние 90 дней, status='Завершен')
+                    SELECT
+                        NULLIF(TRIM(sku), '') AS sku,
+                        NULLIF(TRIM(barcode), '') AS barcode,
+                        COALESCE(SUM(revenue_sum) / NULLIF(SUM(qty), 0), 0) AS avg_price,
+                        COALESCE(SUM(cogs_sum) / NULLIF(SUM(qty), 0), 0) AS avg_cogs
+                    FROM {qname("fact_sales")}
+                    WHERE user_id = CAST(:user_id AS uuid)
+                        AND ({completed_condition})
+                        AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
+                        AND date_created >= CAST(:price_window_from AS date)
+                        AND date_created < CAST(:price_window_to AS date) + INTERVAL '1 day'
+                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(barcode), '')
+                ),
+                snap AS (
+                    -- Текущий snapshot склада из fact_leftout_snapshot
+                    SELECT
+                        NULLIF(TRIM(sku), '') AS sku,
+                        NULLIF(TRIM(barcode), '') AS barcode,
+                        COALESCE(marketplace_side, 0) AS stock_qty,
+                        MAX(loaded_at) AS stock_snapshot_at
+                    FROM {qname("fact_leftout_snapshot")}
+                    WHERE user_id = CAST(:user_id AS uuid)
+                        AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
+                        AND loaded_at = CAST(:snap_loaded_at AS timestamp)
+                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(barcode), ''), COALESCE(marketplace_side, 0)
+                )
+                SELECT
+                    COUNT(*) AS stock_sku_total,
+                    SUM(s.stock_qty) AS stock_quantity,
+                    SUM(CASE WHEN s.stock_qty > 0 THEN 1 ELSE 0 END) AS stock_sku_with_stock,
+                    MAX(s.stock_snapshot_at) AS stock_snapshot_at,
+                    COALESCE(SUM(s.stock_qty * COALESCE(pc.avg_price, 0)), 0) AS stock_retail_price,
+                    COALESCE(SUM(s.stock_qty * COALESCE(pc.avg_cogs, 0)), 0) AS stock_cost
+                FROM snap s
+                LEFT JOIN price_cogs pc ON (
+                    (pc.sku = s.sku AND s.sku IS NOT NULL AND pc.sku IS NOT NULL)
+                    OR (pc.barcode = s.barcode AND s.barcode IS NOT NULL AND pc.barcode IS NOT NULL)
+                )
             """)
             
-            price_cogs_result = db.execute(price_cogs_query, price_cogs_params)
-            price_cogs_map = {
-                row[0]: (float(row[1] or 0), float(row[2] or 0))
-                for row in price_cogs_result.fetchall()
-            }
+            stock_result = db.execute(stock_query, stock_params)
+            stock_row = stock_result.fetchone()
             
-            # Get stock snapshot data
-            snapshot_where = stock_where + ["loaded_at = :max_loaded"]
-            snapshot_where_clause = " AND ".join(snapshot_where)
-            
-            # Prepare params for snapshot query
-            snapshot_params = {**params_base, "max_loaded": max_loaded}
-            
-            snapshot_query = text(f"""
-                SELECT 
-                    sku,
-                    COALESCE(fbo_stock_total, 0) as stock_qty
-                FROM {qname("fact_storage_snapshot")}
-                WHERE {snapshot_where_clause}
-            """)
-            
-            snapshot_result = db.execute(snapshot_query, snapshot_params)
-            
-            for row in snapshot_result.fetchall():
-                sku = row[0]
-                stock_qty = float(row[1] or 0)
-                price_unit, cogs_unit = price_cogs_map.get(sku, (0.0, 0.0))
+            if stock_row:
+                stock_sku_total = int(stock_row[0] or 0)
+                stock_quantity = float(stock_row[1] or 0)
+                stock_sku_with_stock = int(stock_row[2] or 0)
+                stock_snapshot_at = stock_row[3]
+                stock_retail_price = float(stock_row[4] or 0)
+                stock_cost = float(stock_row[5] or 0)
                 
-                stock_quantity += stock_qty
-                stock_cost += stock_qty * cogs_unit
-                stock_retail_price += stock_qty * price_unit
+                # D) stockIsZero / stockZeroReason
+                if stock_sku_total == 0:
+                    stock_is_zero = True
+                    stock_zero_reason = "no_snapshot_data"
+                elif stock_sku_with_stock == 0:
+                    stock_is_zero = True
+                    stock_zero_reason = "all_zero_in_snapshot"
+                else:
+                    stock_is_zero = False
+                    stock_zero_reason = None
+        else:
+            # Нет snapshot данных
+            stock_is_zero = True
+            stock_zero_reason = "no_snapshot_data"
+        
+        logger.info(f"stock: quantity={stock_quantity}, cost={stock_cost}, retail_price={stock_retail_price}, sku_total={stock_sku_total}, sku_with_stock={stock_sku_with_stock}, is_zero={stock_is_zero}, reason={stock_zero_reason}, snapshot_at={stock_snapshot_at}, shop_id={shop_id}")
         
         # B) Lost revenue: потенциальная выручка от товаров без остатков
         # Формула: (avg_daily_sales * 15) * price (для товаров где stock=0 и avg_daily_sales>0)
@@ -596,10 +638,16 @@ def kpi_summary(
             "uzumLogistics": uzum_logistics,
             "uzumAds": uzum_ads,
             "uzumFines": uzum_fines,
-            "productCost": product_cost,
+            "productCost": product_cost_total,
+            "productCostCompleted": product_cost_completed,
             "stockQuantity": stock_quantity,
             "stockCost": stock_cost,
             "stockRetailPrice": stock_retail_price,
+            "stockSkuTotal": stock_sku_total,
+            "stockSkuWithStock": stock_sku_with_stock,
+            "stockSnapshotAt": stock_snapshot_at.isoformat() if stock_snapshot_at and hasattr(stock_snapshot_at, 'isoformat') else (str(stock_snapshot_at) if stock_snapshot_at else None),
+            "stockIsZero": stock_is_zero,
+            "stockZeroReason": stock_zero_reason,
             "period_range": period_range_dict
         }
         

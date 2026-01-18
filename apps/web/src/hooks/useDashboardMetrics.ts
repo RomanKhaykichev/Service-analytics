@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "./useAuth";
 import { apiGet, buildQueryParams } from "@/lib/api";
 import type { PeriodCode } from "@/lib/types";
@@ -39,39 +39,28 @@ interface DashboardMetrics {
   stockQuantity: number;
   stockCost: number;
   stockRetailPrice: number;
+  stockSkuTotal: number;
+  stockSkuWithStock: number;
+  stockSnapshotAt: string | null;
+  stockIsZero: boolean;
+  stockZeroReason: string | null;
 }
 
 export function useDashboardMetrics(periodCode: PeriodCode = "30d", shopId?: string) {
   const { user } = useAuth();
-  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
+  const { data: metrics, isLoading: loading, error } = useQuery({
+    queryKey: ['kpiSummary', periodCode, shopId],
+    queryFn: async () => {
+      const params = buildQueryParams({ period: periodCode, shopId });
+      return await apiGet<DashboardMetrics>("/api/kpi/summary", params);
+    },
+    enabled: !!user,
+  });
 
-    const fetchMetrics = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        // Call KPI summary API with periodCode and shopId
-        const params = buildQueryParams({ period: periodCode, shopId });
-        const data = await apiGet<DashboardMetrics>("/api/kpi/summary", params);
-        setMetrics(data);
-      } catch (err) {
-        console.error("Error fetching dashboard metrics:", err);
-        setError(err instanceof Error ? err.message : "Ошибка загрузки данных");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchMetrics();
-  }, [user, periodCode, shopId]);
-
-  return { metrics, loading, error };
+  return { 
+    metrics: metrics ?? null, 
+    loading, 
+    error: error ? (error instanceof Error ? error.message : "Ошибка загрузки данных") : null 
+  };
 }

@@ -6,7 +6,9 @@ from .common import PeriodInfo, Filters
 # Revenue charts
 class RevenuePoint(BaseModel):
     date: str  # YYYY-MM-DD format
-    value: float
+    revenue: float
+    orders: float
+    averageCheck: float
 
 
 class RevenueFilters(BaseModel):
@@ -57,3 +59,20 @@ class ChartRevenueDailyResponse(BaseModel):
 class ChartStockCurrentResponse(BaseModel):
     filters: Filters
     items: list[StockItem]
+
+
+# Stock daily chart
+class StockDailyPoint(BaseModel):
+    date: str  # YYYY-MM-DD format
+    orders: float
+    stock: float
+
+
+class StockDailyFilters(BaseModel):
+    shop_id: Optional[str] = None
+
+
+class StockDailyResponse(BaseModel):
+    points: list[StockDailyPoint]
+    period: PeriodInfo
+    filters: StockDailyFilters

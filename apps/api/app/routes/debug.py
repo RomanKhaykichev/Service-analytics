@@ -135,3 +135,96 @@ async def debug_period(
         "price_window_from": price_window_from.isoformat(),
         "price_window_to": date_to_date.isoformat()
     }
+
+
+@router.get("/debug/stock")
+async def debug_stock(
+    request: Request,
+    shop_id: Optional[str] = Query(default=None, description="Shop UUID"),
+    db: Session = Depends(get_db)
+):
+    """
+    Debug endpoint to check stock calculation from fact_leftout_snapshot.
+    Returns: last_loaded_at, stockQuantity, rows_cnt, rows_with_stock (marketplace_side>0).
+    """
+    user_id = require_user(request)
+    
+    # Validate shop_id if provided
+    if shop_id:
+        try:
+            UUID(shop_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid shop_id format (must be UUID)"
+            )
+    
+    stock_params = {
+        "user_id": str(user_id),
+        "shop_id": shop_id
+    }
+    
+    try:
+        # Get latest snapshot loaded_at
+        max_loaded_query = text(f"""
+            SELECT MAX(loaded_at) AS snap_loaded_at
+            FROM {qname("fact_leftout_snapshot")}
+            WHERE user_id = CAST(:user_id AS uuid)
+                AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
+        """)
+        
+        max_loaded_result = db.execute(max_loaded_query, stock_params)
+        snap_loaded_at = max_loaded_result.scalar()
+        
+        if not snap_loaded_at:
+            return {
+                "ok": True,
+                "user_id": str(user_id),
+                "shop_id": shop_id,
+                "last_loaded_at": None,
+                "stockQuantity": 0,
+                "rows_cnt": 0,
+                "rows_with_stock": 0,
+                "message": "No snapshot data found"
+            }
+        
+        stock_params["snap_loaded_at"] = snap_loaded_at
+        
+        # Get stock aggregates
+        stock_agg_query = text(f"""
+            SELECT 
+                COUNT(*) AS rows_cnt,
+                SUM(COALESCE(marketplace_side, 0)) AS stock_quantity,
+                SUM(CASE WHEN COALESCE(marketplace_side, 0) > 0 THEN 1 ELSE 0 END) AS rows_with_stock
+            FROM {qname("fact_leftout_snapshot")}
+            WHERE user_id = CAST(:user_id AS uuid)
+                AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
+                AND loaded_at = CAST(:snap_loaded_at AS timestamp)
+        """)
+        
+        stock_agg_result = db.execute(stock_agg_query, stock_params)
+        stock_agg_row = stock_agg_result.fetchone()
+        
+        if stock_agg_row:
+            rows_cnt = int(stock_agg_row[0] or 0)
+            stock_quantity = float(stock_agg_row[1] or 0)
+            rows_with_stock = int(stock_agg_row[2] or 0)
+        else:
+            rows_cnt = 0
+            stock_quantity = 0.0
+            rows_with_stock = 0
+        
+        return {
+            "ok": True,
+            "user_id": str(user_id),
+            "shop_id": shop_id,
+            "last_loaded_at": snap_loaded_at.isoformat() if snap_loaded_at and hasattr(snap_loaded_at, 'isoformat') else (str(snap_loaded_at) if snap_loaded_at else None),
+            "stockQuantity": stock_quantity,
+            "rows_cnt": rows_cnt,
+            "rows_with_stock": rows_with_stock
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Stock debug error: {str(e)}"
+        )

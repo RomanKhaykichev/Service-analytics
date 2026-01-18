@@ -13,10 +13,13 @@ export function safeNumber(v: unknown): number {
  * Форматирование числа с разделителями тысяч
  */
 export function formatNumber(value?: number | null | undefined): string {
-  if (value == null || value === undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
     return "—";
   }
   const num = safeNumber(value);
+  if (!Number.isFinite(num) || Number.isNaN(num)) {
+    return "—";
+  }
   return new Intl.NumberFormat("ru-RU").format(Math.round(num));
 }
 
@@ -24,10 +27,13 @@ export function formatNumber(value?: number | null | undefined): string {
  * Форматирование валюты (сумы)
  */
 export function formatCurrency(value?: number | null | undefined, currency: string = "сум"): string {
-  if (value == null || value === undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
     return "—";
   }
   const num = safeNumber(value);
+  if (!Number.isFinite(num) || Number.isNaN(num)) {
+    return "—";
+  }
   return `${formatNumber(num)} ${currency}`;
 }
 
@@ -35,10 +41,13 @@ export function formatCurrency(value?: number | null | undefined, currency: stri
  * Форматирование процента
  */
 export function formatPercent(value?: number | null | undefined, decimals: number = 1): string {
-  if (value == null || value === undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
     return "—";
   }
   const num = safeNumber(value);
+  if (!Number.isFinite(num) || Number.isNaN(num)) {
+    return "—";
+  }
   return `${num.toFixed(decimals)}%`;
 }
 
@@ -46,10 +55,13 @@ export function formatPercent(value?: number | null | undefined, decimals: numbe
  * Форматирование количества с единицей измерения
  */
 export function formatQuantity(value?: number | null | undefined, unit: string = "шт"): string {
-  if (value == null || value === undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
     return "—";
   }
   const num = safeNumber(value);
+  if (!Number.isFinite(num) || Number.isNaN(num)) {
+    return "—";
+  }
   return `${formatNumber(num)} ${unit}`;
 }
 
@@ -57,9 +69,47 @@ export function formatQuantity(value?: number | null | undefined, unit: string =
  * Форматирование тренда (с + или -)
  */
 export function formatTrend(value?: number | null | undefined): string {
-  if (value == null || value === undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
     return "—";
   }
   const num = safeNumber(value);
+  if (!Number.isFinite(num) || Number.isNaN(num)) {
+    return "—";
+  }
   return `${num >= 0 ? "+" : ""}${num.toFixed(1)}%`;
+}
+
+/**
+ * Форматирование в миллионах (для графиков)
+ * 0 -> "0"
+ * 1 000 000 -> "1.0 млн"
+ * 12 500 000 -> "12.5 млн"
+ */
+export function formatMillions(value?: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "0";
+  }
+  const num = safeNumber(value);
+  if (!Number.isFinite(num) || num === 0) {
+    return "0";
+  }
+  const millions = num / 1000000;
+  return `${millions.toFixed(1)} млн`;
+}
+
+/**
+ * Форматирование денег без копеек (для среднего чека)
+ * Округляет до целых чисел и форматирует с разделителями тысяч
+ * 139195.5 -> "139 196 сум"
+ */
+export function formatMoneyNoDecimals(value?: number | null | undefined, currency: string = "сум"): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "—";
+  }
+  const avg = Number(value ?? 0);
+  const avgRounded = Math.round(avg);
+  if (!Number.isFinite(avgRounded) || Number.isNaN(avgRounded)) {
+    return "—";
+  }
+  return `${avgRounded.toLocaleString("ru-RU")} ${currency}`;
 }

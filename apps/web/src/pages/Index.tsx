@@ -17,8 +17,10 @@ import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
 import { useShops } from "@/hooks/useShops";
 import { useRevenueDaily } from "@/hooks/useRevenueDaily";
 import { useStockCurrent } from "@/hooks/useStockCurrent";
-import { formatCurrency, formatQuantity, formatPercent, formatTrend } from "@/lib/formatters";
+import { useStockDaily } from "@/hooks/useStockDaily";
+import { formatCurrency, formatQuantity, formatPercent, formatTrend, formatMoneyNoDecimals } from "@/lib/formatters";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import type { PeriodCode } from "@/lib/types";
 
 const Index = () => {
@@ -33,18 +35,18 @@ const Index = () => {
   const shopId = store === "all" ? null : store;
 
   // Load revenue and stock data
-  // useRevenueDaily handles periodCode mapping internally (7d->30d, all->365d)
   const { points: revenuePoints } = useRevenueDaily({ periodCode, shopId });
   const { items: stockItems } = useStockCurrent({ limit: 50, shopId });
+  const { points: stockDailyPoints } = useStockDaily({ periodCode, shopId });
 
   // Transform revenue data for RevenueDailyChart (YYYY-MM-DD -> dd.MM)
   const revenueChartData = revenuePoints.length > 0 ? revenuePoints.map((point) => {
     const [year, month, day] = point.date.split("-");
     return {
       date: `${day}.${month}`,
-      revenue: point.value,
-      orders: 0, // Not available from API
-      avgCheck: 0, // Not available from API
+      revenue: point.revenue ?? 0,
+      orders: point.orders ?? 0,
+      avgCheck: point.averageCheck ?? 0,
     };
   }) : undefined;
 
@@ -100,7 +102,7 @@ const Index = () => {
     {
       icon: <CreditCard className="w-4 h-4" />,
       label: "Средний чек",
-      value: formatCurrency(metrics.averageCheck),
+      value: formatMoneyNoDecimals(metrics.averageCheck),
       tooltip: "Средняя сумма одного заказа"
     }
   ] : [];
@@ -127,7 +129,7 @@ const Index = () => {
     {
       icon: <Target className="w-4 h-4" />,
       label: "Рентабельность продаж",
-      value: formatPercent(metrics?.salesProfitability != null ? metrics.salesProfitability * 100 : null),
+      value: formatPercent(metrics?.salesProfitability),
       tooltip: "Выручка / Себестоимость (завершённые заказы)"
     },
     {
@@ -140,7 +142,7 @@ const Index = () => {
       icon: <TrendingUp className="w-4 h-4" />,
       label: "Тренд выручки",
       value: formatTrend(metrics.revenueTrend),
-      trend: metrics.revenueTrend >= 0 ? "up" as const : "down" as const,
+      trend: (metrics.revenueTrend ?? 0) >= 0 ? "up" as const : "down" as const,
       trendValue: "",
       tooltip: "Сравнение выручки с аналогичным предыдущим периодом"
     },
@@ -185,23 +187,32 @@ const Index = () => {
     }
   ] : [];
 
+  const stockQty = metrics?.stockQuantity ?? 0;
+  const stockCost = metrics?.stockCost ?? 0;
+  const stockRetail = metrics?.stockRetailPrice ?? 0;
+  const stockIsZero = metrics?.stockIsZero ?? false;
+  const stockZeroReason = metrics?.stockZeroReason ?? null;
+  const stockSkuTotal = metrics?.stockSkuTotal ?? 0;
+  const stockSkuWithStock = metrics?.stockSkuWithStock ?? 0;
+  const stockSnapshotAt = metrics?.stockSnapshotAt ?? null;
+
   const warehouseMetrics = metrics ? [
     {
       icon: <Warehouse className="w-4 h-4" />,
-      label: "Товаров на складах",
-      value: formatQuantity(metrics.stockQuantity),
+      label: "Товаров на складе, шт",
+      value: formatQuantity(stockQty),
       tooltip: "Общее количество на стороне маркетплейса"
     },
     {
       icon: <Tag className="w-4 h-4" />,
-      label: "Себест. товара на складе",
-      value: formatCurrency(metrics.stockCost),
+      label: "Себест. товара на складе, сум",
+      value: formatCurrency(stockCost),
       tooltip: "Товар на складе × себестоимость"
     },
     {
       icon: <ShoppingBag className="w-4 h-4" />,
-      label: "Розничная цена товаров",
-      value: formatCurrency(metrics.stockRetailPrice),
+      label: "Розничная цена товаров, сум",
+      value: formatCurrency(stockRetail),
       tooltip: "Потенциальная сумма к получению за все остатки"
     }
   ] : [];
@@ -298,7 +309,34 @@ const Index = () => {
                 <SummaryBlock title="ПРОДАЖИ" titleColor="text-chart-4" metrics={salesMetrics} />
                 <SummaryBlock title="ФИНАНСЫ" titleColor="text-warning" metrics={financeMetrics} />
                 <SummaryBlock title="РАСХОДЫ" titleColor="text-destructive" metrics={expenseMetrics} />
-                <SummaryBlock title="СКЛАД" titleColor="text-warning" metrics={warehouseMetrics} />
+                <div>
+                  <SummaryBlock title="СКЛАД" titleColor="text-warning" metrics={warehouseMetrics} />
+                  {(stockIsZero || stockQty === 0) && (
+                    <Alert variant="destructive" className="mt-4">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTitle>Склад = 0</AlertTitle>
+                      <AlertDescription>
+                        <p className="mb-2">
+                          {stockZeroReason === "all_zero_in_snapshot"
+                            ? "По последней выгрузке склада все позиции имеют остаток 0. Проверь файл склада/остатков."
+                            : stockZeroReason === "no_snapshot_data"
+                            ? "Нет данных по складу. Загрузите файл склада/остатков."
+                            : "Склад = 0. Проверь выгрузку 'Склад' или фильтр магазина."}
+                        </p>
+                        {(stockSkuTotal > 0 || stockSkuWithStock > 0 || stockSnapshotAt) && (
+                          <div className="text-xs text-muted-foreground space-y-1">
+                            {stockSkuTotal > 0 && (
+                              <p>SKU: {stockSkuTotal}, с остатком: {stockSkuWithStock}</p>
+                            )}
+                            {stockSnapshotAt && (
+                              <p>Срез: {new Date(stockSnapshotAt).toLocaleString("ru-RU")}</p>
+                            )}
+                          </div>
+                        )}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </div>
               </>
             )}
           </div>
@@ -306,7 +344,7 @@ const Index = () => {
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
             <RevenueDailyChart data={revenueChartData} />
-            <StockDailyChart />
+            <StockDailyChart data={stockDailyPoints} />
           </div>
         </>
       )}

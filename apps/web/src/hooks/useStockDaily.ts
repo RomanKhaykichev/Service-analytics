@@ -2,15 +2,14 @@ import { useQuery } from "@tanstack/react-query";
 import { apiGet, buildQueryParams } from "@/lib/api";
 import type { PeriodCode } from "@/lib/types";
 
-interface RevenuePoint {
+interface StockDailyPoint {
   date: string;
-  revenue: number;
   orders: number;
-  averageCheck: number;
+  stock: number;
 }
 
-interface RevenueDailyResponse {
-  points: RevenuePoint[];
+interface StockDailyResponse {
+  points: StockDailyPoint[];
   period: {
     code: string;
     date_from: string;
@@ -21,25 +20,24 @@ interface RevenueDailyResponse {
   };
 }
 
-interface UseRevenueDailyParams {
+interface UseStockDailyParams {
   periodCode: PeriodCode;
   shopId?: string | null;
 }
 
-export function useRevenueDaily({ periodCode, shopId }: UseRevenueDailyParams) {
+export function useStockDaily({ periodCode, shopId }: UseStockDailyParams) {
   const { data, isLoading: loading, error } = useQuery({
-    queryKey: ['revenueDaily', periodCode, shopId],
+    queryKey: ['stockDaily', periodCode, shopId],
     queryFn: async () => {
-      // Use periodCode directly (backend supports 7d/30d/90d/all)
       const params = buildQueryParams({ period: periodCode, shopId });
-      return await apiGet<RevenueDailyResponse>("/api/charts/revenue-daily", params);
+      return await apiGet<StockDailyResponse>("/api/charts/stock-daily", params);
     },
   });
 
   return { 
     points: data?.points ?? [], 
     loading, 
-    error: error ? (error instanceof Error ? error.message : "Failed to load revenue") : null,
+    error: error ? (error instanceof Error ? error.message : "Failed to load stock daily") : null,
     period: data?.period ?? null,
     filters: data?.filters ?? null
   };

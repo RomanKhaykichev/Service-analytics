@@ -37,6 +37,21 @@ const defaultData = [
 export function StockDailyChart({ data = defaultData }: StockDailyChartProps) {
   const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
 
+  // Transform data: convert YYYY-MM-DD to DD.MM format
+  const chartData = data.map((point) => {
+    const dateStr = point.date;
+    // If date is in YYYY-MM-DD format, convert to DD.MM
+    if (dateStr.includes("-") && dateStr.length === 10) {
+      const [year, month, day] = dateStr.split("-");
+      return {
+        ...point,
+        date: `${day}.${month}`,
+      };
+    }
+    // Otherwise use as-is (already in DD.MM format)
+    return point;
+  });
+
   const handleLegendClick = (dataKey: string) => {
     setHiddenLines((prev) => {
       const next = new Set(prev);
@@ -80,7 +95,7 @@ export function StockDailyChart({ data = defaultData }: StockDailyChartProps) {
       <h3 className="font-semibold text-foreground mb-4">Складские остатки по дням</h3>
       <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data}>
+          <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
             <XAxis
               dataKey="date"
@@ -150,3 +165,4 @@ export function StockDailyChart({ data = defaultData }: StockDailyChartProps) {
     </div>
   );
 }
+

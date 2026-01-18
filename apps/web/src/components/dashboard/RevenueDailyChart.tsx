@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceDot } from "recharts";
+import { useState, useMemo } from "react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceDot, LabelList } from "recharts";
 import { MessageSquarePlus, MessageSquare } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -10,6 +10,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { CalendarIcon } from "lucide-react";
+import { formatNumber, formatCurrency, formatMoneyNoDecimals } from "@/lib/formatters";
 interface ChartComment {
   id: string;
   date: string;
@@ -20,9 +21,9 @@ interface RevenueDailyChartProps {
   showCommentButton?: boolean;
   data?: Array<{
     date: string;
-    revenue: number;
-    orders?: number;
-    avgCheck?: number;
+    revenue?: number | null;
+    orders?: number | null;
+    avgCheck?: number | null;
   }>;
 }
 const defaultData = [{
@@ -102,6 +103,48 @@ export function RevenueDailyChart({
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [commentText, setCommentText] = useState("");
   const [editingComment, setEditingComment] = useState<ChartComment | null>(null);
+
+  // Fixed orders Y-axis configuration: domain [0, 48], ticks with step 6
+  const ordersTicks = [0, 6, 12, 18, 24, 30, 36, 42, 48];
+
+  // Prepare data with clamped orders for display (max 48) but keep original for tooltip
+  const data2 = useMemo(() => {
+    return data.map((point) => {
+      const ordersOriginal = Number(point.orders ?? 0);
+      const ordersClamped = Math.min(ordersOriginal, 48);
+      const revenueValue = Number(point.revenue ?? 0);
+      const avgCheckValue = Number(point.avgCheck ?? point.averageCheck ?? 0);
+      return {
+        ...point,
+        ordersOriginal,
+        ordersClamped,
+        revenueValue,
+        avgCheckValue,
+      };
+    });
+  }, [data]);
+
+  // Custom label for orders > 48
+  const renderOrdersLabel = (props: any) => {
+    const { payload, x, y } = props;
+    if (!payload || payload.ordersOriginal === undefined) return null;
+    if (payload.ordersOriginal > 48) {
+      return (
+        <text
+          x={x}
+          y={y - 8}
+          fill="hsl(var(--destructive))"
+          fontSize={10}
+          fontWeight="bold"
+          textAnchor="middle"
+        >
+          48+
+        </text>
+      );
+    }
+    return null;
+  };
+
   const handleLegendClick = (dataKey: string) => {
     setHiddenLines(prev => {
       const next = new Set(prev);
@@ -169,9 +212,7 @@ export function RevenueDailyChart({
           backgroundColor: entry.color
         }} />
             <span className="text-xs text-muted-foreground">
-              {entry.dataKey === "avgCheck" && "Средний чек"}
-              {entry.dataKey === "orders" && "Заказы"}
-              {entry.dataKey === "revenue" && "Выручка"}
+              {entry.value || entry.dataKey}
             </span>
           </button>)}
       </div>;
@@ -179,7 +220,7 @@ export function RevenueDailyChart({
 
   // Find data point for a comment date
   const getDataPointForDate = (dateStr: string) => {
-    return data.find(d => d.date === dateStr);
+    return data2.find(d => d.date === dateStr);
   };
 
   // Custom component for comment markers
@@ -220,7 +261,7 @@ export function RevenueDailyChart({
       
       <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data}>
+          <LineChart data={data2}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
             <XAxis dataKey="date" tick={{
             fill: "hsl(var(--muted-foreground))",
@@ -228,59 +269,133 @@ export function RevenueDailyChart({
           }} axisLine={{
             stroke: "hsl(var(--border))"
           }} />
-            <YAxis yAxisId="left" tick={{
-            fill: "hsl(var(--muted-foreground))",
-            fontSize: 12
-          }} axisLine={{
-            stroke: "hsl(var(--border))"
-          }} label={{
-            value: "Заказы, шт",
-            angle: -90,
-            position: "insideLeft",
-            style: {
-              fill: "hsl(var(--muted-foreground))",
-              fontSize: 11
-            }
-          }} />
-            <YAxis yAxisId="right" orientation="right" tick={{
-            fill: "hsl(var(--muted-foreground))",
-            fontSize: 12
-          }} axisLine={{
-            stroke: "hsl(var(--border))"
-          }} tickFormatter={value => `${(value / 1000).toFixed(0)}k`} label={{
-            value: "Выручка, ₽",
-            angle: 90,
-            position: "insideRight",
-            style: {
-              fill: "hsl(var(--muted-foreground))",
-              fontSize: 11
-            }
-          }} />
-            <Tooltip contentStyle={{
-            backgroundColor: "hsl(var(--card))",
-            border: "1px solid hsl(var(--border))",
-            borderRadius: "8px"
-          }} formatter={(value: number, name: string) => {
-            if (name === "revenue") return [`${value.toLocaleString()} ₽`, "Выручка"];
-            if (name === "orders") return [value, "Заказы"];
-            if (name === "avgCheck") return [`${value} ₽`, "Средний чек"];
-            return [value, name];
-          }} />
+            <YAxis 
+              yAxisId="orders" 
+              domain={[0, 48]}
+              ticks={ordersTicks}
+              interval={0}
+              allowDecimals={false}
+              tick={{
+                fill: "hsl(var(--muted-foreground))",
+                fontSize: 12
+              }} 
+              axisLine={{
+                stroke: "hsl(var(--border))"
+              }} 
+              label={{
+                value: "Заказы, шт",
+                angle: -90,
+                position: "insideLeft",
+                style: {
+                  fill: "hsl(var(--muted-foreground))",
+                  fontSize: 11
+                }
+              }} 
+            />
+            <YAxis 
+              yAxisId="revenue" 
+              orientation="right" 
+              tick={{
+                fill: "hsl(var(--muted-foreground))",
+                fontSize: 12
+              }} 
+              axisLine={{
+                stroke: "hsl(var(--border))"
+              }} 
+              tickFormatter={(value) => (value / 1_000_000).toFixed(1)}
+              label={{
+                value: "Выручка, млн сум",
+                angle: 90,
+                position: "insideRight",
+                style: {
+                  fill: "hsl(var(--muted-foreground))",
+                  fontSize: 11
+                }
+              }} 
+            />
+            <Tooltip 
+              contentStyle={{
+                backgroundColor: "hsl(var(--card))",
+                border: "1px solid hsl(var(--border))",
+                borderRadius: "8px"
+              }}
+              formatter={(value: number | null | undefined, name: string, entry: any) => {
+                if (value === null || value === undefined || Number.isNaN(value)) {
+                  return ["—", name];
+                }
+                if (name === "Выручка" || entry?.dataKey === "revenueValue") {
+                  // Get original revenue from payload
+                  const payload = entry?.payload;
+                  const revenueValue = payload?.revenueValue ?? value;
+                  return [`${revenueValue.toLocaleString("ru-RU")} сум`, "Выручка"];
+                }
+                if (name === "Заказы" || entry?.dataKey === "ordersClamped") {
+                  // Get original orders from payload
+                  const payload = entry?.payload;
+                  const ordersOriginal = payload?.ordersOriginal ?? value;
+                  if (ordersOriginal > 48) {
+                    return [`48+ (реально: ${ordersOriginal} шт)`, "Заказы"];
+                  }
+                  return [`${ordersOriginal} шт`, "Заказы"];
+                }
+                if (name === "Средний чек" || entry?.dataKey === "avgCheckValue") {
+                  // Get original avgCheck from payload and round to integer
+                  const payload = entry?.payload;
+                  const avgCheckValue = payload?.avgCheckValue ?? value;
+                  const avg = Number(avgCheckValue ?? 0);
+                  const avgRounded = Math.round(avg);
+                  return [`${avgRounded.toLocaleString("ru-RU")} сум`, "Средний чек"];
+                }
+                return [value, name];
+              }} 
+            />
             <Legend content={renderLegend} />
-            <Line yAxisId="left" type="monotone" dataKey="avgCheck" stroke="hsl(var(--accent))" strokeWidth={2} dot={false} activeDot={{
-            r: 4
-          }} hide={hiddenLines.has("avgCheck")} />
-            <Line yAxisId="left" type="monotone" dataKey="orders" stroke="hsl(var(--chart-4))" strokeWidth={2} dot={false} activeDot={{
-            r: 4
-          }} hide={hiddenLines.has("orders")} />
-            <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="hsl(var(--destructive))" strokeWidth={2} dot={false} activeDot={{
-            r: 4
-          }} hide={hiddenLines.has("revenue")} />
+            <Line 
+              yAxisId="revenue" 
+              type="monotone" 
+              dataKey="avgCheckValue"
+              name="Средний чек"
+              stroke="hsl(var(--accent))" 
+              strokeWidth={2} 
+              dot={false} 
+              activeDot={{
+                r: 4
+              }} 
+              hide={hiddenLines.has("avgCheckValue")} 
+            />
+            <Line 
+              yAxisId="orders" 
+              type="monotone" 
+              dataKey="ordersClamped"
+              name="Заказы"
+              stroke="hsl(var(--chart-4))" 
+              strokeWidth={2} 
+              dot={false} 
+              activeDot={{
+                r: 4
+              }} 
+              hide={hiddenLines.has("ordersClamped")}
+            >
+              <LabelList content={renderOrdersLabel} />
+            </Line>
+            <Line 
+              yAxisId="revenue" 
+              type="monotone" 
+              dataKey="revenueValue"
+              name="Выручка"
+              stroke="hsl(var(--destructive))" 
+              strokeWidth={2} 
+              dot={false} 
+              activeDot={{
+                r: 4
+              }} 
+              hide={hiddenLines.has("revenueValue")} 
+            />
             {/* Render comment markers */}
             {comments.map(comment => {
             const dataPoint = getDataPointForDate(comment.date);
             if (dataPoint) {
-              return <ReferenceDot key={comment.id} x={comment.date} y={dataPoint.revenue} yAxisId="right" r={0} label={({
+              return <ReferenceDot key={comment.id} x={comment.date} y={dataPoint.revenueValue ?? 0} yAxisId="revenue" r={0} label={({
                 viewBox
               }) => {
                 const {
