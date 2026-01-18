@@ -34,8 +34,23 @@ export function useStockDaily({ periodCode, shopId }: UseStockDailyParams) {
     },
   });
 
+  // Calculate cumulative stock (накопительный итог)
+  const pointsWithCumStock = (data?.points ?? [])
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date)) // Sort by date ASC
+    .map((point, index, sorted) => {
+      // Calculate cumulative stock
+      const cumStock = sorted
+        .slice(0, index + 1)
+        .reduce((sum, p) => sum + (p.stock ?? 0), 0);
+      return {
+        ...point,
+        stock: cumStock,
+      };
+    });
+
   return { 
-    points: data?.points ?? [], 
+    points: pointsWithCumStock, 
     loading, 
     error: error ? (error instanceof Error ? error.message : "Failed to load stock daily") : null,
     period: data?.period ?? null,

@@ -39,6 +39,14 @@ const Index = () => {
   const { items: stockItems } = useStockCurrent({ limit: 50, shopId });
   const { points: stockDailyPoints } = useStockDaily({ periodCode, shopId });
 
+  // Prepare stock points for chart (include orders and stock)
+  const stockPoints = stockDailyPoints.map((p) => ({
+    date: p.date,
+    orders: p.orders,
+    stock: p.stock,
+  }));
+  console.log("StockDaily points", stockPoints.slice(0, 5));
+
   // Transform revenue data for RevenueDailyChart (YYYY-MM-DD -> dd.MM)
   const revenueChartData = revenuePoints.length > 0 ? revenuePoints.map((point) => {
     const [year, month, day] = point.date.split("-");
@@ -344,7 +352,7 @@ const Index = () => {
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
             <RevenueDailyChart data={revenueChartData} />
-            <StockDailyChart data={stockDailyPoints} />
+            <StockDailyChart points={stockPoints} />
           </div>
         </>
       )}

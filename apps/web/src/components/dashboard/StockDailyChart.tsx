@@ -11,45 +11,30 @@ import {
 } from "recharts";
 
 interface StockDailyChartProps {
-  data?: Array<{
+  points?: Array<{
     date: string;
-    orders: number;
-    stock: number;
+    orders?: number | null;
+    stock: number | null;
   }>;
 }
 
-const defaultData = [
-  { date: "01.12", orders: 220, stock: 8500 },
-  { date: "02.12", orders: 245, stock: 8200 },
-  { date: "03.12", orders: 180, stock: 7900 },
-  { date: "04.12", orders: 120, stock: 7600 },
-  { date: "05.12", orders: 90, stock: 7400 },
-  { date: "06.12", orders: 150, stock: 8100 },
-  { date: "07.12", orders: 200, stock: 8800 },
-  { date: "08.12", orders: 280, stock: 9200 },
-  { date: "09.12", orders: 320, stock: 9800 },
-  { date: "10.12", orders: 350, stock: 10500 },
-  { date: "11.12", orders: 380, stock: 11200 },
-  { date: "12.12", orders: 400, stock: 12500 },
-  { date: "13.12", orders: 420, stock: 13161 },
-];
-
-export function StockDailyChart({ data = defaultData }: StockDailyChartProps) {
+export function StockDailyChart({ points }: StockDailyChartProps) {
   const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
 
-  // Transform data: convert YYYY-MM-DD to DD.MM format
-  const chartData = data.map((point) => {
-    const dateStr = point.date;
+  // Normalize points: convert YYYY-MM-DD to DD.MM format and ensure numbers
+  const data = (points ?? []).map((p) => {
+    const dateStr = p.date;
+    let formattedDate = dateStr;
     // If date is in YYYY-MM-DD format, convert to DD.MM
     if (dateStr.includes("-") && dateStr.length === 10) {
       const [year, month, day] = dateStr.split("-");
-      return {
-        ...point,
-        date: `${day}.${month}`,
-      };
+      formattedDate = `${day}.${month}`;
     }
-    // Otherwise use as-is (already in DD.MM format)
-    return point;
+    return {
+      date: formattedDate,
+      orders: Number(p.orders ?? 0),
+      stock: Number(p.stock ?? 0),
+    };
   });
 
   const handleLegendClick = (dataKey: string) => {
@@ -90,12 +75,24 @@ export function StockDailyChart({ data = defaultData }: StockDailyChartProps) {
     );
   };
 
+  // Show placeholder if no data
+  if (data.length === 0) {
+    return (
+      <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
+        <h3 className="font-semibold text-foreground mb-4">Складские остатки по дням</h3>
+        <div className="h-72 flex items-center justify-center">
+          <p className="text-muted-foreground">Нет данных по складу за период</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
       <h3 className="font-semibold text-foreground mb-4">Складские остатки по дням</h3>
       <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData}>
+          <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
             <XAxis
               dataKey="date"
@@ -103,7 +100,11 @@ export function StockDailyChart({ data = defaultData }: StockDailyChartProps) {
               axisLine={{ stroke: "hsl(var(--border))" }}
             />
             <YAxis
-              yAxisId="left"
+              yAxisId="orders"
+              domain={[0, 48]}
+              ticks={[0, 6, 12, 18, 24, 30, 36, 42, 48]}
+              interval={0}
+              allowDecimals={false}
               tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
               axisLine={{ stroke: "hsl(var(--border))" }}
               label={{
@@ -114,11 +115,10 @@ export function StockDailyChart({ data = defaultData }: StockDailyChartProps) {
               }}
             />
             <YAxis
-              yAxisId="right"
+              yAxisId="stock"
               orientation="right"
               tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
               axisLine={{ stroke: "hsl(var(--border))" }}
-              tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
               label={{
                 value: "Товары на складе, шт",
                 angle: 90,
@@ -134,13 +134,13 @@ export function StockDailyChart({ data = defaultData }: StockDailyChartProps) {
               }}
               formatter={(value: number, name: string) => {
                 if (name === "orders") return [value, "Заказы"];
-                if (name === "stock") return [`${value.toLocaleString()} шт`, "Товары на складе"];
+                if (name === "stock") return [`${value.toLocaleString("ru-RU")} шт`, "Товары на складе"];
                 return [value, name];
               }}
             />
             <Legend content={renderLegend} />
             <Line
-              yAxisId="left"
+              yAxisId="orders"
               type="monotone"
               dataKey="orders"
               stroke="hsl(var(--chart-4))"
@@ -150,7 +150,7 @@ export function StockDailyChart({ data = defaultData }: StockDailyChartProps) {
               hide={hiddenLines.has("orders")}
             />
             <Line
-              yAxisId="right"
+              yAxisId="stock"
               type="monotone"
               dataKey="stock"
               stroke="hsl(var(--warning))"

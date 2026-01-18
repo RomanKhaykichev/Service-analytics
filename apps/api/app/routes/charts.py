@@ -254,7 +254,7 @@ async def get_stock_daily(
     shop_id: Optional[str] = Query(default=None, description="Shop UUID"),
     db: Session = Depends(get_db)
 ):
-    """Get daily stock and orders chart data."""
+    """Get daily stock chart data."""
     # Normalize period
     period_code = normalize_period(period)
     
@@ -269,12 +269,33 @@ async def get_stock_daily(
     date_from_iso = period_range_dict["date_from"]
     date_from = datetime.fromisoformat(date_from_iso).date() if date_from_iso else None
     
-    # For period=all, limit to last 365 days for UI performance
+    # For period=all, if date_from is None, use MIN(loaded_at)::date or very early date
     if period_code == "all" and date_from is None:
-        date_from = date_to_date - timedelta(days=364)
+        # Get minimum loaded_at date for user
+        min_date_query = text(f"""
+            SELECT MIN(loaded_at)::date
+            FROM {qname("fact_leftout_snapshot")}
+            WHERE user_id = CAST(:user_id AS uuid)
+        """)
+        min_date_result = db.execute(min_date_query, {"user_id": str(user_id)})
+        min_date = min_date_result.scalar()
+        if min_date:
+            date_from = min_date
+        else:
+            # Fallback to 365 days before date_to
+            date_from = date_to_date - timedelta(days=364)
         date_from_iso = date_from.isoformat()
     
-    logger.info(f"get_stock_daily: user_id={user_id}, period={period_code}, shop_id={shop_id}, period_range={period_range_dict}")
+    # Ensure date_from is set
+    if not date_from:
+        date_from = date_to_date - timedelta(days=29)  # Default to 30d
+        date_from_iso = date_from.isoformat()
+    
+    # Normalize shop_id: empty string -> None
+    if shop_id == "":
+        shop_id = None
+    
+    logger.info(f"get_stock_daily: user_id={user_id}, period={period_code}, shop_id={shop_id}, date_from={date_from_iso}, date_to={date_to_iso}")
     
     # Validate shop_id if provided
     if shop_id:
@@ -290,30 +311,16 @@ async def get_stock_daily(
         # Get status condition for orders (all except cancelled)
         orders_condition = get_status_sql_condition('orders')
         
-        # Build parameters
+        # Build parameters - always include shop_id (can be None)
         params = {
             "user_id": str(user_id),
-            "date_to": date_to_iso
+            "date_from": date_from_iso,
+            "date_to": date_to_iso,
+            "shop_id": shop_id  # Always include, can be None
         }
         
-        # Build shop_id filter condition
-        shop_condition = ""
-        if shop_id:
-            params["shop_id"] = shop_id
-            shop_condition = "AND shop_id = CAST(:shop_id AS uuid)"
-        
-        # Build date_from condition
-        date_from_condition = ""
-        if date_from:
-            params["date_from"] = date_from.isoformat()
-            date_from_condition = "AND d.day >= CAST(:date_from AS date)"
-        
-        # Build query with generate_series for full calendar
-        # For stock: get latest snapshot per day, then sum marketplace_side
-        stock_join_condition = ""
-        if shop_id:
-            stock_join_condition = "AND s.shop_id = CAST(:shop_id AS uuid)"
-        
+        # Build query: for each day, get MAX(loaded_at) in that day, then SUM(marketplace_side)
+        # Also get orders from fact_sales (same logic as revenue-daily chart)
         query = text(f"""
             WITH date_series AS (
                 SELECT generate_series(
@@ -322,48 +329,47 @@ async def get_stock_daily(
                     INTERVAL '1 day'
                 )::date AS day
             ),
-            latest_snapshots AS (
+            day_last AS (
                 SELECT 
-                    loaded_at::date AS day,
-                    MAX(loaded_at) AS max_loaded_at
+                    loaded_at::date AS d, 
+                    MAX(loaded_at) AS last_loaded_at
                 FROM {qname("fact_leftout_snapshot")}
                 WHERE user_id = CAST(:user_id AS uuid)
-                    {shop_condition}
+                    AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
                     AND loaded_at::date >= CAST(:date_from AS date)
                     AND loaded_at::date <= CAST(:date_to AS date)
                 GROUP BY loaded_at::date
             ),
-            stock_daily AS (
+            day_sum_stock AS (
                 SELECT 
-                    ls.day,
-                    SUM(COALESCE(s.marketplace_side, 0)) AS stock_qty
-                FROM latest_snapshots ls
-                INNER JOIN {qname("fact_leftout_snapshot")} s ON (
-                    s.user_id = CAST(:user_id AS uuid)
-                    AND s.loaded_at = ls.max_loaded_at
-                    {stock_join_condition}
-                )
-                GROUP BY ls.day
+                    dl.d AS date, 
+                    COALESCE(SUM(COALESCE(f.marketplace_side, 0)), 0) AS stock
+                FROM day_last dl
+                JOIN {qname("fact_leftout_snapshot")} f
+                    ON f.user_id = CAST(:user_id AS uuid)
+                    AND (:shop_id IS NULL OR f.shop_id = CAST(:shop_id AS uuid))
+                    AND f.loaded_at = dl.last_loaded_at
+                GROUP BY dl.d
             ),
-            orders_daily AS (
+            sales_day AS (
                 SELECT 
-                    date_created::date AS day,
-                    SUM(COALESCE(qty, 0)) AS orders_qty
+                    date_created::date AS d,
+                    SUM(COALESCE(qty, 0)) AS orders
                 FROM {qname("fact_sales")}
                 WHERE user_id = CAST(:user_id AS uuid)
                     AND ({orders_condition})
-                    {shop_condition}
+                    AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
                     AND date_created >= CAST(:date_from AS date)
                     AND date_created < CAST(:date_to AS date) + INTERVAL '1 day'
                 GROUP BY date_created::date
             )
             SELECT 
-                d.day::date AS day,
-                COALESCE(o.orders_qty, 0) AS orders,
-                COALESCE(s.stock_qty, 0) AS stock
+                d.day::date AS date,
+                COALESCE(s.orders, 0) AS orders,
+                COALESCE(ds.stock, 0) AS stock
             FROM date_series d
-            LEFT JOIN orders_daily o ON o.day = d.day
-            LEFT JOIN stock_daily s ON s.day = d.day
+            LEFT JOIN sales_day s ON s.d = d.day
+            LEFT JOIN day_sum_stock ds ON ds.date = d.day
             ORDER BY d.day ASC
         """)
         
