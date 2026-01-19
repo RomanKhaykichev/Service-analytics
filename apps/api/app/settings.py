@@ -17,8 +17,8 @@ class Settings:
     )
     DB_SCHEMA: str = os.getenv("DB_SCHEMA", "app")
     
-    # App environment
-    APP_ENV: str = os.getenv("APP_ENV", "development")
+    # App environment (dev/prod, default: dev)
+    APP_ENV: str = os.getenv("APP_ENV", "dev")
     
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")

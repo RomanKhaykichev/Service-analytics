@@ -33,26 +33,20 @@ def normalize_period(period: str) -> str:
 
 def get_data_end_date(db: Session, user_id: UUID) -> datetime.date:
     """
-    Get the maximum date from all data tables for the user.
-    Returns the latest date from fact_sales, fact_storage_snapshot, fact_leftout_snapshot.
-    If all are empty, returns CURRENT_DATE.
+    Get the maximum date only from sales report (fact_sales.date_created) for the user.
+    If there are no sales rows, fallback to CURRENT_DATE (today).
     shop_id is NOT considered (period is stable across shops).
     """
-    data_end_query = text(f"""
-        SELECT GREATEST(
-            COALESCE((SELECT MAX(date_created)::date FROM {qname("fact_sales")} WHERE user_id = CAST(:user_id AS uuid)), DATE '1970-01-01'),
-            COALESCE((SELECT MAX(loaded_at)::date FROM {qname("fact_storage_snapshot")} WHERE user_id = CAST(:user_id AS uuid)), DATE '1970-01-01'),
-            COALESCE((SELECT MAX(loaded_at)::date FROM {qname("fact_leftout_snapshot")} WHERE user_id = CAST(:user_id AS uuid)), DATE '1970-01-01')
+    q = text(f"""
+        SELECT COALESCE(
+            (SELECT MAX(date_created)::date
+             FROM {qname("fact_sales")}
+             WHERE user_id = CAST(:user_id AS uuid)),
+            CURRENT_DATE
         ) AS data_end_date
     """)
-    
-    result = db.execute(data_end_query, {"user_id": str(user_id)})
+    result = db.execute(q, {"user_id": str(user_id)})
     data_end_date = result.scalar()
-    
-    # If all tables are empty (all return 1970-01-01), use CURRENT_DATE
-    if data_end_date and data_end_date.year == 1970:
-        data_end_date = datetime.now().date()
-    
     return data_end_date or datetime.now().date()
 
 
@@ -137,9 +131,10 @@ def kpi_summary(
         }
         
         # Build base WHERE conditions for sales (filtered by periodRange)
-        sales_where = ["user_id = CAST(:user_id AS uuid)"]
-        if shop_id:
-            sales_where.append("shop_id = CAST(:shop_id AS uuid)")
+        sales_where = [
+            "user_id = CAST(:user_id AS uuid)",
+            "(:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))"
+        ]
         if date_from:
             sales_where.append("date_created >= CAST(:date_from AS date)")
         sales_where.append("date_created < CAST(:date_to AS date) + INTERVAL '1 day'")
@@ -152,44 +147,61 @@ def kpi_summary(
             sales_params["date_from"] = date_from.isoformat()
         
         # A) SALES aggregation
-        # Get status conditions
-        orders_condition = get_status_sql_condition('orders')  # All except cancelled
-        processing_condition = get_status_sql_condition('processing')
-        completed_condition = get_status_sql_condition('completed')
+        # Status normalization: lower(trim(status))
+        # According to TZ: exact match with normalized status
+        processing_status_condition = "lower(trim(status)) = 'в обработке'"
+        # Completed: support both 'завершен' and 'завершён' (with ё)
+        completed_status_condition = "lower(trim(status)) IN ('завершен', 'завершён')"
+        # Cancelled: support both 'отменен' and 'отменён' (with ё)
+        cancelled_status_condition = "lower(trim(status)) IN ('отменен', 'отменён')"
+        
+        # Define conditions for use in other queries
+        completed_condition = completed_status_condition
+        # Orders condition: all orders except cancelled
+        orders_condition = "lower(trim(status)) NOT IN ('отменен', 'отменено', 'cancelled', 'canceled')"
+        
+        # Control SQL for verification (not executed, for reference):
+        # Заказы: SELECT SUM(qty), SUM(revenue_sum) FROM fact_sales WHERE ...
+        # В обработке: SELECT SUM(qty), SUM(revenue_sum) FROM fact_sales WHERE ... AND lower(trim(status))='в обработке'
+        # Выкупы: SELECT SUM(qty), SUM(revenue_sum) FROM fact_sales WHERE ... AND lower(trim(status))='завершен'
+        # Возвраты сумма: SELECT SUM(returns_qty * price_sum) FROM fact_sales WHERE ... AND lower(trim(status)) IN ('завершен', 'отменен/отменён')
+        # Return rate: SELECT (SUM(returns_qty)/NULLIF(SUM(qty),0))*100 FROM fact_sales WHERE ...
+        # Avg check: SELECT SUM(revenue_sum)/NULLIF(SUM(qty),0) FROM fact_sales WHERE ... AND lower(trim(status))='завершен'
         
         sales_query = text(f"""
             SELECT 
-                -- ordersCount/ordersValue: все кроме cancelled
-                COALESCE(SUM(CASE WHEN {orders_condition} THEN qty ELSE 0 END), 0) as orders_count,
-                COALESCE(SUM(CASE WHEN {orders_condition} THEN revenue_sum ELSE 0 END), 0) as orders_value,
-                -- processingCount/processingValue: processing
-                COALESCE(SUM(CASE WHEN {processing_condition} THEN qty ELSE 0 END), 0) as processing_count,
-                COALESCE(SUM(CASE WHEN {processing_condition} THEN revenue_sum ELSE 0 END), 0) as processing_value,
-                -- completedCount/completedValue: completed
-                COALESCE(SUM(CASE WHEN {completed_condition} THEN qty ELSE 0 END), 0) as completed_count,
-                COALESCE(SUM(CASE WHEN {completed_condition} THEN revenue_sum ELSE 0 END), 0) as completed_value,
-                -- returns (from all orders)
-                COALESCE(SUM(CASE WHEN {orders_condition} THEN returns_qty ELSE 0 END), 0) as returns_count,
+                -- ordersCount/ordersValue: SUM(qty) and SUM(revenue_sum) WITHOUT status filter
+                COALESCE(SUM(qty), 0) as orders_count,
+                COALESCE(SUM(revenue_sum), 0) as orders_value,
+                -- processingCount/processingValue: SUM(qty) and SUM(revenue_sum) WHERE status='в обработке'
+                COALESCE(SUM(CASE WHEN {processing_status_condition} THEN qty ELSE 0 END), 0) as processing_count,
+                COALESCE(SUM(CASE WHEN {processing_status_condition} THEN revenue_sum ELSE 0 END), 0) as processing_value,
+                -- completedCount/completedValue: SUM(qty) and SUM(revenue_sum) WHERE status='завершен'
+                COALESCE(SUM(CASE WHEN {completed_status_condition} THEN qty ELSE 0 END), 0) as completed_count,
+                COALESCE(SUM(CASE WHEN {completed_status_condition} THEN revenue_sum ELSE 0 END), 0) as completed_value,
+                -- returnsCount: SUM(returns_qty) from all rows (same filters period/shop)
+                COALESCE(SUM(returns_qty), 0) as returns_count,
+                -- returnsValue: SUM(returns_qty * price_sum) WHERE status IN ('завершен', 'отменен/отменён')
                 COALESCE(SUM(
                     CASE 
-                        WHEN {orders_condition} AND qty > 0 
-                        THEN (COALESCE(returns_qty, 0)::numeric) * (COALESCE(revenue_sum, 0) / NULLIF(qty, 0))
+                        WHEN ({completed_status_condition} OR {cancelled_status_condition})
+                        THEN COALESCE(returns_qty, 0) * COALESCE(price_sum, 0)
                         ELSE 0
                     END
                 ), 0) as returns_value,
                 -- uzumCommission/uzumLogistics: только completed
-                COALESCE(SUM(CASE WHEN {completed_condition} THEN commission_sum ELSE 0 END), 0) as uzum_commission,
-                COALESCE(SUM(CASE WHEN {completed_condition} THEN logistics_sum ELSE 0 END), 0) as uzum_logistics,
+                COALESCE(SUM(CASE WHEN {completed_status_condition} THEN commission_sum ELSE 0 END), 0) as uzum_commission,
+                COALESCE(SUM(CASE WHEN {completed_status_condition} THEN logistics_sum ELSE 0 END), 0) as uzum_logistics,
                 -- productCost: completed OR processing (для productCost в ответе)
                 COALESCE(SUM(
                     CASE 
-                        WHEN {completed_condition} OR {processing_condition}
+                        WHEN {completed_status_condition} OR {processing_status_condition}
                         THEN cogs_sum 
                         ELSE 0 
                     END
                 ), 0) as product_cost_total,
                 -- productCost: completed (для salesProfitability и ROI)
-                COALESCE(SUM(CASE WHEN {completed_condition} THEN cogs_sum ELSE 0 END), 0) as product_cost_completed
+                COALESCE(SUM(CASE WHEN {completed_status_condition} THEN cogs_sum ELSE 0 END), 0) as product_cost_completed
             FROM {qname("fact_sales")}
             WHERE {sales_where_clause}
         """)
@@ -211,9 +223,19 @@ def kpi_summary(
         product_cost_completed = float(sales_row[11] or 0)
         
         # Derived metrics from sales
+        # Return rate: (SUM(returns_qty) / SUM(qty)) * 100 (from all rows, same filters)
         return_rate = (returns_count / orders_count * 100) if orders_count > 0 else 0.0
+        # Average check: SUM(revenue_sum)/SUM(qty) WHERE status='завершен'
         average_check = (completed_value / completed_count) if completed_count > 0 else 0.0
+        # Round average_check to integer (no kopecks) - as per TZ
+        average_check = round(average_check) if average_check > 0 else 0.0
         revenue = completed_value
+        
+        # Debug log for returns metrics
+        logger.info(
+            f"returns metrics: returns_count={returns_count}, returns_value={returns_value}, "
+            f"period={period_code}, shop_id={shop_id}"
+        )
         
         # B) EXPENSES aggregation (filtered by periodRange)
         expenses_where = ["user_id = CAST(:user_id AS uuid)"]
@@ -279,16 +301,13 @@ def kpi_summary(
                 "user_id": str(user_id),
                 "prev_date_from": prev_date_from.isoformat(),
                 "prev_date_to": prev_date_to.isoformat(),
+                "shop_id": shop_id,  # Always include, can be None
             }
-            
-            if shop_id:
-                prev_params["shop_id"] = shop_id
             
             prev_where = ["user_id = CAST(:user_id AS uuid)"]
             prev_where.append("date_created >= CAST(:prev_date_from AS date)")
             prev_where.append("date_created < CAST(:prev_date_to AS date) + INTERVAL '1 day'")
-            if shop_id:
-                prev_where.append("shop_id = CAST(:shop_id AS uuid)")
+            prev_where.append("(:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))")
             
             prev_where_clause = " AND ".join(prev_where)
             
@@ -314,11 +333,9 @@ def kpi_summary(
             "user_id = CAST(:user_id AS uuid)",
             f"({completed_condition})",
             "date_created >= CAST(:year_start AS date)",
-            "date_created < CAST(:date_to AS date) + INTERVAL '1 day'"
+            "date_created < CAST(:date_to AS date) + INTERVAL '1 day'",
+            "(:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))"
         ]
-        
-        if shop_id:
-            cumulative_where.append("shop_id = CAST(:shop_id AS uuid)")
         
         cumulative_where_clause = " AND ".join(cumulative_where)
         
@@ -472,9 +489,10 @@ def kpi_summary(
         lost_revenue_params["price_window_from"] = price_window_from
         
         # A) Определить snap_loaded_at (самый свежий snapshot до date_to, НЕ ограничивать >= date_from)
+        # Используем fact_leftout_snapshot как единый источник склада
         snap_loaded_at_query = text(f"""
             SELECT MAX(loaded_at) AS snap_loaded_at
-            FROM {qname("fact_storage_snapshot")}
+            FROM {qname("fact_leftout_snapshot")}
             WHERE user_id = CAST(:user_id AS uuid)
                 AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
                 AND loaded_at < CAST(:date_to AS date) + INTERVAL '1 day'
@@ -529,12 +547,12 @@ def kpi_summary(
                     GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(barcode), '')
                 ),
                 snap AS (
-                    -- Текущий snapshot склада
+                    -- Текущий snapshot склада из fact_leftout_snapshot (единый источник)
                     SELECT
                         NULLIF(TRIM(sku), '') AS sku,
                         NULLIF(TRIM(barcode), '') AS barcode,
-                        COALESCE(fbo_stock_total, 0) AS stock_qty
-                    FROM {qname("fact_storage_snapshot")}
+                        COALESCE(marketplace_side, 0) AS stock_qty
+                    FROM {qname("fact_leftout_snapshot")}
                     WHERE user_id = CAST(:user_id AS uuid)
                         AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
                         AND loaded_at = CAST(:snap_loaded_at AS timestamp)
