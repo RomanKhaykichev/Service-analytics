@@ -32,7 +32,9 @@ interface DashboardMetrics {
   uzumCommission: number;
   uzumLogistics: number;
   uzumAds: number;
+  uzumStorage: number;
   uzumFines: number;
+  taxes1pct: number;
   productCost: number;
 
   // Склад

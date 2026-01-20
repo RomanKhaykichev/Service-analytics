@@ -26,7 +26,7 @@ export function formatNumber(value?: number | null | undefined): string {
 /**
  * Форматирование валюты (сумы)
  */
-export function formatCurrency(value?: number | null | undefined, currency: string = "сум"): string {
+export function formatCurrency(value?: number | null | undefined, currency: string = ""): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return "—";
   }
@@ -34,7 +34,7 @@ export function formatCurrency(value?: number | null | undefined, currency: stri
   if (!Number.isFinite(num) || Number.isNaN(num)) {
     return "—";
   }
-  return `${formatNumber(num)} ${currency}`;
+  return currency ? `${formatNumber(num)} ${currency}` : formatNumber(num);
 }
 
 /**
@@ -100,9 +100,9 @@ export function formatMillions(value?: number | null | undefined): string {
 /**
  * Форматирование денег без копеек (для среднего чека)
  * Округляет до целых чисел и форматирует с разделителями тысяч
- * 139195.5 -> "139 196 сум"
+ * 139195.5 -> "139 196"
  */
-export function formatMoneyNoDecimals(value?: number | null | undefined, currency: string = "сум"): string {
+export function formatMoneyNoDecimals(value?: number | null | undefined, currency: string = ""): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return "—";
   }
@@ -111,5 +111,5 @@ export function formatMoneyNoDecimals(value?: number | null | undefined, currenc
   if (!Number.isFinite(avgRounded) || Number.isNaN(avgRounded)) {
     return "—";
   }
-  return `${avgRounded.toLocaleString("ru-RU")} ${currency}`;
+  return currency ? `${avgRounded.toLocaleString("ru-RU")} ${currency}` : avgRounded.toLocaleString("ru-RU");
 }

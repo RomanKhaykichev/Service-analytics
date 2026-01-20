@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ShoppingCart, Truck, Package, RotateCcw, Percent, CreditCard, DollarSign, TrendingDown, Wallet, Target, BarChart3, TrendingUp, ArrowDown, AlertTriangle, Boxes, Warehouse, Tag, ShoppingBag, ChevronDown, ChevronUp } from "lucide-react";
+import { ShoppingCart, Truck, Package, RotateCcw, Percent, CreditCard, DollarSign, TrendingDown, Wallet, Target, BarChart3, TrendingUp, ArrowDown, AlertTriangle, Boxes, Warehouse, Tag, ShoppingBag, ChevronDown, ChevronUp, Receipt } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { SummaryTabs } from "@/components/dashboard/SummaryTabs";
@@ -184,14 +184,26 @@ const Index = () => {
       tooltip: "Расходы на маркетинг (источник = маркетинг, тип = оплата)"
     },
     {
+      icon: <Warehouse className="w-4 h-4" />,
+      label: "Хранение UZUM",
+      value: formatCurrency(metrics.uzumStorage),
+      tooltip: "Оплата за услуги хранения"
+    },
+    {
       icon: <AlertTriangle className="w-4 h-4" />,
       label: "Штрафы UZUM",
       value: formatCurrency(metrics.uzumFines),
       tooltip: "Штрафы (услуга содержит слово ШТРАФ)"
     },
     {
+      icon: <Receipt className="w-4 h-4" />,
+      label: "Налоги 1%",
+      value: formatCurrency(metrics.taxes1pct),
+      tooltip: "Налоги 1% от выручки (завершённые заказы)"
+    },
+    {
       icon: <Boxes className="w-4 h-4" />,
-      label: "Себест. проданных товаров",
+      label: "Себест. прод. тов.",
       value: formatCurrency(metrics.productCost),
       tooltip: "Себестоимость × количество (в обработке + завершен)"
     }
@@ -215,13 +227,13 @@ const Index = () => {
     },
     {
       icon: <Tag className="w-4 h-4" />,
-      label: "Себест. товара на складе, сум",
+      label: <><span>Себест. тов.</span><br/><span className="whitespace-nowrap">на складе, сум</span></>,
       value: formatCurrency(stockCost),
-      tooltip: "Товар на складе × себестоимость"
+      tooltip: "Себестоимость товара на складе (из завершённых заказов)"
     },
     {
       icon: <ShoppingBag className="w-4 h-4" />,
-      label: "Розничная цена товаров, сум",
+      label: <><span>Рознич. цена</span><br/><span className="whitespace-nowrap">тов., сум</span></>,
       value: formatCurrency(stockRetail),
       tooltip: "Потенциальная сумма к получению за все остатки"
     }
@@ -325,7 +337,7 @@ const Index = () => {
       ) : (
         <>
           {/* 4 KPI Blocks */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-6 items-stretch">
             {loading ? (
               <>
                 <div className="bg-card rounded-xl border border-border p-4"><LoadingBlock /></div>
@@ -342,7 +354,7 @@ const Index = () => {
                 <SummaryBlock title="ПРОДАЖИ" titleColor="text-chart-4" metrics={salesMetrics} defaultExpanded={blocksExpanded} />
                 <SummaryBlock title="ФИНАНСЫ" titleColor="text-warning" metrics={financeMetrics} defaultExpanded={blocksExpanded} />
                 <SummaryBlock title="РАСХОДЫ" titleColor="text-destructive" metrics={expenseMetrics} defaultExpanded={blocksExpanded} />
-                <div>
+                <div className="flex flex-col h-full">
                   <SummaryBlock 
                     title="СКЛАД" 
                     titleColor="text-warning" 

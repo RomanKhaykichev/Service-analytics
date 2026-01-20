@@ -10,7 +10,7 @@ import {
 
 interface MetricItem {
   icon: ReactNode;
-  label: string;
+  label: string | ReactNode;
   value: string;
   subValue?: string;
   trend?: "up" | "down" | "neutral";
@@ -43,7 +43,7 @@ export function SummaryBlock({
   }, [defaultExpanded]);
 
   return (
-    <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden transition-all duration-200">
+    <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden transition-all duration-200 h-full flex flex-col">
       <div className="w-full flex items-center justify-between p-4">
         <h3 className={cn("text-sm font-bold uppercase tracking-wide", titleColor)}>
           {title}
@@ -69,7 +69,7 @@ export function SummaryBlock({
       </div>
 
       {isExpanded && (
-        <div className="px-4 pb-4 space-y-2 animate-fade-in">
+        <div className="px-4 pb-4 space-y-2 animate-fade-in flex-1 flex flex-col">
           {metrics.map((metric, index) => (
             <div
               key={index}
@@ -92,7 +92,7 @@ export function SummaryBlock({
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-foreground">
+                <span className="text-sm font-semibold text-foreground whitespace-nowrap">
                   {metric.value}
                 </span>
                 {metric.subValue && (

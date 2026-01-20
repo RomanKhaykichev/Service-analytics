@@ -24,7 +24,9 @@ class KPISummaryResponse(BaseModel):
     uzumCommission: float
     uzumLogistics: float
     uzumAds: float
+    uzumStorage: float
     uzumFines: float
+    taxes1pct: float
     productCost: float
     stockQuantity: float
     stockCost: float

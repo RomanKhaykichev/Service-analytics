@@ -189,6 +189,14 @@ def kpi_summary(
                         ELSE 0
                     END
                 ), 0) as returns_value,
+                -- returnsValueCompleted: SUM(returns_qty * price_sum) WHERE status='завершен' (только для завершенных заказов)
+                COALESCE(SUM(
+                    CASE 
+                        WHEN {completed_status_condition}
+                        THEN COALESCE(returns_qty, 0) * COALESCE(price_sum, 0)
+                        ELSE 0
+                    END
+                ), 0) as returns_value_completed,
                 -- uzumCommission/uzumLogistics: только completed
                 COALESCE(SUM(CASE WHEN {completed_status_condition} THEN commission_sum ELSE 0 END), 0) as uzum_commission,
                 COALESCE(SUM(CASE WHEN {completed_status_condition} THEN logistics_sum ELSE 0 END), 0) as uzum_logistics,
@@ -210,17 +218,32 @@ def kpi_summary(
         sales_row = sales_result.fetchone()
         
         orders_count = float(sales_row[0] or 0)
-        orders_value = float(sales_row[1] or 0)
+        orders_value_raw = float(sales_row[1] or 0)  # Старое значение для совместимости
         processing_count = float(sales_row[2] or 0)
         processing_value = float(sales_row[3] or 0)
         completed_count = float(sales_row[4] or 0)
         completed_value = float(sales_row[5] or 0)
         returns_count = float(sales_row[6] or 0)
         returns_value = float(sales_row[7] or 0)
-        uzum_commission = float(sales_row[8] or 0)
-        uzum_logistics = float(sales_row[9] or 0)
-        product_cost_total = float(sales_row[10] or 0)
-        product_cost_completed = float(sales_row[11] or 0)
+        returns_value_completed = float(sales_row[8] or 0)
+        uzum_commission = float(sales_row[9] or 0)
+        uzum_logistics = float(sales_row[10] or 0)
+        product_cost_total = float(sales_row[11] or 0)
+        product_cost_completed = float(sales_row[12] or 0)
+        
+        # ТЗ: Выручка Заказов = Выручка Выкупы + Выручка Возвраты
+        # Выручка Выкупы = completed_value (SUM(Выручка) WHERE Статус='завершен')
+        # Выручка Возвраты = returns_value_completed (SUM(Возвраты * Цена) WHERE Статус='завершен')
+        orders_value = completed_value + returns_value_completed
+        
+        # Лог для проверки формулы (dev only)
+        logger.info(
+            f"orders_revenue calculation: completed_value={completed_value}, "
+            f"returns_value_completed={returns_value_completed}, "
+            f"orders_value={orders_value}, "
+            f"orders_value_raw={orders_value_raw}, "
+            f"period={period_code}, shop_id={shop_id}"
+        )
         
         # Derived metrics from sales
         # Return rate: (SUM(returns_qty) / SUM(qty)) * 100 (from all rows, same filters)
@@ -263,11 +286,10 @@ def kpi_summary(
                     END
                 ), 0) as uzum_ads,
                 -- uzumStorage: Услуга="Оплата за услуги хранения"
-                -- ТЗ: expenses-report: sum(Стоимость (сумы)) where Услуга="Оплата за услуги хранения"
+                -- ТЗ: expenses-report: sum(Стоимость (сумы)) where Услуга='Оплата за услуги хранения'
                 COALESCE(SUM(
                     CASE 
-                        WHEN COALESCE(service, '') ILIKE '%оплат%за%услуги%хранен%' 
-                             OR COALESCE(service, '') ILIKE '%payment%storage%'
+                        WHEN lower(trim(COALESCE(service, ''))) = 'оплата за услуги хранения'
                         THEN COALESCE(cost_sum, 0)
                         ELSE 0
                     END
@@ -292,12 +314,16 @@ def kpi_summary(
         uzum_storage = float(expenses_row[1] or 0)
         uzum_fines = float(expenses_row[2] or 0)
         
+        # Налоги 1% от выручки (завершённые заказы)
+        # ТЗ: Налоги 1% = Выручка * 0.01, где Выручка = SUM(Выручка (сумы)) со статусом "Завершен"
+        taxes_1pct = revenue * 0.01 if revenue else 0.0
+        
         # C) Total expenses, profit, ratios
         # ТЗ: Расходы = сумма всех расходов из блока Расходы
-        # Расходы включают: Комиссия + Логистика + Реклама + Хранение + Штрафы + Себестоимость проданных товаров
+        # Расходы включают: Комиссия + Логистика + Реклама + Хранение + Штрафы + Налоги 1% + Себестоимость проданных товаров
         # Себестоимость проданных товаров = sum(Себестоимость (сумы) * Количество) where Статус IN ("Завершен","В обработке")
         # Используем product_cost_total (completed OR processing) для totalExpenses
-        total_expenses = uzum_commission + uzum_logistics + uzum_ads + uzum_storage + uzum_fines + product_cost_total
+        total_expenses = uzum_commission + uzum_logistics + uzum_ads + uzum_storage + uzum_fines + taxes_1pct + product_cost_total
         profit = revenue - total_expenses
         
         # ТЗ: Рентабельность продаж = (Выручка / sum(Себестоимость (сумы)) where Статус="Завершен") * 100
@@ -309,7 +335,7 @@ def kpi_summary(
         # ТЗ: ROI = ((Выручка – Себестоимость) / Себестоимость) * 100 where Статус="завершен"
         roi = ((revenue - product_cost_completed) / product_cost_completed * 100) if product_cost_completed > 0 else 0.0
         
-        logger.info(f"expenses: commission={uzum_commission}, logistics={uzum_logistics}, ads={uzum_ads}, storage={uzum_storage}, fines={uzum_fines}, product_cost_total={product_cost_total}, product_cost_completed={product_cost_completed}, salesProfitability={sales_profitability}, roi={roi}")
+        logger.info(f"expenses: commission={uzum_commission}, logistics={uzum_logistics}, ads={uzum_ads}, storage={uzum_storage}, fines={uzum_fines}, taxes_1pct={taxes_1pct}, product_cost_total={product_cost_total}, product_cost_completed={product_cost_completed}, salesProfitability={sales_profitability}, roi={roi}")
         
         # D) Revenue trend (compare with previous period)
         # ТЗ: Тренд выручки = сравнение выручки выбранного периода с выручкой аналогичного периода ранее
@@ -426,40 +452,40 @@ def kpi_summary(
             # B) По этому loaded_at посчитать агрегаты склада и цены по SKU/barcode
             stock_params["snap_loaded_at"] = snap_loaded_at
             
-            # Price window: последние 90 дней от data_end_date
-            price_window_from_date = date_to_date - timedelta(days=89)
-            price_window_from = price_window_from_date.isoformat()
-            price_window_to = date_to_iso
-            
-            stock_params["price_window_from"] = price_window_from
-            stock_params["price_window_to"] = price_window_to
-            
-            # Полный запрос с JOIN по SKU/barcode для расчета цен и себестоимости
             # ТЗ Блок Склад:
             # 1) Товар на складе = left-out-report: sum(На стороне маркетплейса (всего в продаже, в пути, на складах и фотостудии), шт)
             #    Реализовано: SUM(marketplace_side) из fact_leftout_snapshot
-            # 2) Себестоимость товара (на складе):
-            #    В left-out-report нет поля себестоимости остатков, поэтому используем оценочную себестоимость:
-            #    (avg unit cost from sells_report, статус="завершен") * (остатки из left-out-report) по SKU, затем суммировать
-            #    Реализовано: avg_cogs из fact_sales (последние 90 дней, completed) * marketplace_side
-            # 3) Розничная цена товара (остатки) = left-out-report: sum(Потенциальная сумма к получению за все остатки, сум)
-            #    Реализовано: SUM(potential_total) из fact_leftout_snapshot (но сейчас используем avg_price * stock_qty для совместимости)
+            # 2) Себестоимость товара (на складе), сум = sells_report: SUM(Себестоимость (сумы) * Количество) WHERE Статус="завершен"
+            #    Важно: В fact_sales cogs_sum уже является итоговой себестоимостью по строке (total), поэтому формула: SUM(cogs_sum)
+            #    Используем фильтры period/shop для расчета себестоимости из fact_sales
+            # 3) Розничная цена товара (остатки), сум = left-out-report: SUM(Потенциальная сумма к получению за все остатки, сум)
+            #    Реализовано: SUM(potential_total) из fact_leftout_snapshot
+            
+            # Для расчета себестоимости используем фильтры period/shop из основного запроса
+            # Если period=all, используем все данные, иначе используем date_from/date_to
+            stock_params.update(params_base)
+            if date_from:
+                stock_params["date_from"] = date_from.isoformat()
+            stock_params["date_to"] = date_to_iso
+            
+            stock_cogs_where = ["user_id = CAST(:user_id AS uuid)", f"({completed_condition})"]
+            stock_cogs_where.append("(:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))")
+            
+            if date_from:
+                stock_cogs_where.append("date_created >= CAST(:date_from AS date)")
+                stock_cogs_where.append("date_created < CAST(:date_to AS date) + INTERVAL '1 day'")
+            
+            stock_cogs_where_clause = " AND ".join(stock_cogs_where)
+            
             stock_query = text(f"""
-                WITH price_cogs AS (
-                    -- Средние цены и себестоимость по SKU/barcode из fact_sales (последние 90 дней, status='Завершен')
-                    -- Используется для оценки себестоимости остатков (так как в left-out-report нет себестоимости)
+                WITH stock_cogs_total AS (
+                    -- ТЗ: Себестоимость товара (на складе), сум = sells_report: SUM(Себестоимость (сумы) * Количество) WHERE Статус="завершен"
+                    -- Важно: В fact_sales cogs_sum уже является итоговой себестоимостью по строке (total), поэтому формула: SUM(cogs_sum)
+                    -- Применяем фильтры period/shop для расчета себестоимости
                     SELECT
-                        NULLIF(TRIM(sku), '') AS sku,
-                        NULLIF(TRIM(barcode), '') AS barcode,
-                        COALESCE(SUM(revenue_sum) / NULLIF(SUM(qty), 0), 0) AS avg_price,
-                        COALESCE(SUM(cogs_sum) / NULLIF(SUM(qty), 0), 0) AS avg_cogs
+                        COALESCE(SUM(cogs_sum), 0) AS total_cogs
                     FROM {qname("fact_sales")}
-                    WHERE user_id = CAST(:user_id AS uuid)
-                        AND ({completed_condition})
-                        AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
-                        AND date_created >= CAST(:price_window_from AS date)
-                        AND date_created < CAST(:price_window_to AS date) + INTERVAL '1 day'
-                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(barcode), '')
+                    WHERE {stock_cogs_where_clause}
                 ),
                 snap AS (
                     -- Текущий snapshot склада из fact_leftout_snapshot
@@ -488,17 +514,16 @@ def kpi_summary(
                     SUM(s.stock_qty) AS stock_quantity,
                     SUM(CASE WHEN s.stock_qty > 0 THEN 1 ELSE 0 END) AS stock_sku_with_stock,
                     MAX(s.stock_snapshot_at) AS stock_snapshot_at,
-                    -- Розничная цена: используем potential_total из left-out-report (ТЗ), иначе fallback на avg_price * stock_qty
+                    -- ТЗ: Розничная цена товара (остатки), сум = left-out-report: SUM(Потенциальная сумма к получению за все остатки, сум)
                     -- Используем MAX(pt.total_potential) так как potential_total_agg возвращает одну строку
-                    COALESCE(MAX(pt.total_potential), SUM(s.stock_qty * COALESCE(pc.avg_price, 0)), 0) AS stock_retail_price,
-                    -- Себестоимость остатков: avg_cogs * stock_qty (оценочная, так как в left-out-report нет себестоимости)
-                    COALESCE(SUM(s.stock_qty * COALESCE(pc.avg_cogs, 0)), 0) AS stock_cost
+                    COALESCE(MAX(pt.total_potential), 0) AS stock_retail_price,
+                    -- ТЗ: Себестоимость товара (на складе), сум = sells_report: SUM(Себестоимость (сумы) * Количество) WHERE Статус="завершен"
+                    -- В fact_sales cogs_sum уже является итоговой себестоимостью по строке (total), поэтому формула: SUM(cogs_sum)
+                    -- Используем MAX(sc.total_cogs) так как stock_cogs_total возвращает одну строку
+                    COALESCE(MAX(sc.total_cogs), 0) AS stock_cost
                 FROM snap s
-                LEFT JOIN price_cogs pc ON (
-                    (pc.sku = s.sku AND s.sku IS NOT NULL AND pc.sku IS NOT NULL)
-                    OR (pc.barcode = s.barcode AND s.barcode IS NOT NULL AND pc.barcode IS NOT NULL)
-                )
                 CROSS JOIN potential_total_agg pt
+                CROSS JOIN stock_cogs_total sc
             """)
             
             stock_result = db.execute(stock_query, stock_params)
@@ -732,6 +757,7 @@ def kpi_summary(
             "uzumAds": uzum_ads,
             "uzumStorage": uzum_storage,
             "uzumFines": uzum_fines,
+            "taxes1pct": taxes_1pct,
             "productCost": product_cost_total,
             "productCostCompleted": product_cost_completed,
             "stockQuantity": stock_quantity,
