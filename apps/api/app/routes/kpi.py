@@ -170,9 +170,10 @@ def kpi_summary(
         
         sales_query = text(f"""
             SELECT 
-                -- ordersCount/ordersValue: SUM(qty) and SUM(revenue_sum) WITHOUT status filter
+                -- ordersCount: SUM(qty) WITHOUT status filter
                 COALESCE(SUM(qty), 0) as orders_count,
-                COALESCE(SUM(revenue_sum), 0) as orders_value,
+                -- ordersValue: ТЗ: SUM(Количество * Цена (сумы)) БЕЗ фильтра по статусу (как orders_count)
+                COALESCE(SUM(COALESCE(qty, 0) * COALESCE(price_sum, 0)), 0) as orders_value,
                 -- processingCount/processingValue: SUM(qty) and SUM(revenue_sum) WHERE status='в обработке'
                 COALESCE(SUM(CASE WHEN {processing_status_condition} THEN qty ELSE 0 END), 0) as processing_count,
                 COALESCE(SUM(CASE WHEN {processing_status_condition} THEN revenue_sum ELSE 0 END), 0) as processing_value,
@@ -218,7 +219,7 @@ def kpi_summary(
         sales_row = sales_result.fetchone()
         
         orders_count = float(sales_row[0] or 0)
-        orders_value_raw = float(sales_row[1] or 0)  # Старое значение для совместимости
+        orders_value = float(sales_row[1] or 0)  # ТЗ: SUM(qty * price_sum) БЕЗ фильтра по статусу
         processing_count = float(sales_row[2] or 0)
         processing_value = float(sales_row[3] or 0)
         completed_count = float(sales_row[4] or 0)
@@ -231,17 +232,10 @@ def kpi_summary(
         product_cost_total = float(sales_row[11] or 0)
         product_cost_completed = float(sales_row[12] or 0)
         
-        # ТЗ: Выручка Заказов = Выручка Выкупы + Выручка Возвраты
-        # Выручка Выкупы = completed_value (SUM(Выручка) WHERE Статус='завершен')
-        # Выручка Возвраты = returns_value_completed (SUM(Возвраты * Цена) WHERE Статус='завершен')
-        orders_value = completed_value + returns_value_completed
-        
-        # Лог для проверки формулы (dev only)
+        # Лог для проверки формулы orders_value (dev only)
         logger.info(
-            f"orders_revenue calculation: completed_value={completed_value}, "
-            f"returns_value_completed={returns_value_completed}, "
-            f"orders_value={orders_value}, "
-            f"orders_value_raw={orders_value_raw}, "
+            f"orders_revenue calculation: orders_value={orders_value} (SUM(qty * price_sum) без фильтра по статусу), "
+            f"orders_count={orders_count}, "
             f"period={period_code}, shop_id={shop_id}"
         )
         
@@ -562,7 +556,7 @@ def kpi_summary(
             logger.error(f"CRITICAL: stock_retail_price is NULL after calculation for user_id={user_id}, shop_id={shop_id}")
             stock_retail_price = 0.0
         
-        logger.info(f"stock: quantity={stock_quantity}, cost={stock_cost}, retail_price={stock_retail_price}, sku_total={stock_sku_total}, sku_with_stock={stock_sku_with_stock}, is_zero={stock_is_zero}, reason={stock_zero_reason}, snapshot_at={stock_snapshot_at}, shop_id={shop_id}")
+        logger.info(f"stock: quantity={stock_quantity}, cost={stock_cost} (SUM(cogs_sum) для завершенных заказов), retail_price={stock_retail_price}, sku_total={stock_sku_total}, sku_with_stock={stock_sku_with_stock}, is_zero={stock_is_zero}, reason={stock_zero_reason}, snapshot_at={stock_snapshot_at}, shop_id={shop_id}, period={period_code}")
         
         # B) Lost revenue: потенциальная выручка от товаров без остатков
         # Формула: (avg_daily_sales * 15) * price (для товаров где stock=0 и avg_daily_sales>0)
