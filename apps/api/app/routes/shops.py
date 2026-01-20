@@ -27,17 +27,25 @@ async def get_shops(
         # Также включаем магазины из продаж для совместимости
         try:
             # Объединяем магазины из dim_shop (left-out-report) и fact_sales (sells-report)
+            # Фильтруем пустые/NULL магазины ("не определено")
             query = text(f"""
                 SELECT DISTINCT shop_id::text, shop_name
                 FROM {qname("dim_shop")}
                 WHERE user_id = CAST(:user_id AS uuid)
+                  AND shop_name IS NOT NULL
+                  AND TRIM(shop_name) <> ''
+                  AND lower(TRIM(shop_name)) NOT IN ('не определено', 'неопределено', 'undefined', 'null', '(не определено)', 'не определен')
                 UNION
                 SELECT DISTINCT shop_id::text, NULL::text AS shop_name
                 FROM {qname("fact_sales")}
                 WHERE user_id = CAST(:user_id AS uuid)
                   AND shop_id IS NOT NULL
                   AND shop_id NOT IN (
-                      SELECT shop_id FROM {qname("dim_shop")} WHERE user_id = CAST(:user_id AS uuid)
+                      SELECT shop_id FROM {qname("dim_shop")} 
+                      WHERE user_id = CAST(:user_id AS uuid)
+                        AND shop_name IS NOT NULL
+                        AND TRIM(shop_name) <> ''
+                        AND lower(TRIM(shop_name)) NOT IN ('не определено', 'неопределено', 'undefined', 'null', '(не определено)', 'не определен')
                   )
                 ORDER BY shop_id
             """)
