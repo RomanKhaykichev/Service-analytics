@@ -152,8 +152,17 @@
   - В `fact_sales` поле `cogs_sum` хранится как **итоговая себестоимость по строке (total)**, а не единичная себестоимость
   - Это подтверждается кодом импорта (`import_batch.py`, `apps/api/app/routes/imports.py`): `cogs_sum` берется напрямую из `cogs_raw` без умножения на `qty`
   - Поэтому формула: `SUM(cogs_sum)` **без умножения на количество**
+  - Статус учитывается как `lower(trim(status)) IN ('завершен', 'завершён')`
 - **Фильтры**: `period`, `shop_id`, `user_id` (применяются к расчету себестоимости из fact_sales)
 - **Примечание**: Себестоимость остатков на складе рассчитывается как общая себестоимость завершённых заказов в выбранном периоде, а не как произведение остатков на среднюю себестоимость единицы
+
+### Фильтрация склада по магазинам
+- **Источник фильтра**: `left-out-report` → `fact_leftout_snapshot` → поле `shop_id`
+- **ТЗ**: В фильтре магазинов для данных склада источник — файл left-out (left-out-report) колонка "Магазин"
+- **Реализация**: 
+  - `fact_leftout_snapshot.shop_id` заполняется из `dim_shop` по `shop_name` из left-out-report при импорте
+  - Фильтрация склада использует `shop_id` (UUID) из параметра запроса: `(:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))`
+  - `/api/shops` возвращает объединенный список магазинов из `dim_shop` (left-out-report) и `fact_sales` (sells-report) для совместимости
 
 ### 3. Розничная цена товара на складе (stockRetailPrice)
 - **Формула**: `SUM(potential_total)` из `fact_leftout_snapshot` (если есть), иначе `SUM(stock_qty * avg_price)`

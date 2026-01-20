@@ -22,26 +22,40 @@ async def get_shops(
     logger.info(f"get_shops: user_id={user_id}, schema={qname('v_sales_daily')}")
     
     try:
-        # Try dim_shop first if it exists
+        # ТЗ: Магазины для фильтра склада должны браться из left-out-report (fact_leftout_snapshot)
+        # dim_shop заполняется из left-out-report при импорте, поэтому используем его как основной источник
+        # Также включаем магазины из продаж для совместимости
         try:
+            # Объединяем магазины из dim_shop (left-out-report) и fact_sales (sells-report)
             query = text(f"""
                 SELECT DISTINCT shop_id::text, shop_name
                 FROM {qname("dim_shop")}
                 WHERE user_id = CAST(:user_id AS uuid)
+                UNION
+                SELECT DISTINCT shop_id::text, NULL::text AS shop_name
+                FROM {qname("fact_sales")}
+                WHERE user_id = CAST(:user_id AS uuid)
+                  AND shop_id IS NOT NULL
+                  AND shop_id NOT IN (
+                      SELECT shop_id FROM {qname("dim_shop")} WHERE user_id = CAST(:user_id AS uuid)
+                  )
                 ORDER BY shop_id
             """)
             result = db.execute(query, {"user_id": str(user_id)})
             rows = result.fetchall()
             
             if rows:
-                logger.info(f"get_shops: found {len(rows)} shops from dim_shop")
+                logger.info(f"get_shops: found {len(rows)} shops (dim_shop + fact_sales)")
                 shops = [
-                    Shop(shop_id=row[0], shop_name=row[1] or f"Shop {row[0]}")
+                    Shop(
+                        shop_id=row[0], 
+                        shop_name=row[1] or f"Shop {row[0]}"
+                    )
                     for row in rows
                 ]
                 return ShopsResponse(shops=shops)
         except Exception as e:
-            logger.debug(f"dim_shop not available: {e}. Using v_sales_daily.")
+            logger.debug(f"dim_shop/fact_sales not available: {e}. Using v_sales_daily.")
         
         # Fallback to v_sales_daily - just shop_id
         query = text(f"""

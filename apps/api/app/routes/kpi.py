@@ -474,7 +474,8 @@ def kpi_summary(
             stock_query = text(f"""
                 WITH stock_cogs_total AS (
                     -- ТЗ: Себестоимость товара (на складе), сум = sells_report: SUM(Себестоимость (сумы) * Количество) WHERE Статус="завершен"
-                    -- Важно: В fact_sales cogs_sum уже является итоговой себестоимостью по строке (total), поэтому формула: SUM(cogs_sum)
+                    -- Трактовка: В fact_sales cogs_sum хранится как итоговая себестоимость по строке (total), поэтому формула: SUM(cogs_sum)
+                    -- Статус: lower(trim(status)) IN ('завершен', 'завершён')
                     -- Применяем фильтры period/shop для расчета себестоимости
                     SELECT
                         COALESCE(SUM(cogs_sum), 0) AS total_cogs
