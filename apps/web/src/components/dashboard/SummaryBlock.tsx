@@ -25,6 +25,10 @@ interface SummaryBlockProps {
   defaultExpanded?: boolean;
   showToggleButton?: boolean;
   onToggle?: () => void;
+  // Опциональная вторая группа метрик с заголовком и tooltip
+  secondaryMetrics?: MetricItem[];
+  secondaryGroupTitle?: string;
+  secondaryGroupTooltip?: string;
 }
 
 export function SummaryBlock({
@@ -34,6 +38,9 @@ export function SummaryBlock({
   defaultExpanded = true,
   showToggleButton = false,
   onToggle,
+  secondaryMetrics,
+  secondaryGroupTitle,
+  secondaryGroupTooltip,
 }: SummaryBlockProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
@@ -115,6 +122,76 @@ export function SummaryBlock({
               </div>
             </div>
           ))}
+          
+          {/* Вторая группа метрик с заголовком и tooltip */}
+          {secondaryMetrics && secondaryMetrics.length > 0 && (
+            <>
+              <div className="mt-3 pt-3 border-t border-border/50">
+                <div className="flex items-center justify-center gap-2 mb-2 px-1">
+                  <span className={cn("text-xs font-medium", titleColor, "opacity-70")}>
+                    {secondaryGroupTitle || "Дополнительные метрики"}
+                  </span>
+                  {secondaryGroupTooltip && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <HelpCircle className="w-3 h-3 text-muted-foreground/50" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="text-xs max-w-64">{secondaryGroupTooltip}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                </div>
+                {secondaryMetrics.map((metric, index) => (
+                  <div
+                    key={`secondary-${index}`}
+                    className="flex items-center justify-between py-2 border-b border-border/50 last:border-0"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="text-muted-foreground">{metric.icon}</div>
+                      <span className="text-sm text-muted-foreground">{metric.label}</span>
+                      {metric.tooltip && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <HelpCircle className="w-3 h-3 text-muted-foreground/50" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="text-xs max-w-48">{metric.tooltip}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-foreground whitespace-nowrap">
+                        {metric.value}
+                      </span>
+                      {metric.subValue && (
+                        <span className="text-xs text-muted-foreground">
+                          / {metric.subValue}
+                        </span>
+                      )}
+                      {metric.trendValue && (
+                        <span
+                          className={cn(
+                            "text-xs font-medium px-1.5 py-0.5 rounded",
+                            metric.trend === "up" && "text-success bg-success/10",
+                            metric.trend === "down" && "text-destructive bg-destructive/10",
+                            metric.trend === "neutral" && "text-muted-foreground bg-muted"
+                          )}
+                        >
+                          {metric.trendValue}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

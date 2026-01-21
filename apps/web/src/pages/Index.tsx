@@ -164,6 +164,7 @@ const Index = () => {
     }
   ] : [];
 
+  // Основные метрики расходов (зависят от выбранного магазина)
   const expenseMetrics = metrics ? [
     {
       icon: <Percent className="w-4 h-4" />,
@@ -177,6 +178,22 @@ const Index = () => {
       value: formatCurrency(metrics.uzumLogistics),
       tooltip: "Логистический сбор из отчёта о продажах"
     },
+    {
+      icon: <Boxes className="w-4 h-4" />,
+      label: "Себест. прод. тов.",
+      value: formatCurrency(metrics.productCost),
+      tooltip: "Себестоимость × количество (в обработке + завершен)"
+    },
+    {
+      icon: <Receipt className="w-4 h-4" />,
+      label: "Налоги 1%",
+      value: formatCurrency(metrics.taxes1pct),
+      tooltip: "Налоги 1% от выручки (завершённые заказы)"
+    }
+  ] : [];
+
+  // Метрики расходов по всем магазинам (не зависят от выбранного магазина)
+  const expenseMetricsAllShops = metrics ? [
     {
       icon: <Target className="w-4 h-4" />,
       label: "Реклама UZUM",
@@ -194,18 +211,6 @@ const Index = () => {
       label: "Штрафы UZUM",
       value: formatCurrency(metrics.uzumFines),
       tooltip: "Штрафы (услуга содержит слово ШТРАФ)"
-    },
-    {
-      icon: <Receipt className="w-4 h-4" />,
-      label: "Налоги 1%",
-      value: formatCurrency(metrics.taxes1pct),
-      tooltip: "Налоги 1% от выручки (завершённые заказы)"
-    },
-    {
-      icon: <Boxes className="w-4 h-4" />,
-      label: "Себест. прод. тов.",
-      value: formatCurrency(metrics.productCost),
-      tooltip: "Себестоимость × количество (в обработке + завершен)"
     }
   ] : [];
 
@@ -353,7 +358,15 @@ const Index = () => {
               <>
                 <SummaryBlock title="ПРОДАЖИ" titleColor="text-chart-4" metrics={salesMetrics} defaultExpanded={blocksExpanded} />
                 <SummaryBlock title="ФИНАНСЫ" titleColor="text-warning" metrics={financeMetrics} defaultExpanded={blocksExpanded} />
-                <SummaryBlock title="РАСХОДЫ" titleColor="text-destructive" metrics={expenseMetrics} defaultExpanded={blocksExpanded} />
+                <SummaryBlock 
+                  title="РАСХОДЫ" 
+                  titleColor="text-destructive" 
+                  metrics={expenseMetrics} 
+                  defaultExpanded={blocksExpanded}
+                  secondaryMetrics={expenseMetricsAllShops}
+                  secondaryGroupTitle="Общие по магазинам"
+                  secondaryGroupTooltip="Учитываются только в общих Расходах и Прибыли, выбор магазина не влияет."
+                />
                 <div className="flex flex-col h-full">
                   <SummaryBlock 
                     title="СКЛАД" 
