@@ -313,11 +313,18 @@ def kpi_summary(
         taxes_1pct = revenue * 0.01 if revenue else 0.0
         
         # C) Total expenses, profit, ratios
-        # ТЗ: Расходы = сумма всех расходов из блока Расходы
-        # Расходы включают: Комиссия + Логистика + Реклама + Хранение + Штрафы + Налоги 1% + Себестоимость проданных товаров
-        # Себестоимость проданных товаров = sum(Себестоимость (сумы) * Количество) where Статус IN ("Завершен","В обработке")
-        # Используем product_cost_total (completed OR processing) для totalExpenses
-        total_expenses = uzum_commission + uzum_logistics + uzum_ads + uzum_storage + uzum_fines + taxes_1pct + product_cost_total
+        # ТЗ: Расходы в блоке Финансы зависят от выбранного магазина:
+        # - Если shop_id = NULL (все магазины): все расходы из блока Расходы (полный состав)
+        # - Если shop_id != NULL (конкретный магазин): только расходы, зависящие от магазина
+        #   (Комиссия + Логистика + Себестоимость + Налоги, БЕЗ общих расходов: Реклама/Хранение/Штрафы)
+        if shop_id is None:
+            # Все расходы из блока Расходы (полный состав)
+            total_expenses = uzum_commission + uzum_logistics + uzum_ads + uzum_storage + uzum_fines + taxes_1pct + product_cost_total
+        else:
+            # Только расходы, зависящие от выбранного магазина
+            # Комиссия + Логистика + Себестоимость + Налоги (без общих расходов)
+            total_expenses = (uzum_commission or 0.0) + (uzum_logistics or 0.0) + (taxes_1pct or 0.0) + (product_cost_total or 0.0)
+        
         profit = revenue - total_expenses
         
         # ТЗ: Рентабельность продаж = (Прибыль / Выручка) * 100%
@@ -330,7 +337,7 @@ def kpi_summary(
         # Формула: roi = (profit / expenses) * 100, если expenses > 0, иначе 0
         roi = (profit / total_expenses * 100) if total_expenses > 0 else 0.0
         
-        logger.info(f"expenses: commission={uzum_commission}, logistics={uzum_logistics}, ads={uzum_ads}, storage={uzum_storage}, fines={uzum_fines}, taxes_1pct={taxes_1pct}, product_cost_total={product_cost_total}, product_cost_completed={product_cost_completed}, salesProfitability={sales_profitability}, roi={roi}")
+        logger.info(f"expenses: shop_id={shop_id}, total_expenses={total_expenses}, commission={uzum_commission}, logistics={uzum_logistics}, ads={uzum_ads}, storage={uzum_storage}, fines={uzum_fines}, taxes_1pct={taxes_1pct}, product_cost_total={product_cost_total}, product_cost_completed={product_cost_completed}, salesProfitability={sales_profitability}, roi={roi}")
         
         # D) Revenue trend (compare with previous period)
         # ТЗ: Тренд выручки = сравнение выручки выбранного периода с выручкой аналогичного периода ранее
