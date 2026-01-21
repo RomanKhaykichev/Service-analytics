@@ -460,20 +460,16 @@ def kpi_summary(
             # 3) Розничная цена товара (остатки), сум = left-out-report: SUM(Потенциальная сумма к получению за все остатки, сум)
             #    Реализовано: SUM(potential_total) из fact_leftout_snapshot
             
-            # Для расчета себестоимости используем фильтры period/shop из основного запроса
-            # Если period=all, используем окно последних 90 дней для расчета unit_cogs (зафиксировано в комментарии)
+            # Для расчета себестоимости используем фильтр shop из основного запроса
+            # ВАЖНО: stock_cost НЕ зависит от period - всегда используем фиксированное окно последних 90 дней
+            # Это обеспечивает стабильность метрики "Себест. тов. на складе, сум" независимо от выбранного периода
             stock_params.update(params_base)
             
-            # Определяем окно для расчета unit_cogs
-            if date_from:
-                # Используем текущий период фильтра
-                unit_cogs_date_from = date_from.isoformat()
-                unit_cogs_date_to = date_to_iso
-            else:
-                # period=all: используем последние 90 дней до date_to (зафиксировано в комментарии)
-                unit_cogs_date_from_date = date_to_date - timedelta(days=89)
-                unit_cogs_date_from = unit_cogs_date_from_date.isoformat()
-                unit_cogs_date_to = date_to_iso
+            # Фиксированное окно для расчета unit_cogs: последние 90 дней от data_end_date
+            # Это окно НЕ зависит от параметра period запроса пользователя
+            unit_cogs_date_from_date = date_to_date - timedelta(days=89)
+            unit_cogs_date_from = unit_cogs_date_from_date.isoformat()
+            unit_cogs_date_to = date_to_iso
             
             stock_params["unit_cogs_date_from"] = unit_cogs_date_from
             stock_params["unit_cogs_date_to"] = unit_cogs_date_to
@@ -505,7 +501,8 @@ def kpi_summary(
                     -- В fact_sales cogs_sum хранится как итоговая себестоимость по строке (total), поэтому:
                     -- unit_cogs = SUM(cogs_sum) / NULLIF(SUM(qty), 0)
                     -- Статус: lower(trim(status)) IN ('завершен', 'завершён')
-                    -- Окно: текущий период фильтра (или последние 90 дней при period=all)
+                    -- Окно: фиксированное - последние 90 дней от data_end_date (НЕ зависит от period фильтра)
+                    -- Это обеспечивает стабильность stock_cost независимо от выбранного периода
                     SELECT
                         NULLIF(TRIM(sku), '') AS sku,
                         NULLIF(TRIM(barcode), '') AS barcode,
