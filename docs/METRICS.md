@@ -145,16 +145,25 @@
 - **Примечание**: Используется самый свежий snapshot (`MAX(loaded_at)`)
 
 ### 2. Себестоимость товара на складе (stockCost)
-- **Формула**: `SUM(cogs_sum)` из `fact_sales` где `lower(trim(status)) IN ('завершен', 'завершён')`
-- **Источник**: `sells_report` → `fact_sales`
-- **ТЗ**: `SUM(Себестоимость (сумы) * Количество) WHERE Статус="завершен"`
-- **Трактовка данных**: 
+- **Формула**: `SUM(stock_qty * unit_cogs)` по каждому товару (SKU/barcode)
+- **Где**:
+  - `stock_qty` = `COALESCE(marketplace_side, 0)` из `fact_leftout_snapshot` (left-out-report)
+  - `unit_cogs` = единичная себестоимость из `fact_sales` (sells-report)
+- **Расчет unit_cogs**:
   - В `fact_sales` поле `cogs_sum` хранится как **итоговая себестоимость по строке (total)**, а не единичная себестоимость
   - Это подтверждается кодом импорта (`import_batch.py`, `apps/api/app/routes/imports.py`): `cogs_sum` берется напрямую из `cogs_raw` без умножения на `qty`
-  - Поэтому формула: `SUM(cogs_sum)` **без умножения на количество**
+  - Поэтому: `unit_cogs = SUM(cogs_sum) / NULLIF(SUM(qty), 0)` по завершённым заказам
   - Статус учитывается как `lower(trim(status)) IN ('завершен', 'завершён')`
-- **Фильтры**: `period`, `shop_id`, `user_id` (применяются к расчету себестоимости из fact_sales)
-- **Примечание**: Себестоимость остатков на складе рассчитывается как общая себестоимость завершённых заказов в выбранном периоде, а не как произведение остатков на среднюю себестоимость единицы
+- **Сопоставление товаров**:
+  - Связь `fact_leftout_snapshot` и `fact_sales` по SKU и/или barcode
+  - Приоритет: сначала по SKU, затем по barcode (если не найдено по SKU)
+- **Окно для unit_cogs**:
+  - Если `period != "all"`: используется текущий период фильтра (`date_from` - `date_to`)
+  - Если `period = "all"`: используется окно последних 90 дней до `date_to` (зафиксировано в комментарии)
+- **Фильтры**: `period`, `shop_id`, `user_id` (применяются к расчету unit_cogs из fact_sales)
+- **Источники**: 
+  - `stock_qty`: `left-out-report` → `fact_leftout_snapshot`
+  - `unit_cogs`: `sells_report` → `fact_sales`
 
 ### Фильтрация склада по магазинам
 - **Источник фильтра**: `left-out-report` → `fact_leftout_snapshot` → поле `shop_id`

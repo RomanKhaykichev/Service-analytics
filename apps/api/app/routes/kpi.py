@@ -320,14 +320,15 @@ def kpi_summary(
         total_expenses = uzum_commission + uzum_logistics + uzum_ads + uzum_storage + uzum_fines + taxes_1pct + product_cost_total
         profit = revenue - total_expenses
         
-        # ТЗ: Рентабельность продаж = (Выручка / sum(Себестоимость (сумы)) where Статус="Завершен") * 100
-        # Примечание: В fact_sales cogs_sum уже является итоговой себестоимостью по строке (не единичной)
-        # Проверено: в populate_facts для sales используется cogs_raw напрямую, значит это уже общая себестоимость
-        # Формула: salesProfitability = (revenue / product_cost_completed) * 100
-        sales_profitability = (revenue / product_cost_completed * 100) if product_cost_completed > 0 else 0.0
+        # ТЗ: Рентабельность продаж = (Прибыль / Выручка) * 100%
+        # Формула: profitability_pct = COALESCE((profit / NULLIF(revenue, 0)) * 100, 0)
+        # Защита: если revenue = 0 -> 0
+        sales_profitability = (profit / revenue * 100) if revenue > 0 else 0.0
         
-        # ТЗ: ROI = ((Выручка – Себестоимость) / Себестоимость) * 100 where Статус="завершен"
-        roi = ((revenue - product_cost_completed) / product_cost_completed * 100) if product_cost_completed > 0 else 0.0
+        # ТЗ: Окупаемость инвестиций = (Прибыль / Расходы) * 100%
+        # Защита: если Расходы = 0 -> 0
+        # Формула: roi = (profit / expenses) * 100, если expenses > 0, иначе 0
+        roi = (profit / total_expenses * 100) if total_expenses > 0 else 0.0
         
         logger.info(f"expenses: commission={uzum_commission}, logistics={uzum_logistics}, ads={uzum_ads}, storage={uzum_storage}, fines={uzum_fines}, taxes_1pct={taxes_1pct}, product_cost_total={product_cost_total}, product_cost_completed={product_cost_completed}, salesProfitability={sales_profitability}, roi={roi}")
         
@@ -345,9 +346,11 @@ def kpi_summary(
         
         if period_code != "all" and date_from:
             # Calculate previous period range (same length as current period)
-            days_diff = (date_to_date - date_from).days
-            prev_date_from = date_from - timedelta(days=days_diff)
-            prev_date_to = date_from
+            # ТЗ: Если текущий период [from, to], длина L = (to - from + 1 день)
+            # Previous период = [from - L, to - L]
+            period_length_days = (date_to_date - date_from).days + 1  # L = (to - from + 1)
+            prev_date_from = date_from - timedelta(days=period_length_days)  # from - L
+            prev_date_to = date_to_date - timedelta(days=period_length_days)  # to - L
             
             prev_params = {
                 "user_id": str(user_id),
@@ -376,13 +379,15 @@ def kpi_summary(
             revenue_trend_detail["previous_revenue"] = prev_revenue
             revenue_trend_detail["delta_abs"] = revenue - prev_revenue
             
+            # ТЗ: Тренд выручки = ((current_revenue - previous_revenue) / previous_revenue) * 100%
+            # Защита: если previous_revenue = 0 -> 0 (не показывать рост как 100%)
             if prev_revenue > 0:
                 revenue_trend = ((revenue - prev_revenue) / prev_revenue * 100)
                 revenue_trend_detail["delta_pct"] = revenue_trend
-            elif revenue > 0:
-                # If previous was 0 but current > 0, it's 100% growth
-                revenue_trend = 100.0
-                revenue_trend_detail["delta_pct"] = 100.0
+            else:
+                # Если previous_revenue = 0, возвращаем 0 (не показываем рост)
+                revenue_trend = 0.0
+                revenue_trend_detail["delta_pct"] = 0.0
         
         # E) Cumulative revenue (YTD - Year To Date, from start of year relative to date_to)
         # Does NOT depend on period, only on date_to (data_end_date)
@@ -456,33 +461,32 @@ def kpi_summary(
             #    Реализовано: SUM(potential_total) из fact_leftout_snapshot
             
             # Для расчета себестоимости используем фильтры period/shop из основного запроса
-            # Если period=all, используем все данные, иначе используем date_from/date_to
+            # Если period=all, используем окно последних 90 дней для расчета unit_cogs (зафиксировано в комментарии)
             stock_params.update(params_base)
+            
+            # Определяем окно для расчета unit_cogs
             if date_from:
-                stock_params["date_from"] = date_from.isoformat()
-            stock_params["date_to"] = date_to_iso
+                # Используем текущий период фильтра
+                unit_cogs_date_from = date_from.isoformat()
+                unit_cogs_date_to = date_to_iso
+            else:
+                # period=all: используем последние 90 дней до date_to (зафиксировано в комментарии)
+                unit_cogs_date_from_date = date_to_date - timedelta(days=89)
+                unit_cogs_date_from = unit_cogs_date_from_date.isoformat()
+                unit_cogs_date_to = date_to_iso
+            
+            stock_params["unit_cogs_date_from"] = unit_cogs_date_from
+            stock_params["unit_cogs_date_to"] = unit_cogs_date_to
             
             stock_cogs_where = ["user_id = CAST(:user_id AS uuid)", f"({completed_condition})"]
             stock_cogs_where.append("(:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))")
-            
-            if date_from:
-                stock_cogs_where.append("date_created >= CAST(:date_from AS date)")
-                stock_cogs_where.append("date_created < CAST(:date_to AS date) + INTERVAL '1 day'")
+            stock_cogs_where.append("date_created >= CAST(:unit_cogs_date_from AS date)")
+            stock_cogs_where.append("date_created < CAST(:unit_cogs_date_to AS date) + INTERVAL '1 day'")
             
             stock_cogs_where_clause = " AND ".join(stock_cogs_where)
             
             stock_query = text(f"""
-                WITH stock_cogs_total AS (
-                    -- ТЗ: Себестоимость товара (на складе), сум = sells_report: SUM(Себестоимость (сумы) * Количество) WHERE Статус="завершен"
-                    -- Трактовка: В fact_sales cogs_sum хранится как итоговая себестоимость по строке (total), поэтому формула: SUM(cogs_sum)
-                    -- Статус: lower(trim(status)) IN ('завершен', 'завершён')
-                    -- Применяем фильтры period/shop для расчета себестоимости
-                    SELECT
-                        COALESCE(SUM(cogs_sum), 0) AS total_cogs
-                    FROM {qname("fact_sales")}
-                    WHERE {stock_cogs_where_clause}
-                ),
-                snap AS (
+                WITH snap AS (
                     -- Текущий snapshot склада из fact_leftout_snapshot
                     -- ТЗ: Товар на складе = sum(На стороне маркетплейса (всего в продаже, в пути, на складах и фотостудии), шт)
                     SELECT
@@ -495,6 +499,52 @@ def kpi_summary(
                         AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
                         AND loaded_at = CAST(:snap_loaded_at AS timestamp)
                     GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(barcode), ''), COALESCE(marketplace_side, 0)
+                ),
+                unit_cogs_by_product AS (
+                    -- ТЗ: unit_cogs = единичная себестоимость из sells_report
+                    -- В fact_sales cogs_sum хранится как итоговая себестоимость по строке (total), поэтому:
+                    -- unit_cogs = SUM(cogs_sum) / NULLIF(SUM(qty), 0)
+                    -- Статус: lower(trim(status)) IN ('завершен', 'завершён')
+                    -- Окно: текущий период фильтра (или последние 90 дней при period=all)
+                    SELECT
+                        NULLIF(TRIM(sku), '') AS sku,
+                        NULLIF(TRIM(barcode), '') AS barcode,
+                        COALESCE(
+                            SUM(cogs_sum) / NULLIF(SUM(qty), 0),
+                            0
+                        ) AS unit_cogs
+                    FROM {qname("fact_sales")}
+                    WHERE {stock_cogs_where_clause}
+                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(barcode), '')
+                ),
+                stock_with_cogs AS (
+                    -- Сопоставление товаров из snap с unit_cogs по SKU и/или barcode
+                    -- Приоритет: сначала по SKU, затем по barcode
+                    SELECT
+                        s.sku,
+                        s.barcode,
+                        s.stock_qty,
+                        s.stock_snapshot_at AS stock_snapshot_at,
+                        COALESCE(
+                            -- Приоритет 1: сопоставление по SKU
+                            uc_sku.unit_cogs,
+                            -- Приоритет 2: сопоставление по barcode
+                            uc_barcode.unit_cogs,
+                            -- Если не найдено: 0
+                            0
+                        ) AS unit_cogs
+                    FROM snap s
+                    LEFT JOIN unit_cogs_by_product uc_sku ON (
+                        uc_sku.sku = s.sku 
+                        AND s.sku IS NOT NULL 
+                        AND uc_sku.sku IS NOT NULL
+                    )
+                    LEFT JOIN unit_cogs_by_product uc_barcode ON (
+                        uc_barcode.barcode = s.barcode 
+                        AND s.barcode IS NOT NULL 
+                        AND uc_barcode.barcode IS NOT NULL
+                        AND uc_sku.unit_cogs IS NULL  -- Используем barcode только если не нашли по SKU
+                    )
                 ),
                 potential_total_agg AS (
                     -- ТЗ: Розничная цена товара (остатки) = sum(Потенциальная сумма к получению за все остатки, сум)
@@ -512,13 +562,11 @@ def kpi_summary(
                     -- ТЗ: Розничная цена товара (остатки), сум = left-out-report: SUM(Потенциальная сумма к получению за все остатки, сум)
                     -- Используем MAX(pt.total_potential) так как potential_total_agg возвращает одну строку
                     COALESCE(MAX(pt.total_potential), 0) AS stock_retail_price,
-                    -- ТЗ: Себестоимость товара (на складе), сум = sells_report: SUM(Себестоимость (сумы) * Количество) WHERE Статус="завершен"
-                    -- В fact_sales cogs_sum уже является итоговой себестоимостью по строке (total), поэтому формула: SUM(cogs_sum)
-                    -- Используем MAX(sc.total_cogs) так как stock_cogs_total возвращает одну строку
-                    COALESCE(MAX(sc.total_cogs), 0) AS stock_cost
-                FROM snap s
+                    -- ТЗ: Себестоимость товара (на складе), сум = SUM(stock_qty * unit_cogs)
+                    -- Где: stock_qty из left-out-report (marketplace_side), unit_cogs из sells_report (SUM(cogs_sum)/NULLIF(SUM(qty),0))
+                    COALESCE(SUM(s.stock_qty * s.unit_cogs), 0) AS stock_cost
+                FROM stock_with_cogs s
                 CROSS JOIN potential_total_agg pt
-                CROSS JOIN stock_cogs_total sc
             """)
             
             stock_result = db.execute(stock_query, stock_params)
@@ -557,7 +605,7 @@ def kpi_summary(
             logger.error(f"CRITICAL: stock_retail_price is NULL after calculation for user_id={user_id}, shop_id={shop_id}")
             stock_retail_price = 0.0
         
-        logger.info(f"stock: quantity={stock_quantity}, cost={stock_cost} (SUM(cogs_sum) для завершенных заказов), retail_price={stock_retail_price}, sku_total={stock_sku_total}, sku_with_stock={stock_sku_with_stock}, is_zero={stock_is_zero}, reason={stock_zero_reason}, snapshot_at={stock_snapshot_at}, shop_id={shop_id}, period={period_code}")
+        logger.info(f"stock: quantity={stock_quantity}, cost={stock_cost} (SUM(stock_qty * unit_cogs) по товарам), retail_price={stock_retail_price}, sku_total={stock_sku_total}, sku_with_stock={stock_sku_with_stock}, is_zero={stock_is_zero}, reason={stock_zero_reason}, snapshot_at={stock_snapshot_at}, shop_id={shop_id}, period={period_code}")
         
         # B) Lost revenue: потенциальная выручка от товаров без остатков
         # Формула: (avg_daily_sales * 15) * price (для товаров где stock=0 и avg_daily_sales>0)
@@ -608,10 +656,14 @@ def kpi_summary(
             lost_revenue_params["snap_loaded_at"] = snap_loaded_at
             
             # B) Расчет lostRevenue с avg_daily_sales из периода и ценами
-            # Используем orders_condition (NOT cancelled) вместо completed для avg и цены
+            # ТЗ: Упущенная выручка = (Среднесуточные продажи FBO за 15 дней, шт) * Цена (сумы) * 15
+            # Условие: Остатки FBO (всего в продаже и на СДХ), шт = 0
+            # Цена: weighted_avg_price = SUM(revenue_sum)/NULLIF(SUM(qty),0) по завершенным заказам
+            # Для avg_daily_sales используем завершенные заказы за период
+            # Если period=all, используем последние 90 дней для расчета цены (зафиксировано в комментарии)
             lost_revenue_query = text(f"""
                 WITH period_sales AS (
-                    -- Продажи в периоде для расчета avg_daily_sales и цены (НЕ отменённые)
+                    -- Среднесуточные продажи FBO за период (только завершенные заказы)
                     SELECT
                         NULLIF(TRIM(sku), '') AS sku,
                         NULLIF(TRIM(barcode), '') AS barcode,
@@ -619,33 +671,35 @@ def kpi_summary(
                         SUM(revenue_sum) AS rev_period
                     FROM {qname("fact_sales")}
                     WHERE user_id = CAST(:user_id AS uuid)
-                        AND ({orders_condition})
+                        AND ({completed_condition})
                         AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
                         AND date_created >= CAST(:date_from_for_avg AS date)
                         AND date_created < CAST(:date_to AS date) + INTERVAL '1 day'
                     GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(barcode), '')
                 ),
-                price_fallback AS (
-                    -- Fallback цены из окна 90 дней (НЕ отменённые)
+                price_window AS (
+                    -- Weighted average price из окна для расчета цены (только завершенные заказы)
+                    -- Если period=all, используем последние 90 дней (зафиксировано в комментарии)
                     SELECT
                         NULLIF(TRIM(sku), '') AS sku,
                         NULLIF(TRIM(barcode), '') AS barcode,
-                        SUM(revenue_sum) AS rev_fallback,
-                        SUM(qty) AS qty_fallback
+                        SUM(revenue_sum) AS rev_window,
+                        SUM(qty) AS qty_window
                     FROM {qname("fact_sales")}
                     WHERE user_id = CAST(:user_id AS uuid)
-                        AND ({orders_condition})
+                        AND ({completed_condition})
                         AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
                         AND date_created >= CAST(:price_window_from AS date)
                         AND date_created < CAST(:date_to AS date) + INTERVAL '1 day'
                     GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(barcode), '')
                 ),
                 snap AS (
-                    -- Текущий snapshot склада из fact_leftout_snapshot (единый источник)
+                    -- Текущий snapshot склада из fact_leftout_snapshot
+                    -- Остатки FBO = in_sale + sdh_stock (всего в продаже и на СДХ)
                     SELECT
                         NULLIF(TRIM(sku), '') AS sku,
                         NULLIF(TRIM(barcode), '') AS barcode,
-                        COALESCE(marketplace_side, 0) AS stock_qty
+                        COALESCE(in_sale, 0) + COALESCE(sdh_stock, 0) AS stock_fbo
                     FROM {qname("fact_leftout_snapshot")}
                     WHERE user_id = CAST(:user_id AS uuid)
                         AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
@@ -653,16 +707,16 @@ def kpi_summary(
                 )
                 SELECT
                     COUNT(*) AS rows_snapshot,
-                    SUM(CASE WHEN p.stock_qty = 0 THEN 1 ELSE 0 END) AS rows_zero_stock,
-                    SUM(CASE WHEN p.stock_qty = 0 AND COALESCE(p.qty_period, 0) > 0 THEN 1 ELSE 0 END) AS rows_with_sales,
-                    SUM(CASE WHEN p.stock_qty = 0 AND COALESCE(p.qty_period, 0) > 0 AND p.final_price IS NOT NULL THEN 1 ELSE 0 END) AS rows_with_price,
-                    SUM(CASE WHEN p.stock_qty = 0 AND COALESCE(p.qty_period, 0) > 0 AND p.final_price IS NULL THEN 1 ELSE 0 END) AS rows_no_price,
+                    SUM(CASE WHEN p.stock_fbo = 0 THEN 1 ELSE 0 END) AS rows_zero_stock,
+                    SUM(CASE WHEN p.stock_fbo = 0 AND COALESCE(p.qty_period, 0) > 0 THEN 1 ELSE 0 END) AS rows_with_sales,
+                    SUM(CASE WHEN p.stock_fbo = 0 AND COALESCE(p.qty_period, 0) > 0 AND p.weighted_price IS NOT NULL THEN 1 ELSE 0 END) AS rows_with_price,
+                    SUM(CASE WHEN p.stock_fbo = 0 AND COALESCE(p.qty_period, 0) > 0 AND p.weighted_price IS NULL THEN 1 ELSE 0 END) AS rows_no_price,
                     COALESCE(SUM(
                         CASE
-                            WHEN p.stock_qty = 0 
+                            WHEN p.stock_fbo = 0 
                                 AND COALESCE(p.qty_period, 0) > 0 
-                                AND p.final_price IS NOT NULL
-                            THEN ((p.qty_period::numeric / CAST(:days_in_period AS numeric)) * 15 * p.final_price)
+                                AND p.weighted_price IS NOT NULL
+                            THEN ((p.qty_period::numeric / CAST(:days_in_period AS numeric)) * 15 * p.weighted_price)
                             ELSE 0
                         END
                     ), 0) AS lost_revenue
@@ -670,22 +724,23 @@ def kpi_summary(
                     SELECT 
                         s.sku,
                         s.barcode,
-                        s.stock_qty,
+                        s.stock_fbo,
                         ps.qty_period,
+                        -- Weighted average price: SUM(revenue_sum)/NULLIF(SUM(qty),0) по завершенным
                         COALESCE(
-                            -- Цена из периода
-                            CASE WHEN ps.qty_period > 0 THEN ps.rev_period / ps.qty_period END,
-                            -- Fallback цена из окна 90 дней
-                            CASE WHEN pf.qty_fallback > 0 THEN pf.rev_fallback / pf.qty_fallback END
-                        ) AS final_price
+                            -- Цена из периода (weighted avg)
+                            CASE WHEN ps.qty_period > 0 THEN ps.rev_period / NULLIF(ps.qty_period, 0) END,
+                            -- Fallback цена из окна (weighted avg)
+                            CASE WHEN pw.qty_window > 0 THEN pw.rev_window / NULLIF(pw.qty_window, 0) END
+                        ) AS weighted_price
                     FROM snap s
                     LEFT JOIN period_sales ps ON (
                         (ps.sku = s.sku AND s.sku IS NOT NULL AND ps.sku IS NOT NULL)
                         OR (ps.barcode = s.barcode AND s.barcode IS NOT NULL AND ps.barcode IS NOT NULL)
                     )
-                    LEFT JOIN price_fallback pf ON (
-                        (pf.sku = s.sku AND s.sku IS NOT NULL AND pf.sku IS NOT NULL)
-                        OR (pf.barcode = s.barcode AND s.barcode IS NOT NULL AND pf.barcode IS NOT NULL)
+                    LEFT JOIN price_window pw ON (
+                        (pw.sku = s.sku AND s.sku IS NOT NULL AND pw.sku IS NOT NULL)
+                        OR (pw.barcode = s.barcode AND s.barcode IS NOT NULL AND pw.barcode IS NOT NULL)
                     )
                 ) p
             """)
