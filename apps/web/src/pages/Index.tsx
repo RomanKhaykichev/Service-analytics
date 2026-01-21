@@ -128,13 +128,13 @@ const Index = () => {
       icon: <TrendingDown className="w-4 h-4" />,
       label: "Расходы",
       value: formatCurrency(metrics.totalExpenses),
-      tooltip: "Сумма всех расходов из блока Расходы"
+      tooltip: "Сумма всех расходов из блока Расходы. При выборе магазина, Общие не включены."
     },
     {
       icon: <Wallet className="w-4 h-4" />,
       label: "Прибыль",
       value: formatCurrency(metrics.profit),
-      tooltip: "Выручка минус расходы"
+      tooltip: "Выручка минус Расходы"
     },
     {
       icon: <Target className="w-4 h-4" />,
@@ -365,7 +365,7 @@ const Index = () => {
                   defaultExpanded={blocksExpanded}
                   secondaryMetrics={expenseMetricsAllShops}
                   secondaryGroupTitle="Общие по магазинам"
-                  secondaryGroupTooltip="Учитываются только в общих Расходах и Прибыли, выбор магазина не влияет."
+                  secondaryGroupTooltip="Учитываются только в Финансах по всем магазинам (Расходы и Прибыль), выбор магазина не влияет."
                 />
                 <div className="flex flex-col h-full">
                   <SummaryBlock 

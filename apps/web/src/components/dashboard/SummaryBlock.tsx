@@ -128,7 +128,7 @@ export function SummaryBlock({
             <>
               <div className="mt-3 pt-3 border-t border-border/50">
                 <div className="flex items-center justify-center gap-2 mb-2 px-1">
-                  <span className={cn("text-xs font-medium", titleColor, "opacity-70")}>
+                  <span className={cn("text-xs font-semibold", titleColor, "opacity-75")}>
                     {secondaryGroupTitle || "Дополнительные метрики"}
                   </span>
                   {secondaryGroupTooltip && (
