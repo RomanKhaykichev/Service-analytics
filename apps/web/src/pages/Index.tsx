@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ShoppingCart, Truck, Package, RotateCcw, Percent, CreditCard, DollarSign, TrendingDown, Wallet, Target, BarChart3, TrendingUp, ArrowDown, AlertTriangle, Boxes, Warehouse, Tag, ShoppingBag, ChevronDown, ChevronUp, Receipt } from "lucide-react";
+import { ShoppingCart, Truck, Package, RotateCcw, Percent, CreditCard, DollarSign, TrendingDown, Wallet, Target, BarChart3, TrendingUp, ArrowDown, AlertTriangle, Boxes, Warehouse, Tag, ShoppingBag, ChevronDown, ChevronUp, Receipt, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { SummaryTabs } from "@/components/dashboard/SummaryTabs";
@@ -189,6 +189,12 @@ const Index = () => {
       label: "Налоги 1%",
       value: formatCurrency(metrics.taxes1pct),
       tooltip: "Налоги 1% от выручки (завершённые заказы)"
+    },
+    {
+      icon: <Info className="w-4 h-4" />,
+      label: "Доп. расходы",
+      value: "N/A",
+      tooltip: "Расходы занесенные во вкладке Доп. расходы."
     }
   ] : [];
 
