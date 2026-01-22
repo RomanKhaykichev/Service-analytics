@@ -22,6 +22,9 @@ from app.schemas import (
     StockDailyResponse,
     StockDailyPoint,
     StockDailyFilters,
+    UzumServicesDailyResponse,
+    UzumServicesPoint,
+    UzumServicesFilters,
 )
 
 logger = logging.getLogger(__name__)
@@ -408,6 +411,133 @@ async def get_stock_daily(
         raise
     except Exception as e:
         logger.error(f"Error in get_stock_daily: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+
+@router.get("/charts/uzum-services-daily", response_model=UzumServicesDailyResponse)
+async def get_uzum_services_daily(
+    user_id: UUID = Depends(require_user),
+    period: str = Query(default="30d", description="Period: 7d, 30d, 90d, or all"),
+    shop_id: Optional[str] = Query(default=None, description="Shop UUID (ignored for services - they are common)"),
+    db: Session = Depends(get_db)
+):
+    """Get daily UZUM services chart data (storage, ads, fines) from fact_expenses.
+    Services are common across all shops, so shop_id is ignored."""
+    # Normalize period
+    period_code = normalize_period(period)
+    
+    # Get data_end_date (maximum date from all data tables)
+    data_end_date = get_data_end_date(db, user_id)
+    
+    # Calculate period range based on data_end_date
+    period_range_dict = period_range(period_code, data_end_date)
+    
+    date_to_iso = period_range_dict["date_to"]
+    date_to_date = datetime.fromisoformat(date_to_iso).date()
+    date_from_iso = period_range_dict["date_from"]
+    date_from = datetime.fromisoformat(date_from_iso).date() if date_from_iso else None
+    
+    # For period=all, if date_from is None, use MIN(date_written_off) or very early date
+    if period_code == "all" and date_from is None:
+        min_date_query = text(f"""
+            SELECT MIN(date_written_off)::date
+            FROM {qname("fact_expenses")}
+            WHERE user_id = CAST(:user_id AS uuid)
+        """)
+        min_date_result = db.execute(min_date_query, {"user_id": str(user_id)})
+        min_date = min_date_result.scalar()
+        if min_date:
+            date_from = min_date
+        else:
+            date_from = date_to_date - timedelta(days=364)
+        date_from_iso = date_from.isoformat()
+    
+    # Ensure date_from is set
+    if not date_from:
+        date_from = date_to_date - timedelta(days=29)
+        date_from_iso = date_from.isoformat()
+    
+    logger.info(f"get_uzum_services_daily: user_id={user_id}, period={period_code}, date_from={date_from_iso}, date_to={date_to_iso} (shop_id ignored)")
+    
+    try:
+        # Build parameters (shop_id is ignored - services are common)
+        params = {
+            "user_id": str(user_id),
+            "date_from": date_from_iso,
+            "date_to": date_to_iso
+        }
+        
+        # Build query: группируем по date_written_off::date
+        # Хранение: Услуга='Оплата за услуги хранения'
+        # Реклама: Источник ILIKE '%маркетинг%' AND Тип операции ILIKE '%оплат%'
+        # Штрафы: Услуга ILIKE '%штраф%'
+        query = text(f"""
+            SELECT 
+                date_written_off::date AS day,
+                -- Хранение UZUM: Услуга='Оплата за услуги хранения'
+                COALESCE(SUM(
+                    CASE 
+                        WHEN lower(trim(COALESCE(service, ''))) = 'оплата за услуги хранения'
+                        THEN COALESCE(cost_sum, 0)
+                        ELSE 0
+                    END
+                ), 0) AS storage,
+                -- Реклама UZUM: Источник ILIKE '%маркетинг%' AND Тип операции ILIKE '%оплат%'
+                COALESCE(SUM(
+                    CASE 
+                        WHEN (COALESCE(source, '') ILIKE '%маркетинг%' OR COALESCE(source, '') ILIKE '%marketing%')
+                             AND (COALESCE(operation_type, '') ILIKE '%оплат%' OR COALESCE(operation_type, '') ILIKE '%payment%')
+                        THEN COALESCE(cost_sum, 0)
+                        ELSE 0
+                    END
+                ), 0) AS ads,
+                -- Штрафы UZUM: Услуга ILIKE '%штраф%'
+                COALESCE(SUM(
+                    CASE 
+                        WHEN COALESCE(service, '') ILIKE '%штраф%'
+                        THEN COALESCE(amount_sum, 0)
+                        ELSE 0
+                    END
+                ), 0) AS fines
+            FROM {qname("fact_expenses")}
+            WHERE user_id = CAST(:user_id AS uuid)
+                AND date_written_off >= CAST(:date_from AS date)
+                AND date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'
+            GROUP BY date_written_off::date
+            ORDER BY day ASC
+        """)
+        
+        result = db.execute(query, params)
+        rows = result.fetchall()
+        
+        # Convert to response format
+        points = [
+            UzumServicesPoint(
+                date=row[0].isoformat() if hasattr(row[0], 'isoformat') else str(row[0]),
+                storage=float(row[1] or 0),
+                ads=float(row[2] or 0),
+                fines=float(row[3] or 0)
+            )
+            for row in rows
+        ]
+        
+        # Return response
+        return UzumServicesDailyResponse(
+            points=points,
+            period=PeriodInfo(
+                code=period_code,
+                date_from=date_from_iso or "",
+                date_to=date_to_iso
+            ),
+            filters=UzumServicesFilters(shop_id=None)  # Always None - services are common
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_uzum_services_daily: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Internal server error: {str(e)}"

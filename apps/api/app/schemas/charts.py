@@ -76,3 +76,21 @@ class StockDailyResponse(BaseModel):
     points: list[StockDailyPoint]
     period: PeriodInfo
     filters: StockDailyFilters
+
+
+# UZUM Services daily chart
+class UzumServicesPoint(BaseModel):
+    date: str  # YYYY-MM-DD format
+    storage: float  # Хранение UZUM
+    ads: float  # Реклама UZUM
+    fines: float  # Штрафы UZUM
+
+
+class UzumServicesFilters(BaseModel):
+    shop_id: Optional[str] = None  # Игнорируется для услуг (они общие)
+
+
+class UzumServicesDailyResponse(BaseModel):
+    points: list[UzumServicesPoint]
+    period: PeriodInfo
+    filters: UzumServicesFilters

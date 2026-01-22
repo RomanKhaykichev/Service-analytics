@@ -7,7 +7,7 @@ import { SummaryFilters } from "@/components/dashboard/SummaryFilters";
 import { SummaryBlock } from "@/components/dashboard/SummaryBlock";
 import { RevenueProgressBar } from "@/components/dashboard/RevenueProgressBar";
 import { RevenueDailyChart } from "@/components/dashboard/RevenueDailyChart";
-import { StockDailyChart } from "@/components/dashboard/StockDailyChart";
+import { UzumServicesChart } from "@/components/dashboard/UzumServicesChart";
 import { MonthlyTable } from "@/components/dashboard/MonthlyTable";
 import { DailyView } from "@/components/dashboard/DailyView";
 import { ExpensesView } from "@/components/dashboard/ExpensesView";
@@ -18,7 +18,7 @@ import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
 import { useShops } from "@/hooks/useShops";
 import { useRevenueDaily } from "@/hooks/useRevenueDaily";
 import { useStockCurrent } from "@/hooks/useStockCurrent";
-import { useStockDaily } from "@/hooks/useStockDaily";
+import { useUzumServicesDaily } from "@/hooks/useUzumServicesDaily";
 import { formatCurrency, formatQuantity, formatPercent, formatTrend, formatMoneyNoDecimals } from "@/lib/formatters";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
@@ -36,18 +36,10 @@ const Index = () => {
   const { metrics, loading, error } = useDashboardMetrics(periodCode, store === "all" ? undefined : store);
   const shopId = store === "all" ? null : store;
 
-  // Load revenue and stock data
+  // Load revenue and UZUM services data
   const { points: revenuePoints } = useRevenueDaily({ periodCode, shopId });
   const { items: stockItems } = useStockCurrent({ limit: 50, shopId });
-  const { points: stockDailyPoints } = useStockDaily({ periodCode, shopId });
-
-  // Prepare stock points for chart (include orders and stock)
-  const stockPoints = stockDailyPoints.map((p) => ({
-    date: p.date,
-    orders: p.orders,
-    stock: p.stock,
-  }));
-  console.log("StockDaily points", stockPoints.slice(0, 5));
+  const { points: uzumServicesPoints, loading: uzumServicesLoading, error: uzumServicesError } = useUzumServicesDaily({ periodCode, shopId });
 
   // Transform revenue data for RevenueDailyChart (YYYY-MM-DD -> dd.MM)
   const revenueChartData = revenuePoints.length > 0 ? revenuePoints.map((point) => {
@@ -427,7 +419,7 @@ const Index = () => {
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
             <RevenueDailyChart data={revenueChartData} />
-            <StockDailyChart points={stockPoints} />
+            <UzumServicesChart points={uzumServicesPoints} loading={uzumServicesLoading} error={uzumServicesError} />
           </div>
         </>
       )}
