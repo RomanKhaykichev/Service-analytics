@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
-import { ShoppingCart, Truck, Package, RotateCcw, Percent, CreditCard, DollarSign, TrendingDown, Wallet, Target, BarChart3, TrendingUp, ArrowDown, AlertTriangle, Boxes, Warehouse, Tag, ShoppingBag, ChevronDown, ChevronUp, Receipt, Info } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ShoppingCart, Truck, Package, RotateCcw, Percent, CreditCard, DollarSign, TrendingDown, Wallet, Target, BarChart3, TrendingUp, ArrowDown, AlertTriangle, Boxes, Warehouse, Tag, ShoppingBag, Receipt, Info } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { SummaryTabs } from "@/components/dashboard/SummaryTabs";
 import { SummaryFilters } from "@/components/dashboard/SummaryFilters";
@@ -29,7 +28,6 @@ const Index = () => {
   const [periodCode, setPeriodCode] = useState<PeriodCode>("30d");
   const [store, setStore] = useState("all");
   const [viewMode, setViewMode] = useState("day");
-  const [blocksExpanded, setBlocksExpanded] = useState(true); // Общее состояние свернутости всех блоков
 
   const { shops } = useShops();
   
@@ -291,30 +289,9 @@ const Index = () => {
         </div>
       </div>
 
-      {/* Tabs with toggle button */}
+      {/* Tabs */}
       <div className="flex items-center justify-between gap-4">
         <SummaryTabs activeTab={activeTab} onTabChange={setActiveTab} />
-        {/* Кнопка свернуть/развернуть все блоки (только для summary tab) */}
-        {activeTab === "summary" && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setBlocksExpanded(!blocksExpanded)}
-            className="flex items-center gap-2 bg-accent text-accent-foreground border-0 hover:bg-accent/90"
-          >
-            {blocksExpanded ? (
-              <>
-                <ChevronUp className="w-4 h-4" />
-                Свернуть блоки
-              </>
-            ) : (
-              <>
-                <ChevronDown className="w-4 h-4" />
-                Развернуть блоки
-              </>
-            )}
-          </Button>
-        )}
       </div>
 
       {/* Content based on active tab */}
@@ -355,20 +332,18 @@ const Index = () => {
               </div>
             ) : (
               <>
-                <SummaryBlock title="ПРОДАЖИ" titleColor="text-chart-4" metrics={salesMetrics} defaultExpanded={blocksExpanded} />
-                <SummaryBlock title="ФИНАНСЫ" titleColor="text-warning" metrics={financeMetrics} defaultExpanded={blocksExpanded} />
+                <SummaryBlock title="ПРОДАЖИ" titleColor="text-chart-4" metrics={salesMetrics} />
+                <SummaryBlock title="ФИНАНСЫ" titleColor="text-warning" metrics={financeMetrics} />
                 <SummaryBlock 
                   title="РАСХОДЫ" 
                   titleColor="text-destructive" 
                   metrics={expenseMetrics} 
-                  defaultExpanded={blocksExpanded}
                 />
                 <div className="flex flex-col h-full gap-4">
                   <SummaryBlock 
                     title="СКЛАД" 
                     titleColor="text-warning" 
                     metrics={warehouseMetrics} 
-                    defaultExpanded={blocksExpanded}
                     customHeightClass="h-auto"
                     customOverflowClass="overflow-visible"
                     customPadding="px-4 pb-4"
@@ -405,7 +380,6 @@ const Index = () => {
                     title="УСЛУГИ UZUM" 
                     titleColor="text-primary" 
                     metrics={uzumServicesMetrics} 
-                    defaultExpanded={blocksExpanded}
                     customBorderClass="border-violet-400 dark:border-violet-500"
                     customMinHeight="min-h-[180px]"
                     customPadding="px-4 pb-3"
