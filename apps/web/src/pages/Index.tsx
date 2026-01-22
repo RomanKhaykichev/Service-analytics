@@ -128,7 +128,7 @@ const Index = () => {
       icon: <TrendingDown className="w-4 h-4" />,
       label: "Расходы",
       value: formatCurrency(metrics.totalExpenses),
-      tooltip: "Сумма всех расходов из блока Расходы. При выборе магазина, Общие не включены."
+      tooltip: "Сумма всех расходов из блока Расходы."
     },
     {
       icon: <Wallet className="w-4 h-4" />,
@@ -192,19 +192,20 @@ const Index = () => {
     }
   ] : [];
 
-  // Метрики расходов по всем магазинам (не зависят от выбранного магазина)
-  const expenseMetricsAllShops = metrics ? [
-    {
-      icon: <Target className="w-4 h-4" />,
-      label: "Реклама UZUM",
-      value: formatCurrency(metrics.uzumAds),
-      tooltip: "Расходы на маркетинг (источник = маркетинг, тип = оплата)"
-    },
+  // Метрики услуг UZUM (не зависят от выбранного магазина)
+  // Порядок: Хранение, Реклама, Штрафы (как на скриншоте)
+  const uzumServicesMetrics = metrics ? [
     {
       icon: <Warehouse className="w-4 h-4" />,
       label: "Хранение UZUM",
       value: formatCurrency(metrics.uzumStorage),
       tooltip: "Оплата за услуги хранения"
+    },
+    {
+      icon: <Target className="w-4 h-4" />,
+      label: "Реклама UZUM",
+      value: formatCurrency(metrics.uzumAds),
+      tooltip: "Расходы на маркетинг (источник = маркетинг, тип = оплата)"
     },
     {
       icon: <AlertTriangle className="w-4 h-4" />,
@@ -363,42 +364,55 @@ const Index = () => {
                   titleColor="text-destructive" 
                   metrics={expenseMetrics} 
                   defaultExpanded={blocksExpanded}
-                  secondaryMetrics={expenseMetricsAllShops}
-                  secondaryGroupTitle="Общие по магазинам"
-                  secondaryGroupTooltip="Учитываются только в Финансах по всем магазинам (Расходы и Прибыль), выбор магазина не влияет."
                 />
-                <div className="flex flex-col h-full">
+                <div className="flex flex-col h-full gap-4">
                   <SummaryBlock 
                     title="СКЛАД" 
                     titleColor="text-warning" 
                     metrics={warehouseMetrics} 
                     defaultExpanded={blocksExpanded}
+                    customHeightClass="h-auto"
+                    customOverflowClass="overflow-visible"
+                    customPadding="px-4 pb-4"
+                    customSpacing="space-y-2"
+                    emptyState={
+                      !loading && (stockIsZero || stockQty === 0) ? (
+                        <Alert variant="destructive" className="m-0">
+                          <AlertTriangle className="h-4 w-4" />
+                          <AlertTitle>Склад = 0</AlertTitle>
+                          <AlertDescription>
+                            <p className="mb-2">
+                              {stockZeroReason === "all_zero_in_snapshot"
+                                ? "По последней выгрузке склада все позиции имеют остаток 0. Проверь файл склада/остатков."
+                                : stockZeroReason === "no_snapshot_data"
+                                ? "Нет данных по складу. Загрузите файл склада/остатков."
+                                : "Склад = 0. Проверь выгрузку 'Склад' или фильтр магазина."}
+                            </p>
+                            {(stockSkuTotal > 0 || stockSkuWithStock > 0 || stockSnapshotAt) && (
+                              <div className="text-xs text-muted-foreground space-y-1">
+                                {stockSkuTotal > 0 && (
+                                  <p>SKU: {stockSkuTotal}, с остатком: {stockSkuWithStock}</p>
+                                )}
+                                {stockSnapshotAt && (
+                                  <p>Срез: {new Date(stockSnapshotAt).toLocaleString("ru-RU")}</p>
+                                )}
+                              </div>
+                            )}
+                          </AlertDescription>
+                        </Alert>
+                      ) : undefined
+                    }
                   />
-                  {(stockIsZero || stockQty === 0) && (
-                    <Alert variant="destructive" className="mt-4">
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertTitle>Склад = 0</AlertTitle>
-                      <AlertDescription>
-                        <p className="mb-2">
-                          {stockZeroReason === "all_zero_in_snapshot"
-                            ? "По последней выгрузке склада все позиции имеют остаток 0. Проверь файл склада/остатков."
-                            : stockZeroReason === "no_snapshot_data"
-                            ? "Нет данных по складу. Загрузите файл склада/остатков."
-                            : "Склад = 0. Проверь выгрузку 'Склад' или фильтр магазина."}
-                        </p>
-                        {(stockSkuTotal > 0 || stockSkuWithStock > 0 || stockSnapshotAt) && (
-                          <div className="text-xs text-muted-foreground space-y-1">
-                            {stockSkuTotal > 0 && (
-                              <p>SKU: {stockSkuTotal}, с остатком: {stockSkuWithStock}</p>
-                            )}
-                            {stockSnapshotAt && (
-                              <p>Срез: {new Date(stockSnapshotAt).toLocaleString("ru-RU")}</p>
-                            )}
-                          </div>
-                        )}
-                      </AlertDescription>
-                    </Alert>
-                  )}
+                  <SummaryBlock 
+                    title="УСЛУГИ UZUM" 
+                    titleColor="text-primary" 
+                    metrics={uzumServicesMetrics} 
+                    defaultExpanded={blocksExpanded}
+                    customBorderClass="border-violet-400 dark:border-violet-500"
+                    customMinHeight="min-h-[180px]"
+                    customPadding="px-4 pb-3"
+                    customSpacing="space-y-1.5"
+                  />
                 </div>
               </>
             )}
