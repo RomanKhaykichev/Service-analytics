@@ -50,6 +50,7 @@ export function ReportUploadDialog() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [lastUploadDate, setLastUploadDate] = useState<string | null>(null);
+  const [dragOverReportId, setDragOverReportId] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -74,10 +75,41 @@ export function ReportUploadDialog() {
   };
 
   const handleFileUpload = (reportId: string, file: File | null) => {
+    if (file) {
+      // Validate file extension
+      const fileName = file.name.toLowerCase();
+      if (!fileName.endsWith('.xlsx') && !fileName.endsWith('.xls')) {
+        toast.error('Поддерживаются только файлы .xlsx и .xls');
+        return;
+      }
+    }
     setUploadedFiles(prev => ({
       ...prev,
       [reportId]: { name: file?.name || "", file, status: 'pending' }
     }));
+  };
+
+  const handleDragOver = (e: React.DragEvent, reportId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverReportId(reportId);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverReportId(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, reportId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverReportId(null);
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFileUpload(reportId, files[0]);
+    }
   };
 
   const handleAdIdChange = (productId: string, value: string) => {
@@ -128,7 +160,7 @@ export function ReportUploadDialog() {
 
         const result = await response.json();
 
-        if (!response.ok) {
+        if (!response.ok || result.error) {
           throw new Error(result.error || 'Upload failed');
         }
 
@@ -197,28 +229,34 @@ export function ReportUploadDialog() {
     if (successCount === filesToUpload.length) {
       toast.success(`Успешно загружено ${successCount} отчётов`);
       loadLastUpload();
+      
+      // TODO: Save ad mappings to backend API
+      if (Object.keys(adIds).length > 0) {
+        console.log('Ad mappings to save:', adIds);
+        // For now, save to localStorage
+        localStorage.setItem('product_ad_mappings', JSON.stringify(adIds));
+      }
+      
+      // Закрыть модалку и перезагрузить страницу
+      setOpen(false);
+      setTimeout(() => {
+        window.location.reload();
+      }, 500); // Небольшая задержка для показа toast
     } else if (successCount > 0) {
       toast.warning(`Загружено ${successCount} из ${filesToUpload.length} отчётов`);
     } else {
       toast.error('Ошибка загрузки отчётов');
-    }
-
-    // TODO: Save ad mappings to backend API
-    if (Object.keys(adIds).length > 0) {
-      console.log('Ad mappings to save:', adIds);
-      // For now, save to localStorage
-      localStorage.setItem('product_ad_mappings', JSON.stringify(adIds));
     }
   };
 
   const getFileStatusIcon = (status: UploadedFile['status']) => {
     switch (status) {
       case 'uploading':
-        return <Loader2 className="w-4 h-4 animate-spin text-primary" />;
+        return <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />;
       case 'success':
-        return <CheckCircle className="w-4 h-4 text-green-500" />;
+        return <CheckCircle className="w-3.5 h-3.5 text-green-500" />;
       case 'error':
-        return <AlertCircle className="w-4 h-4 text-destructive" />;
+        return <AlertCircle className="w-3.5 h-3.5 text-destructive" />;
       default:
         return null;
     }
@@ -241,32 +279,30 @@ export function ReportUploadDialog() {
           )}
         </div>
       </DialogTrigger>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-card border-border">
-        <DialogHeader>
+      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col bg-card border-border">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="text-xl font-semibold">Загрузка отчетов UZUM</DialogTitle>
         </DialogHeader>
 
-        {/* Info Block */}
-        <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 mt-4">
-          <div className="flex items-start gap-3">
-            <Info className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-            <div className="text-sm text-foreground">
-              <p className="font-semibold mb-2">Как это работает?</p>
-              <p className="text-muted-foreground leading-relaxed">
-                Загрузите отчёты в формате <span className="font-semibold text-primary">XLSX</span> из личного кабинета UZUM. 
-                Система автоматически распознает тип отчёта и импортирует данные. 
-                Рекомендуем выгружать данные за максимальный период для полной аналитики.
-              </p>
-              <p className="mt-2 text-warning font-medium">
-                ВАЖНО! Все отчёты должны быть за один и тот же период.
-              </p>
+        <div className="flex-1 overflow-y-auto pr-2 -mr-2 min-h-0">
+          {/* Info Block */}
+          <div className="bg-primary/10 border border-primary/20 rounded-lg p-2.5 mt-3">
+          <div className="flex items-start gap-2">
+            <Info className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+            <div className="text-xs text-foreground">
+              <p className="font-semibold mb-1.5 text-sm">Как это работает?</p>
+              <ul className="text-muted-foreground leading-tight space-y-1 list-disc list-inside">
+                <li>Загрузите отчёты <span className="font-semibold text-primary">XLSX</span> из личного кабинета UZUM</li>
+                <li>Система автоматически распознает тип отчёта и импортирует данные</li>
+                <li className="text-warning font-medium">ВАЖНО: Все отчёты должны быть за один период</li>
+              </ul>
             </div>
           </div>
         </div>
 
         {/* Upload Progress */}
         {uploading && (
-          <div className="mt-4">
+          <div className="mt-3">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-muted-foreground">Загрузка отчётов...</span>
               <span className="text-sm font-medium">{Math.round(uploadProgress)}%</span>
@@ -276,7 +312,7 @@ export function ReportUploadDialog() {
         )}
 
         {/* File Upload Blocks */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 mt-4">
           {reportTypes.map((report) => {
             const fileData = uploadedFiles[report.id];
             const hasFile = fileData?.file;
@@ -285,35 +321,40 @@ export function ReportUploadDialog() {
             return (
               <div 
                 key={report.id}
-                className="border border-border rounded-lg p-4 bg-muted/30"
+                className="border border-border rounded-lg p-2 bg-muted/30"
               >
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-medium text-foreground">{report.label}</h4>
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between mb-1.5">
+                  <h4 className="font-medium text-sm text-foreground">{report.label}</h4>
+                  <div className="flex items-center gap-1.5">
                     {fileData && getFileStatusIcon(fileData.status)}
                     {hasFile && !isUploading && (
                       <Button 
                         variant="ghost" 
                         size="icon" 
-                        className="h-6 w-6"
+                        className="h-5 w-5"
                         onClick={() => handleFileUpload(report.id, null)}
                       >
-                        <X className="w-4 h-4" />
+                        <X className="w-3 h-3" />
                       </Button>
                     )}
                   </div>
                 </div>
                 
                 <label 
-                  className={`flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-6 cursor-pointer transition-colors ${
+                  className={`flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-3 min-h-[80px] cursor-pointer transition-colors ${
                     hasFile 
                       ? fileData.status === 'success' 
                         ? "border-green-500 bg-green-500/5"
                         : fileData.status === 'error'
                         ? "border-destructive bg-destructive/5"
                         : "border-primary bg-primary/5"
+                      : dragOverReportId === report.id
+                      ? "border-primary bg-primary/10"
                       : "border-border hover:border-primary/50 hover:bg-muted/50"
                   } ${isUploading ? 'pointer-events-none opacity-70' : ''}`}
+                  onDragOver={(e) => handleDragOver(e, report.id)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, report.id)}
                 >
                   <input 
                     type="file" 
@@ -323,35 +364,35 @@ export function ReportUploadDialog() {
                     onChange={(e) => handleFileUpload(report.id, e.target.files?.[0] || null)}
                   />
                   {hasFile ? (
-                    <div className="flex flex-col items-center gap-2">
-                      <div className="flex items-center gap-2 text-primary">
-                        <FileSpreadsheet className="w-8 h-8" />
-                        <span className="text-sm font-medium truncate max-w-[150px]">
+                    <div className="flex flex-col items-center gap-1">
+                      <div className="flex items-center gap-1.5 text-primary">
+                        <FileSpreadsheet className="w-5 h-5" />
+                        <span className="text-xs font-medium truncate max-w-[140px]">
                           {fileData.name}
                         </span>
                       </div>
                       {fileData.status === 'success' && fileData.rowsImported !== undefined && (
-                        <span className="text-xs text-green-600">
+                        <span className="text-[10px] text-green-600 leading-tight">
                           Импортировано: {fileData.rowsImported} строк
                         </span>
                       )}
                       {fileData.status === 'error' && fileData.error && (
-                        <span className="text-xs text-destructive">
+                        <span className="text-[10px] text-destructive leading-tight truncate max-w-[180px]">
                           {fileData.error}
                         </span>
                       )}
                     </div>
                   ) : (
                     <>
-                      <Upload className="w-8 h-8 text-muted-foreground mb-2" />
-                      <span className="text-sm text-muted-foreground text-center">
-                        Перетащите файл XLSX или нажмите
+                      <Upload className="w-5 h-5 text-muted-foreground mb-1" />
+                      <span className="text-xs text-muted-foreground text-center leading-tight">
+                        Перетащите файл или нажмите
                       </span>
                     </>
                   )}
                 </label>
-                <p className="text-xs text-muted-foreground mt-2 text-center">
-                  Файл: <span className="font-mono text-primary">{report.hint}.xlsx</span>
+                <p className="text-[10px] text-muted-foreground mt-1 text-center leading-tight">
+                  <span className="font-mono">{report.hint}.xlsx</span>
                 </p>
               </div>
             );
@@ -407,9 +448,10 @@ export function ReportUploadDialog() {
             </div>
           </>
         )}
+        </div>
 
         {/* Action Buttons */}
-        <div className="flex justify-between items-center mt-6">
+        <div className="flex justify-between items-center mt-4 flex-shrink-0 pt-2 border-t border-border/50">
           <div className="text-sm text-muted-foreground">
             {uploadedCount > 0 && (
               <span className="text-green-600 font-medium">
