@@ -477,11 +477,15 @@ async def get_uzum_services_daily(
         query = text(f"""
             SELECT 
                 date_written_off::date AS day,
-                -- Хранение UZUM: Услуга='Оплата за услуги хранения'
+                -- Хранение UZUM: определяется только по Тип операции
+                -- Тип операции='Оплата' → прибавляется, 'Возврат' → вычитается
+                -- Фильтр по Услуга убран согласно обновлённому ТЗ
                 COALESCE(SUM(
                     CASE 
-                        WHEN lower(trim(COALESCE(service, ''))) = 'оплата за услуги хранения'
+                        WHEN lower(trim(COALESCE(operation_type, ''))) = 'оплата' 
                         THEN COALESCE(cost_sum, 0)
+                        WHEN lower(trim(COALESCE(operation_type, ''))) = 'возврат' 
+                        THEN -COALESCE(cost_sum, 0)
                         ELSE 0
                     END
                 ), 0) AS storage,

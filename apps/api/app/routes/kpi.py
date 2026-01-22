@@ -279,12 +279,15 @@ def kpi_summary(
                         ELSE 0
                     END
                 ), 0) as uzum_ads,
-                -- uzumStorage: Услуга="Оплата за услуги хранения"
-                -- ТЗ: expenses-report: sum(Стоимость (сумы)) where Услуга='Оплата за услуги хранения'
+                -- uzumStorage: определяется только по Тип операции
+                -- ТЗ: sum(Стоимость) где Тип операции='Оплата' → прибавляется, 'Возврат' → вычитается
+                -- Фильтр по Услуга убран согласно обновлённому ТЗ
                 COALESCE(SUM(
                     CASE 
-                        WHEN lower(trim(COALESCE(service, ''))) = 'оплата за услуги хранения'
+                        WHEN lower(trim(COALESCE(operation_type, ''))) = 'оплата' 
                         THEN COALESCE(cost_sum, 0)
+                        WHEN lower(trim(COALESCE(operation_type, ''))) = 'возврат' 
+                        THEN -COALESCE(cost_sum, 0)
                         ELSE 0
                     END
                 ), 0) as uzum_storage,
