@@ -25,6 +25,22 @@ interface UzumServicesChartProps {
 export function UzumServicesChart({ points, loading, error }: UzumServicesChartProps) {
   const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
 
+  // Format value in thousands (75000 -> 75 or 75.5) - for Y axis
+  const formatThousands = (value: number): string => {
+    const thousands = value / 1000;
+    // If whole number, show without decimals; otherwise show 1 decimal place
+    if (thousands % 1 === 0) {
+      return thousands.toString();
+    }
+    return thousands.toFixed(1);
+  };
+
+  // Format full value in sum with thousand separators (51200 -> "51 200 сум")
+  const formatFullSum = (value: number): string => {
+    const rounded = Math.round(value);
+    return `${rounded.toLocaleString("ru-RU")} сум`;
+  };
+
   // Normalize points: convert YYYY-MM-DD to DD.MM format and ensure numbers
   const data = (points ?? []).map((p) => {
     const dateStr = p.date;
@@ -71,9 +87,9 @@ export function UzumServicesChart({ points, loading, error }: UzumServicesChartP
               style={{ backgroundColor: entry.color }}
             />
             <span className="text-xs text-muted-foreground">
-              {entry.dataKey === "storage" && "Хранение UZUM"}
-              {entry.dataKey === "ads" && "Реклама UZUM"}
-              {entry.dataKey === "fines" && "Штрафы UZUM"}
+              {entry.dataKey === "storage" && "Хранение"}
+              {entry.dataKey === "ads" && "Реклама"}
+              {entry.dataKey === "fines" && "Штрафы"}
             </span>
           </button>
         ))}
@@ -132,8 +148,9 @@ export function UzumServicesChart({ points, loading, error }: UzumServicesChartP
             <YAxis
               tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
               axisLine={{ stroke: "hsl(var(--border))" }}
+              tickFormatter={(value) => formatThousands(value)}
               label={{
-                value: "Сумма, сум",
+                value: "Затраты, тыс сум",
                 angle: -90,
                 position: "insideLeft",
                 style: { fill: "hsl(var(--muted-foreground))", fontSize: 11 },
@@ -146,10 +163,10 @@ export function UzumServicesChart({ points, loading, error }: UzumServicesChartP
                 borderRadius: "8px",
               }}
               formatter={(value: number, name: string) => {
-                const formattedValue = formatCurrency(value);
-                if (name === "storage") return [formattedValue, "Хранение UZUM"];
-                if (name === "ads") return [formattedValue, "Реклама UZUM"];
-                if (name === "fines") return [formattedValue, "Штрафы UZUM"];
+                const formattedValue = formatFullSum(value);
+                if (name === "storage") return [formattedValue, "Хранение"];
+                if (name === "ads") return [formattedValue, "Реклама"];
+                if (name === "fines") return [formattedValue, "Штрафы"];
                 return [formattedValue, name];
               }}
             />
