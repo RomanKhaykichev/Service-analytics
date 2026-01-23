@@ -91,6 +91,7 @@ export function ExpensesView({ periodCode = "30d", shopId = null }: ExpensesView
   const [editingExpense, setEditingExpense] = useState<ExtraExpense | null>(null);
   const [sortColumn, setSortColumn] = useState<keyof ExtraExpense | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
   // Form state
   const [newExpense, setNewExpense] = useState({
@@ -293,6 +294,8 @@ export function ExpensesView({ periodCode = "30d", shopId = null }: ExpensesView
             comment: "",
           });
         }
+        // Close calendar when opening dialog
+        setCalendarOpen(false);
       } else {
         // Reset form when closing
         setEditingExpense(null);
@@ -303,11 +306,14 @@ export function ExpensesView({ periodCode = "30d", shopId = null }: ExpensesView
           shop_id: "",
           comment: "",
         });
+        // Close calendar when closing dialog
+        setCalendarOpen(false);
       }
     } catch (error) {
       console.error("Error in handleDialogOpenChange:", error);
       // Fallback: ensure dialog state is consistent
       setIsDialogOpen(false);
+      setCalendarOpen(false);
     }
   };
 
@@ -377,9 +383,12 @@ export function ExpensesView({ periodCode = "30d", shopId = null }: ExpensesView
       {/* Expenses Table */}
       <Card>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
+          <div className={cn(
+            "overflow-x-auto",
+            sortedExpenses.length > 10 && "max-h-[500px] overflow-y-auto"
+          )}>
             <Table>
-              <TableHeader>
+              <TableHeader className="sticky top-0 bg-background z-10 [&_tr]:bg-background [&_th]:bg-background">
                 <TableRow>
                   <SortableHeader column="expense_date">Дата</SortableHeader>
                   <SortableHeader column="category">Тип</SortableHeader>
@@ -459,7 +468,16 @@ export function ExpensesView({ periodCode = "30d", shopId = null }: ExpensesView
                   Добавить расход
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[425px]">
+              <DialogContent 
+                className="sm:max-w-[425px]"
+                onInteractOutside={(e) => {
+                  // Prevent closing dialog when clicking on calendar popover
+                  const target = e.target as HTMLElement;
+                  if (target.closest("[data-datepicker-popover]")) {
+                    e.preventDefault();
+                  }
+                }}
+              >
                 <DialogHeader>
                   <DialogTitle>{editingExpense ? "Редактировать расход" : "Добавить расход"}</DialogTitle>
                   <DialogDescription>
@@ -470,7 +488,10 @@ export function ExpensesView({ periodCode = "30d", shopId = null }: ExpensesView
                   {/* Date */}
                   <div className="grid gap-2">
                     <Label>Дата</Label>
-                    <Popover>
+                    <Popover 
+                      open={calendarOpen} 
+                      onOpenChange={setCalendarOpen}
+                    >
                       <PopoverTrigger asChild>
                         <Button
                           variant="outline"
@@ -485,13 +506,19 @@ export function ExpensesView({ periodCode = "30d", shopId = null }: ExpensesView
                             : "Выберите дату"}
                         </Button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
+                      <PopoverContent 
+                        className="w-auto p-0" 
+                        align="start"
+                        data-datepicker-popover
+                      >
                         <Calendar
                           mode="single"
                           selected={newExpense.date}
-                          onSelect={(date) =>
-                            setNewExpense({ ...newExpense, date: date || new Date() })
-                          }
+                          onSelect={(date) => {
+                            if (!date) return;
+                            setNewExpense({ ...newExpense, date: date });
+                            setCalendarOpen(false); // КЛЮЧЕВО: закрыть календарь после выбора даты
+                          }}
                           initialFocus
                           className="pointer-events-auto"
                         />
@@ -523,7 +550,7 @@ export function ExpensesView({ periodCode = "30d", shopId = null }: ExpensesView
 
                   {/* Amount */}
                   <div className="grid gap-2">
-                    <Label>Сумма (₽)</Label>
+                    <Label>Сумма</Label>
                     <Input
                       type="number"
                       placeholder="0"
