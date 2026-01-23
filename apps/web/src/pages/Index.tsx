@@ -347,7 +347,7 @@ const Index = () => {
                     customHeightClass="h-auto"
                     customOverflowClass="overflow-visible"
                     customPadding="px-4 pb-4"
-                    customSpacing="space-y-2"
+                    customSpacing="space-y-1"
                     emptyState={
                       !loading && (stockIsZero || stockQty === 0) ? (
                         <Alert variant="destructive" className="m-0">

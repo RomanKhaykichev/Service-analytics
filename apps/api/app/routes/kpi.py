@@ -433,7 +433,7 @@ def kpi_summary(
         logger.info(f"cumulativeRevenue: year={date_to_date.year}, year_start={year_start_iso}, date_to={date_to_iso}, value={cumulative_revenue}")
         
         # F) STOCK aggregation (не зависит от period, только от user_id и shop_id)
-        # Используем fact_leftout_snapshot.marketplace_side вместо fact_storage_snapshot.fbo_stock_total
+        # Используем fact_leftout_snapshot.in_sale (В продаже, шт) для расчета остатков
         # A) Получить текущий loaded_at (max по user_id и опционально shop_id)
         stock_params = {
             "user_id": str(user_id),
@@ -465,13 +465,14 @@ def kpi_summary(
             stock_params["snap_loaded_at"] = snap_loaded_at
             
             # ТЗ Блок Склад:
-            # 1) Товар на складе = left-out-report: sum(На стороне маркетплейса (всего в продаже, в пути, на складах и фотостудии), шт)
-            #    Реализовано: SUM(marketplace_side) из fact_leftout_snapshot
-            # 2) Себестоимость товара (на складе), сум = sells_report: SUM(Себестоимость (сумы) * Количество) WHERE Статус="завершен"
-            #    Важно: В fact_sales cogs_sum уже является итоговой себестоимостью по строке (total), поэтому формула: SUM(cogs_sum)
-            #    Используем фильтры period/shop для расчета себестоимости из fact_sales
-            # 3) Розничная цена товара (остатки), сум = left-out-report: SUM(Потенциальная сумма к получению за все остатки, сум)
-            #    Реализовано: SUM(potential_total) из fact_leftout_snapshot
+            # 1) Товар на складе = left-out-report: SUM(В продаже, шт)
+            #    Реализовано: SUM(in_sale) из fact_leftout_snapshot
+            # 2) Себестоимость товара (на складе), сум = SUM(В продаже, шт * unit_cogs)
+            #    Где: unit_cogs = SUM(cogs_sum)/NULLIF(SUM(qty),0) из fact_sales (завершенные заказы)
+            #    Окно: фиксированное - последние 90 дней (НЕ зависит от period)
+            # 3) Розничная цена товара (остатки), сум = SUM(В продаже, шт * unit_price)
+            #    Где: unit_price = SUM(price_sum)/NULLIF(SUM(qty),0) из fact_sales (завершенные заказы)
+            #    Окно: фиксированное - последние 90 дней (НЕ зависит от period)
             
             # Для расчета себестоимости используем фильтр shop из основного запроса
             # ВАЖНО: stock_cost НЕ зависит от period - всегда используем фиксированное окно последних 90 дней
@@ -497,17 +498,17 @@ def kpi_summary(
             stock_query = text(f"""
                 WITH snap AS (
                     -- Текущий snapshot склада из fact_leftout_snapshot
-                    -- ТЗ: Товар на складе = sum(На стороне маркетплейса (всего в продаже, в пути, на складах и фотостудии), шт)
+                    -- ТЗ: Товар на складе = sum(В продаже, шт) из left-out-report
                     SELECT
                         NULLIF(TRIM(sku), '') AS sku,
                         NULLIF(TRIM(barcode), '') AS barcode,
-                        COALESCE(marketplace_side, 0) AS stock_qty,
+                        COALESCE(in_sale, 0) AS stock_qty,
                         MAX(loaded_at) AS stock_snapshot_at
                     FROM {qname("fact_leftout_snapshot")}
                     WHERE user_id = CAST(:user_id AS uuid)
                         AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
                         AND loaded_at = CAST(:snap_loaded_at AS timestamp)
-                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(barcode), ''), COALESCE(marketplace_side, 0)
+                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(barcode), ''), COALESCE(in_sale, 0)
                 ),
                 unit_cogs_by_product AS (
                     -- ТЗ: unit_cogs = единичная себестоимость из sells_report
@@ -527,8 +528,26 @@ def kpi_summary(
                     WHERE {stock_cogs_where_clause}
                     GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(barcode), '')
                 ),
+                unit_price_by_product AS (
+                    -- ТЗ: unit_price = единичная цена из sells_report
+                    -- В fact_sales price_sum хранится как итоговая цена по строке (total), поэтому:
+                    -- unit_price = SUM(price_sum) / NULLIF(SUM(qty), 0)
+                    -- Статус: lower(trim(status)) IN ('завершен', 'завершён')
+                    -- Окно: фиксированное - последние 90 дней от data_end_date (НЕ зависит от period фильтра)
+                    -- Это обеспечивает стабильность stock_retail_price независимо от выбранного периода
+                    SELECT
+                        NULLIF(TRIM(sku), '') AS sku,
+                        NULLIF(TRIM(barcode), '') AS barcode,
+                        COALESCE(
+                            SUM(price_sum) / NULLIF(SUM(qty), 0),
+                            0
+                        ) AS unit_price
+                    FROM {qname("fact_sales")}
+                    WHERE {stock_cogs_where_clause}
+                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(barcode), '')
+                ),
                 stock_with_cogs AS (
-                    -- Сопоставление товаров из snap с unit_cogs по SKU и/или barcode
+                    -- Сопоставление товаров из snap с unit_cogs и unit_price по SKU и/или barcode
                     -- Приоритет: сначала по SKU, затем по barcode
                     SELECT
                         s.sku,
@@ -542,7 +561,15 @@ def kpi_summary(
                             uc_barcode.unit_cogs,
                             -- Если не найдено: 0
                             0
-                        ) AS unit_cogs
+                        ) AS unit_cogs,
+                        COALESCE(
+                            -- Приоритет 1: сопоставление по SKU
+                            up_sku.unit_price,
+                            -- Приоритет 2: сопоставление по barcode
+                            up_barcode.unit_price,
+                            -- Если не найдено: 0
+                            0
+                        ) AS unit_price
                     FROM snap s
                     LEFT JOIN unit_cogs_by_product uc_sku ON (
                         uc_sku.sku = s.sku 
@@ -555,28 +582,30 @@ def kpi_summary(
                         AND uc_barcode.barcode IS NOT NULL
                         AND uc_sku.unit_cogs IS NULL  -- Используем barcode только если не нашли по SKU
                     )
-                ),
-                potential_total_agg AS (
-                    -- ТЗ: Розничная цена товара (остатки) = sum(Потенциальная сумма к получению за все остатки, сум)
-                    SELECT SUM(COALESCE(potential_total, 0)) AS total_potential
-                    FROM {qname("fact_leftout_snapshot")}
-                    WHERE user_id = CAST(:user_id AS uuid)
-                        AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
-                        AND loaded_at = CAST(:snap_loaded_at AS timestamp)
+                    LEFT JOIN unit_price_by_product up_sku ON (
+                        up_sku.sku = s.sku 
+                        AND s.sku IS NOT NULL 
+                        AND up_sku.sku IS NOT NULL
+                    )
+                    LEFT JOIN unit_price_by_product up_barcode ON (
+                        up_barcode.barcode = s.barcode 
+                        AND s.barcode IS NOT NULL 
+                        AND up_barcode.barcode IS NOT NULL
+                        AND up_sku.unit_price IS NULL  -- Используем barcode только если не нашли по SKU
+                    )
                 )
                 SELECT
                     COUNT(*) AS stock_sku_total,
                     SUM(s.stock_qty) AS stock_quantity,
                     SUM(CASE WHEN s.stock_qty > 0 THEN 1 ELSE 0 END) AS stock_sku_with_stock,
                     MAX(s.stock_snapshot_at) AS stock_snapshot_at,
-                    -- ТЗ: Розничная цена товара (остатки), сум = left-out-report: SUM(Потенциальная сумма к получению за все остатки, сум)
-                    -- Используем MAX(pt.total_potential) так как potential_total_agg возвращает одну строку
-                    COALESCE(MAX(pt.total_potential), 0) AS stock_retail_price,
+                    -- ТЗ: Розничная цена товара (остатки), сум = left-out-report: SUM(В продаже, шт * unit_price)
+                    -- Где: stock_qty из left-out-report (in_sale), unit_price из sells_report (SUM(price_sum)/NULLIF(SUM(qty),0))
+                    COALESCE(SUM(s.stock_qty * s.unit_price), 0) AS stock_retail_price,
                     -- ТЗ: Себестоимость товара (на складе), сум = SUM(stock_qty * unit_cogs)
-                    -- Где: stock_qty из left-out-report (marketplace_side), unit_cogs из sells_report (SUM(cogs_sum)/NULLIF(SUM(qty),0))
+                    -- Где: stock_qty из left-out-report (in_sale), unit_cogs из sells_report (SUM(cogs_sum)/NULLIF(SUM(qty),0))
                     COALESCE(SUM(s.stock_qty * s.unit_cogs), 0) AS stock_cost
                 FROM stock_with_cogs s
-                CROSS JOIN potential_total_agg pt
             """)
             
             stock_result = db.execute(stock_query, stock_params)
