@@ -499,16 +499,17 @@ def kpi_summary(
                 WITH snap AS (
                     -- Текущий snapshot склада из fact_leftout_snapshot
                     -- ТЗ: Товар на складе = sum(В продаже, шт) из left-out-report
+                    -- barcode_norm вычисляется на лету: нормализация barcode (удаление пробелов)
                     SELECT
                         NULLIF(TRIM(sku), '') AS sku,
-                        NULLIF(TRIM(barcode), '') AS barcode,
+                        NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), '') AS barcode_norm,
                         COALESCE(in_sale, 0) AS stock_qty,
                         MAX(loaded_at) AS stock_snapshot_at
                     FROM {qname("fact_leftout_snapshot")}
                     WHERE user_id = CAST(:user_id AS uuid)
                         AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
                         AND loaded_at = CAST(:snap_loaded_at AS timestamp)
-                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(barcode), ''), COALESCE(in_sale, 0)
+                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), ''), COALESCE(in_sale, 0)
                 ),
                 unit_cogs_by_product AS (
                     -- ТЗ: unit_cogs = единичная себестоимость из sells_report
@@ -517,16 +518,18 @@ def kpi_summary(
                     -- Статус: lower(trim(status)) IN ('завершен', 'завершён')
                     -- Окно: фиксированное - последние 90 дней от data_end_date (НЕ зависит от period фильтра)
                     -- Это обеспечивает стабильность stock_cost независимо от выбранного периода
+                    -- Приоритет сопоставления: barcode_norm (если не NULL), затем sku
+                    -- barcode_norm вычисляется на лету: нормализация barcode (удаление пробелов)
                     SELECT
                         NULLIF(TRIM(sku), '') AS sku,
-                        NULLIF(TRIM(barcode), '') AS barcode,
+                        NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), '') AS barcode_norm,
                         COALESCE(
                             SUM(cogs_sum) / NULLIF(SUM(qty), 0),
                             0
                         ) AS unit_cogs
                     FROM {qname("fact_sales")}
                     WHERE {stock_cogs_where_clause}
-                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(barcode), '')
+                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), '')
                 ),
                 unit_price_by_product AS (
                     -- ТЗ: unit_price = единичная цена из sells_report
@@ -535,63 +538,65 @@ def kpi_summary(
                     -- Статус: lower(trim(status)) IN ('завершен', 'завершён')
                     -- Окно: фиксированное - последние 90 дней от data_end_date (НЕ зависит от period фильтра)
                     -- Это обеспечивает стабильность stock_retail_price независимо от выбранного периода
+                    -- Приоритет сопоставления: barcode_norm (если не NULL), затем sku
+                    -- barcode_norm вычисляется на лету: нормализация barcode (удаление пробелов)
                     SELECT
                         NULLIF(TRIM(sku), '') AS sku,
-                        NULLIF(TRIM(barcode), '') AS barcode,
+                        NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), '') AS barcode_norm,
                         COALESCE(
                             SUM(price_sum) / NULLIF(SUM(qty), 0),
                             0
                         ) AS unit_price
                     FROM {qname("fact_sales")}
                     WHERE {stock_cogs_where_clause}
-                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(barcode), '')
+                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), '')
                 ),
                 stock_with_cogs AS (
-                    -- Сопоставление товаров из snap с unit_cogs и unit_price по SKU и/или barcode
-                    -- Приоритет: сначала по SKU, затем по barcode
+                    -- Сопоставление товаров из snap с unit_cogs и unit_price
+                    -- Приоритет: сначала по barcode_norm (если не NULL), затем по sku
                     SELECT
                         s.sku,
-                        s.barcode,
+                        s.barcode_norm,
                         s.stock_qty,
                         s.stock_snapshot_at AS stock_snapshot_at,
                         COALESCE(
-                            -- Приоритет 1: сопоставление по SKU
-                            uc_sku.unit_cogs,
-                            -- Приоритет 2: сопоставление по barcode
+                            -- Приоритет 1: сопоставление по barcode_norm
                             uc_barcode.unit_cogs,
+                            -- Приоритет 2: сопоставление по SKU (fallback)
+                            uc_sku.unit_cogs,
                             -- Если не найдено: 0
                             0
                         ) AS unit_cogs,
                         COALESCE(
-                            -- Приоритет 1: сопоставление по SKU
-                            up_sku.unit_price,
-                            -- Приоритет 2: сопоставление по barcode
+                            -- Приоритет 1: сопоставление по barcode_norm
                             up_barcode.unit_price,
+                            -- Приоритет 2: сопоставление по SKU (fallback)
+                            up_sku.unit_price,
                             -- Если не найдено: 0
                             0
                         ) AS unit_price
                     FROM snap s
+                    LEFT JOIN unit_cogs_by_product uc_barcode ON (
+                        uc_barcode.barcode_norm = s.barcode_norm 
+                        AND s.barcode_norm IS NOT NULL 
+                        AND uc_barcode.barcode_norm IS NOT NULL
+                    )
                     LEFT JOIN unit_cogs_by_product uc_sku ON (
                         uc_sku.sku = s.sku 
                         AND s.sku IS NOT NULL 
                         AND uc_sku.sku IS NOT NULL
+                        AND uc_barcode.unit_cogs IS NULL  -- Используем sku только если не нашли по barcode_norm
                     )
-                    LEFT JOIN unit_cogs_by_product uc_barcode ON (
-                        uc_barcode.barcode = s.barcode 
-                        AND s.barcode IS NOT NULL 
-                        AND uc_barcode.barcode IS NOT NULL
-                        AND uc_sku.unit_cogs IS NULL  -- Используем barcode только если не нашли по SKU
+                    LEFT JOIN unit_price_by_product up_barcode ON (
+                        up_barcode.barcode_norm = s.barcode_norm 
+                        AND s.barcode_norm IS NOT NULL 
+                        AND up_barcode.barcode_norm IS NOT NULL
                     )
                     LEFT JOIN unit_price_by_product up_sku ON (
                         up_sku.sku = s.sku 
                         AND s.sku IS NOT NULL 
                         AND up_sku.sku IS NOT NULL
-                    )
-                    LEFT JOIN unit_price_by_product up_barcode ON (
-                        up_barcode.barcode = s.barcode 
-                        AND s.barcode IS NOT NULL 
-                        AND up_barcode.barcode IS NOT NULL
-                        AND up_sku.unit_price IS NULL  -- Используем barcode только если не нашли по SKU
+                        AND up_barcode.unit_price IS NULL  -- Используем sku только если не нашли по barcode_norm
                     )
                 )
                 SELECT
@@ -703,9 +708,11 @@ def kpi_summary(
             lost_revenue_query = text(f"""
                 WITH period_sales AS (
                     -- Среднесуточные продажи FBO за период (только завершенные заказы)
+                    -- Приоритет сопоставления: barcode_norm (если не NULL), затем sku
+                    -- barcode_norm вычисляется на лету: нормализация barcode (удаление пробелов)
                     SELECT
                         NULLIF(TRIM(sku), '') AS sku,
-                        NULLIF(TRIM(barcode), '') AS barcode,
+                        NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), '') AS barcode_norm,
                         SUM(qty) AS qty_period,
                         SUM(revenue_sum) AS rev_period
                     FROM {qname("fact_sales")}
@@ -714,14 +721,16 @@ def kpi_summary(
                         AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
                         AND date_created >= CAST(:date_from_for_avg AS date)
                         AND date_created < CAST(:date_to AS date) + INTERVAL '1 day'
-                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(barcode), '')
+                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), '')
                 ),
                 price_window AS (
                     -- Weighted average price из окна для расчета цены (только завершенные заказы)
                     -- Если period=all, используем последние 90 дней (зафиксировано в комментарии)
+                    -- Приоритет сопоставления: barcode_norm (если не NULL), затем sku
+                    -- barcode_norm вычисляется на лету: нормализация barcode (удаление пробелов)
                     SELECT
                         NULLIF(TRIM(sku), '') AS sku,
-                        NULLIF(TRIM(barcode), '') AS barcode,
+                        NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), '') AS barcode_norm,
                         SUM(revenue_sum) AS rev_window,
                         SUM(qty) AS qty_window
                     FROM {qname("fact_sales")}
@@ -730,14 +739,15 @@ def kpi_summary(
                         AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
                         AND date_created >= CAST(:price_window_from AS date)
                         AND date_created < CAST(:date_to AS date) + INTERVAL '1 day'
-                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(barcode), '')
+                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), '')
                 ),
                 snap AS (
                     -- Текущий snapshot склада из fact_leftout_snapshot
                     -- Остатки FBO = in_sale + sdh_stock (всего в продаже и на СДХ)
+                    -- barcode_norm вычисляется на лету: нормализация barcode (удаление пробелов)
                     SELECT
                         NULLIF(TRIM(sku), '') AS sku,
-                        NULLIF(TRIM(barcode), '') AS barcode,
+                        NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), '') AS barcode_norm,
                         COALESCE(in_sale, 0) + COALESCE(sdh_stock, 0) AS stock_fbo
                     FROM {qname("fact_leftout_snapshot")}
                     WHERE user_id = CAST(:user_id AS uuid)
@@ -762,7 +772,7 @@ def kpi_summary(
                 FROM (
                     SELECT 
                         s.sku,
-                        s.barcode,
+                        s.barcode_norm,
                         s.stock_fbo,
                         ps.qty_period,
                         -- Weighted average price: SUM(revenue_sum)/NULLIF(SUM(qty),0) по завершенным
@@ -774,12 +784,18 @@ def kpi_summary(
                         ) AS weighted_price
                     FROM snap s
                     LEFT JOIN period_sales ps ON (
-                        (ps.sku = s.sku AND s.sku IS NOT NULL AND ps.sku IS NOT NULL)
-                        OR (ps.barcode = s.barcode AND s.barcode IS NOT NULL AND ps.barcode IS NOT NULL)
+                        -- Приоритет 1: сопоставление по barcode_norm
+                        (ps.barcode_norm = s.barcode_norm AND s.barcode_norm IS NOT NULL AND ps.barcode_norm IS NOT NULL)
+                        OR
+                        -- Приоритет 2: сопоставление по sku (fallback)
+                        (ps.barcode_norm IS NULL AND s.barcode_norm IS NULL AND ps.sku = s.sku AND s.sku IS NOT NULL AND ps.sku IS NOT NULL)
                     )
                     LEFT JOIN price_window pw ON (
-                        (pw.sku = s.sku AND s.sku IS NOT NULL AND pw.sku IS NOT NULL)
-                        OR (pw.barcode = s.barcode AND s.barcode IS NOT NULL AND pw.barcode IS NOT NULL)
+                        -- Приоритет 1: сопоставление по barcode_norm
+                        (pw.barcode_norm = s.barcode_norm AND s.barcode_norm IS NOT NULL AND pw.barcode_norm IS NOT NULL)
+                        OR
+                        -- Приоритет 2: сопоставление по sku (fallback)
+                        (pw.barcode_norm IS NULL AND s.barcode_norm IS NULL AND pw.sku = s.sku AND s.sku IS NOT NULL AND pw.sku IS NOT NULL)
                     )
                 ) p
             """)
