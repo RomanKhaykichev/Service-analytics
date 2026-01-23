@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
-import { Plus, ArrowUpDown, Info, CalendarIcon } from "lucide-react";
+import { Plus, ArrowUpDown, Info, CalendarIcon, Trash2, Edit } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -15,6 +15,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -36,6 +37,22 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { apiGet, apiPost, apiPut, apiDelete, buildQueryParams } from "@/lib/api";
+import { useShops } from "@/hooks/useShops";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+
+interface ExtraExpense {
+  id: number;
+  expense_date: string;
+  amount_sum: number;
+  shop_id: string | null;
+  shop_name: string | null;
+  category: string | null;
+  comment: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 interface Expense {
   id: string;
@@ -57,43 +74,22 @@ const expenseTypes = [
   "Прочее",
 ];
 
-const stores = ["Все магазины", "Магазин 1", "Магазин 2", "Магазин 3"];
+interface ExtraExpensesResponse {
+  expenses: ExtraExpense[];
+  total: number;
+}
 
-// Mock data
-const mockExpenses: Expense[] = [
-  {
-    id: "1",
-    date: new Date(2024, 11, 15),
-    type: "Самовыкуп",
-    amount: 15000,
-    store: "Магазин 1",
-    product: "Футболка белая",
-    comment: "Тестовый заказ",
-  },
-  {
-    id: "2",
-    date: new Date(2024, 11, 10),
-    type: "Внешняя реклама",
-    amount: 50000,
-    store: "Все магазины",
-    product: "",
-    comment: "Instagram реклама",
-  },
-  {
-    id: "3",
-    date: new Date(2024, 11, 5),
-    type: "Зарплата",
-    amount: 80000,
-    store: "Все магазины",
-    product: "",
-    comment: "Менеджер по продажам",
-  },
-];
+interface ExpensesViewProps {
+  periodCode?: string;
+  shopId?: string | null;
+}
 
-export function ExpensesView() {
-  const [expenses, setExpenses] = useState<Expense[]>(mockExpenses);
+export function ExpensesView({ periodCode = "30d", shopId = null }: ExpensesViewProps) {
+  const { shops, loading: shopsLoading } = useShops();
+  const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [sortColumn, setSortColumn] = useState<keyof Expense | null>(null);
+  const [editingExpense, setEditingExpense] = useState<ExtraExpense | null>(null);
+  const [sortColumn, setSortColumn] = useState<keyof ExtraExpense | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
   // Form state
@@ -101,12 +97,111 @@ export function ExpensesView() {
     date: new Date(),
     type: "",
     amount: "",
-    store: "",
-    product: "",
+    shop_id: "",
     comment: "",
   });
 
-  const handleSort = (column: keyof Expense) => {
+  // Load expenses from API
+  const { data: expensesData, isLoading: expensesLoading, error: expensesError } = useQuery({
+    queryKey: ['extraExpenses', periodCode, shopId],
+    queryFn: async () => {
+      try {
+        const params = buildQueryParams({ period: periodCode, shopId });
+        return await apiGet<ExtraExpensesResponse>("/api/extra-expenses", params);
+      } catch (error) {
+        console.error("Failed to load expenses:", error);
+        throw error;
+      }
+    },
+    retry: 1, // Retry once on failure
+    refetchOnWindowFocus: false, // Don't refetch on window focus
+  });
+
+  const expenses = expensesData?.expenses || [];
+
+  // Create expense mutation
+  const createMutation = useMutation({
+    mutationFn: async (expense: {
+      expense_date: string;
+      amount_sum: number;
+      shop_id?: string | null;
+      category?: string | null;
+      comment?: string | null;
+    }) => {
+      return await apiPost<ExtraExpense>("/api/extra-expenses", expense);
+    },
+    onSuccess: () => {
+      // Invalidate and refetch expenses list to show new row immediately
+      queryClient.invalidateQueries({ queryKey: ['extraExpenses'] });
+      queryClient.refetchQueries({ queryKey: ['extraExpenses', periodCode, shopId] });
+      toast.success("Расход успешно добавлен");
+      setIsDialogOpen(false);
+      setEditingExpense(null);
+      setNewExpense({
+        date: new Date(),
+        type: "",
+        amount: "",
+        shop_id: "",
+        comment: "",
+      });
+    },
+    onError: (error) => {
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : "Ошибка при добавлении расхода";
+      console.error("Create expense error:", error);
+      toast.error(errorMessage);
+    },
+  });
+
+  // Update expense mutation
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, expense }: { id: number; expense: Partial<{
+      expense_date?: string;
+      amount_sum?: number;
+      shop_id?: string | null;
+      category?: string | null;
+      comment?: string | null;
+    }>}) => {
+      return await apiPut<ExtraExpense>(`/api/extra-expenses/${id}`, expense);
+    },
+    onSuccess: () => {
+      // Invalidate and refetch expenses list
+      queryClient.invalidateQueries({ queryKey: ['extraExpenses'] });
+      queryClient.refetchQueries({ queryKey: ['extraExpenses', periodCode, shopId] });
+      toast.success("Расход успешно обновлен");
+      setIsDialogOpen(false);
+      setEditingExpense(null);
+      setNewExpense({
+        date: new Date(),
+        type: "",
+        amount: "",
+        shop_id: "",
+        comment: "",
+      });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Ошибка при обновлении расхода");
+    },
+  });
+
+  // Delete expense mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return await apiDelete(`/api/extra-expenses/${id}`);
+    },
+    onSuccess: () => {
+      // Invalidate and refetch expenses list to remove deleted row immediately
+      queryClient.invalidateQueries({ queryKey: ['extraExpenses'] });
+      queryClient.refetchQueries({ queryKey: ['extraExpenses', periodCode, shopId] });
+      toast.success("Расход успешно удален");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Ошибка при удалении расхода");
+    },
+  });
+
+  const handleSort = (column: keyof ExtraExpense) => {
     if (sortColumn === column) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     } else {
@@ -121,10 +216,9 @@ export function ExpensesView() {
     const aValue = a[sortColumn];
     const bValue = b[sortColumn];
     
-    if (aValue instanceof Date && bValue instanceof Date) {
-      return sortDirection === "asc" 
-        ? aValue.getTime() - bValue.getTime()
-        : bValue.getTime() - aValue.getTime();
+    if (aValue === null || bValue === null) {
+      if (aValue === null && bValue === null) return 0;
+      return aValue === null ? 1 : -1;
     }
     
     if (typeof aValue === "number" && typeof bValue === "number") {
@@ -132,6 +226,12 @@ export function ExpensesView() {
     }
     
     if (typeof aValue === "string" && typeof bValue === "string") {
+      // Handle date strings
+      if (sortColumn === "expense_date" || sortColumn === "created_at" || sortColumn === "updated_at") {
+        const aDate = new Date(aValue).getTime();
+        const bDate = new Date(bValue).getTime();
+        return sortDirection === "asc" ? aDate - bDate : bDate - aDate;
+      }
       return sortDirection === "asc"
         ? aValue.localeCompare(bValue)
         : bValue.localeCompare(aValue);
@@ -140,32 +240,95 @@ export function ExpensesView() {
     return 0;
   });
 
-  const handleAddExpense = () => {
-    if (!newExpense.type || !newExpense.amount) return;
+  const handleSaveExpense = () => {
+    if (!newExpense.type || !newExpense.amount) {
+      toast.error("Заполните тип и сумму расхода");
+      return;
+    }
 
-    const expense: Expense = {
-      id: Date.now().toString(),
-      date: newExpense.date,
-      type: newExpense.type,
-      amount: Number(newExpense.amount),
-      store: newExpense.store || "Все магазины",
-      product: newExpense.product,
-      comment: newExpense.comment,
+    const expenseData = {
+      expense_date: format(newExpense.date, "yyyy-MM-dd"),
+      amount_sum: Number(newExpense.amount),
+      shop_id: newExpense.shop_id || null,
+      category: newExpense.type,
+      comment: newExpense.comment || null,
     };
 
-    setExpenses([expense, ...expenses]);
-    setNewExpense({
-      date: new Date(),
-      type: "",
-      amount: "",
-      store: "",
-      product: "",
-      comment: "",
-    });
-    setIsDialogOpen(false);
+    if (editingExpense) {
+      updateMutation.mutate({ id: editingExpense.id, expense: expenseData });
+    } else {
+      createMutation.mutate(expenseData);
+    }
   };
 
-  const SortableHeader = ({ column, children }: { column: keyof Expense; children: React.ReactNode }) => (
+  const handleEdit = (expense: ExtraExpense) => {
+    setEditingExpense(expense);
+    setNewExpense({
+      date: new Date(expense.expense_date),
+      type: expense.category || "",
+      amount: expense.amount_sum.toString(),
+      shop_id: expense.shop_id || "",
+      comment: expense.comment || "",
+    });
+    setIsDialogOpen(true);
+  };
+
+  const handleDelete = (id: number) => {
+    if (confirm("Вы уверены, что хотите удалить этот расход?")) {
+      deleteMutation.mutate(id);
+    }
+  };
+
+  const handleDialogOpenChange = (open: boolean) => {
+    try {
+      setIsDialogOpen(open);
+      if (open) {
+        // Reset form when opening (for new expense)
+        if (!editingExpense) {
+          setNewExpense({
+            date: new Date(),
+            type: "",
+            amount: "",
+            shop_id: "",
+            comment: "",
+          });
+        }
+      } else {
+        // Reset form when closing
+        setEditingExpense(null);
+        setNewExpense({
+          date: new Date(),
+          type: "",
+          amount: "",
+          shop_id: "",
+          comment: "",
+        });
+      }
+    } catch (error) {
+      console.error("Error in handleDialogOpenChange:", error);
+      // Fallback: ensure dialog state is consistent
+      setIsDialogOpen(false);
+    }
+  };
+
+  const handleDialogClose = () => {
+    try {
+      setIsDialogOpen(false);
+      setEditingExpense(null);
+      setNewExpense({
+        date: new Date(),
+        type: "",
+        amount: "",
+        shop_id: "",
+        comment: "",
+      });
+    } catch (error) {
+      console.error("Error in handleDialogClose:", error);
+      setIsDialogOpen(false);
+    }
+  };
+
+  const SortableHeader = ({ column, children }: { column: keyof ExtraExpense; children: React.ReactNode }) => (
     <TableHead
       className="cursor-pointer hover:bg-muted/50 transition-colors"
       onClick={() => handleSort(column)}
@@ -218,16 +381,22 @@ export function ExpensesView() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <SortableHeader column="date">Дата</SortableHeader>
-                  <SortableHeader column="type">Тип</SortableHeader>
-                  <SortableHeader column="amount">Сумма</SortableHeader>
-                  <SortableHeader column="store">Магазин</SortableHeader>
-                  <SortableHeader column="product">Товар</SortableHeader>
-                  <SortableHeader column="comment">Комментарий</SortableHeader>
+                  <SortableHeader column="expense_date">Дата</SortableHeader>
+                  <SortableHeader column="category">Тип</SortableHeader>
+                  <SortableHeader column="amount_sum">Сумма</SortableHeader>
+                  <SortableHeader column="shop_name">Магазин</SortableHeader>
+                  <TableHead>Комментарий</TableHead>
+                  <TableHead className="w-[100px]">Действия</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedExpenses.length === 0 ? (
+                {expensesLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                      Загрузка...
+                    </TableCell>
+                  </TableRow>
+                ) : sortedExpenses.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                       Нет добавленных расходов
@@ -237,20 +406,39 @@ export function ExpensesView() {
                   sortedExpenses.map((expense) => (
                     <TableRow key={expense.id}>
                       <TableCell>
-                        {format(expense.date, "dd.MM.yyyy", { locale: ru })}
+                        {format(new Date(expense.expense_date), "dd.MM.yyyy", { locale: ru })}
                       </TableCell>
                       <TableCell>
                         <span className="px-2 py-1 rounded-md bg-muted text-sm">
-                          {expense.type}
+                          {expense.category || "—"}
                         </span>
                       </TableCell>
                       <TableCell className="font-medium text-destructive">
-                        -{expense.amount.toLocaleString("ru-RU")} ₽
+                        -{expense.amount_sum.toLocaleString("ru-RU")} сум
                       </TableCell>
-                      <TableCell>{expense.store}</TableCell>
-                      <TableCell>{expense.product || "—"}</TableCell>
+                      <TableCell>{expense.shop_name || "—"}</TableCell>
                       <TableCell className="max-w-[200px] truncate">
                         {expense.comment || "—"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleEdit(expense)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            onClick={() => handleDelete(expense.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -261,16 +449,22 @@ export function ExpensesView() {
 
           {/* Add Expense Button */}
           <div className="p-4 border-t">
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <Dialog open={isDialogOpen} onOpenChange={handleDialogOpenChange}>
               <DialogTrigger asChild>
-                <Button className="w-full sm:w-auto">
+                <Button 
+                  className="w-full sm:w-auto" 
+                  type="button"
+                >
                   <Plus className="h-4 w-4 mr-2" />
                   Добавить расход
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
-                  <DialogTitle>Добавить расход</DialogTitle>
+                  <DialogTitle>{editingExpense ? "Редактировать расход" : "Добавить расход"}</DialogTitle>
+                  <DialogDescription>
+                    {editingExpense ? "Измените данные расхода" : "Заполните форму для добавления нового расхода"}
+                  </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   {/* Date */}
@@ -340,38 +534,34 @@ export function ExpensesView() {
                     />
                   </div>
 
-                  {/* Store */}
+                  {/* Shop */}
                   <div className="grid gap-2">
                     <Label>Магазин</Label>
                     <Select
-                      value={newExpense.store}
+                      value={newExpense.shop_id}
                       onValueChange={(value) =>
-                        setNewExpense({ ...newExpense, store: value })
+                        setNewExpense({ ...newExpense, shop_id: value || "" })
                       }
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Выберите магазин (опционально)" />
                       </SelectTrigger>
                       <SelectContent>
-                        {stores.map((store) => (
-                          <SelectItem key={store} value={store}>
-                            {store}
-                          </SelectItem>
-                        ))}
+                        {shopsLoading ? (
+                          <SelectItem value="" disabled>Загрузка...</SelectItem>
+                        ) : shops.length === 0 ? (
+                          <SelectItem value="" disabled>Нет доступных магазинов</SelectItem>
+                        ) : (
+                          <>
+                            {shops.map((shop) => (
+                              <SelectItem key={shop.shop_id} value={shop.shop_id}>
+                                {shop.shop_name || shop.shop_id}
+                              </SelectItem>
+                            ))}
+                          </>
+                        )}
                       </SelectContent>
                     </Select>
-                  </div>
-
-                  {/* Product */}
-                  <div className="grid gap-2">
-                    <Label>Товар</Label>
-                    <Input
-                      placeholder="Введите название товара (опционально)"
-                      value={newExpense.product}
-                      onChange={(e) =>
-                        setNewExpense({ ...newExpense, product: e.target.value })
-                      }
-                    />
                   </div>
 
                   {/* Comment */}
@@ -390,11 +580,17 @@ export function ExpensesView() {
                 <div className="flex justify-end gap-2">
                   <Button
                     variant="outline"
-                    onClick={() => setIsDialogOpen(false)}
+                    onClick={handleDialogClose}
+                    disabled={createMutation.isPending || updateMutation.isPending}
                   >
                     Отмена
                   </Button>
-                  <Button onClick={handleAddExpense}>Добавить</Button>
+                  <Button 
+                    onClick={handleSaveExpense}
+                    disabled={createMutation.isPending || updateMutation.isPending}
+                  >
+                    {editingExpense ? "Сохранить" : "Добавить"}
+                  </Button>
                 </div>
               </DialogContent>
             </Dialog>

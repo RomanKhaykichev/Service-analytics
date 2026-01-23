@@ -309,7 +309,7 @@ const Index = () => {
         </div>
       ) : activeTab === "expenses" ? (
         <div className="mt-6">
-          <ExpensesView />
+          <ExpensesView periodCode={periodCode} shopId={shopId} />
         </div>
       ) : activeTab === "shipment" ? (
         <div className="mt-6">

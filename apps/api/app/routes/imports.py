@@ -233,6 +233,7 @@ def delete_all_user_data(db: Session, user_id: UUID):
     
     # Delete from fact tables first (FK constraints)
     # Order matters: delete fact tables before staging tables
+    # IMPORTANT: manual_expenses (extra expenses) are NOT deleted - they persist across uploads
     db.execute(text(f"DELETE FROM {qname('fact_sales')} WHERE user_id = CAST(:user_id AS uuid)"), params)
     db.execute(text(f"DELETE FROM {qname('fact_expenses')} WHERE user_id = CAST(:user_id AS uuid)"), params)
     db.execute(text(f"DELETE FROM {qname('fact_storage_snapshot')} WHERE user_id = CAST(:user_id AS uuid)"), params)
@@ -246,6 +247,8 @@ def delete_all_user_data(db: Session, user_id: UUID):
     
     # Also clean up map_shop_sku for this user
     db.execute(text(f"DELETE FROM {qname('map_shop_sku')} WHERE user_id = CAST(:user_id AS uuid)"), params)
+    
+    # NOTE: manual_expenses (extra expenses) are NOT deleted here - they persist across uploads
     
     # Note: dim_shop is NOT deleted - shops are shared across batches
     # db.execute(text(f"DELETE FROM {qname('dim_shop')} WHERE user_id = CAST(:user_id AS uuid)"), params)

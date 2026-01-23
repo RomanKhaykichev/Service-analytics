@@ -231,6 +231,75 @@ sudo systemctl enable docker
 # (restart: unless-stopped in docker-compose.yml)
 ```
 
+## Database Migrations
+
+### Automatic Migrations
+
+Migrations are **automatically applied** when the API container starts via the `entrypoint.sh` script. This ensures the database schema is always up-to-date.
+
+**How it works:**
+1. Container starts → `entrypoint.sh` runs
+2. Script waits for database to be ready (with retry)
+3. Runs `alembic upgrade head` to apply all pending migrations
+4. Starts the API server
+
+**Manual migration commands:**
+
+```bash
+# Check current migration version
+docker compose exec api python -m alembic current
+
+# View migration history
+docker compose exec api python -m alembic history
+
+# Apply migrations manually (if needed)
+docker compose exec api python -m alembic upgrade head
+
+# Rollback one migration (if needed)
+docker compose exec api python -m alembic downgrade -1
+```
+
+### Creating New Migrations
+
+**Important**: Always create migrations through Alembic, never modify the database schema directly.
+
+```bash
+# Create a new migration
+docker compose exec api python -m alembic revision -m "description of changes"
+
+# Auto-generate migration from model changes (if using SQLAlchemy models)
+docker compose exec api python -m alembic revision --autogenerate -m "description"
+```
+
+Then edit the generated file in `apps/api/alembic/versions/` to ensure it's correct.
+
+### Backup Before Migrations
+
+**Always backup the database before applying migrations in production:**
+
+```bash
+# Create backup
+docker compose exec db pg_dump -U postgres service_analytics > backup_before_migration_$(date +%Y%m%d_%H%M%S).sql
+
+# Or with compression
+docker compose exec db pg_dump -U postgres -Fc service_analytics > backup_$(date +%Y%m%d_%H%M%S).dump
+```
+
+### Migration Troubleshooting
+
+1. **Migration fails on startup:**
+   - Check logs: `docker compose logs api | grep -i migration`
+   - Verify DATABASE_URL is correct
+   - Check database connectivity: `docker compose exec api python -c "from app.db import engine; engine.connect()"`
+
+2. **Migration already applied error:**
+   - Check alembic_version table: `docker compose exec db psql -U postgres -d service_analytics -c "SELECT * FROM app.alembic_version;"`
+   - If migration is listed but not applied, check for SQL errors in migration file
+
+3. **Schema mismatch:**
+   - Ensure `DB_SCHEMA` env var matches the schema used in migrations (default: `app`)
+   - Check: `docker compose exec api python -c "from app.settings import get_settings; print(get_settings().DB_SCHEMA)"`
+
 ## Maintenance
 
 ### View Logs
@@ -269,12 +338,34 @@ docker compose up -d --build
 
 ### Database Backup
 
+**Always backup before migrations or major updates:**
+
 ```bash
-# Create backup
+# Create backup (plain SQL)
 docker compose exec db pg_dump -U postgres service_analytics > backup_$(date +%Y%m%d_%H%M%S).sql
 
-# Restore backup
+# Create backup (compressed custom format)
+docker compose exec db pg_dump -U postgres -Fc service_analytics > backup_$(date +%Y%m%d_%H%M%S).dump
+
+# Restore backup (plain SQL)
 docker compose exec -T db psql -U postgres service_analytics < backup_20240101_120000.sql
+
+# Restore backup (compressed)
+docker compose exec -T db pg_restore -U postgres -d service_analytics backup_20240101_120000.dump
+```
+
+**Automated backup script (recommended for production):**
+
+Create a cron job or systemd timer to run backups daily:
+
+```bash
+#!/bin/bash
+# backup.sh
+BACKUP_DIR="/backups/service-analytics"
+mkdir -p "$BACKUP_DIR"
+docker compose exec -T db pg_dump -U postgres -Fc service_analytics > "$BACKUP_DIR/backup_$(date +%Y%m%d_%H%M%S).dump"
+# Keep last 30 days
+find "$BACKUP_DIR" -name "backup_*.dump" -mtime +30 -delete
 ```
 
 ### Database Access
@@ -304,10 +395,20 @@ psql -h localhost -U postgres -d service_analytics
 
 ### Migrations not applying
 
-1. Check migration script logs: `docker compose logs backend | grep migrate`
-2. Manually run migrations:
+**Important**: Migrations are automatically applied on container startup via `entrypoint.sh`.
+
+1. Check migration logs: `docker compose logs api | grep -i migration`
+2. Manually run migrations if needed:
    ```bash
-   docker compose exec backend python /app/scripts/migrate.py
+   docker compose exec api python -m alembic upgrade head
+   ```
+3. Check current migration status:
+   ```bash
+   docker compose exec api python -m alembic current
+   ```
+4. View migration history:
+   ```bash
+   docker compose exec api python -m alembic history
    ```
 
 ### Port already in use
@@ -324,20 +425,44 @@ The import script is mounted as a volume. If it's not accessible:
 1. Verify volume mount in `docker-compose.yml`
 2. Check file exists: `docker compose exec backend ls -la /app/import/`
 
+## Smoke Tests
+
+After deployment, run smoke tests to verify endpoints:
+
+```bash
+# Run smoke tests (requires SMOKE_TEST_TOKEN if testing authenticated endpoints)
+docker compose exec api python scripts/smoke.py
+
+# Or from host (if API is accessible)
+export API_BASE_URL=http://localhost:8000
+export SMOKE_TEST_TOKEN=your_jwt_token_here
+python apps/api/scripts/smoke.py
+```
+
+The smoke test checks:
+- `/health` endpoint
+- `/api/shops` (if token provided)
+- `/api/kpi/summary` (if token provided)
+- `/api/extra-expenses` (if token provided)
+
 ## Production Checklist
 
 - [ ] Strong database password set in `.env`
 - [ ] Firewall configured (only necessary ports open)
 - [ ] Reverse proxy configured (Nginx/Caddy)
 - [ ] HTTPS enabled (Let's Encrypt)
-- [ ] Regular backups scheduled
+- [ ] Regular backups scheduled (before migrations!)
+- [ ] Database migrations tested in staging
+- [ ] Smoke tests passing after deployment
 - [ ] Monitoring/logging set up (optional)
 - [ ] Domain DNS configured (if using domain)
 - [ ] Environment variables secured (not in git)
+- [ ] `DB_SCHEMA` env var matches schema in migrations (default: `app`)
 
 ## Support
 
 For issues or questions:
-- Check logs: `docker compose logs`
-- Review migration status: `docker compose exec backend python /app/scripts/migrate.py`
-- Verify database: `docker compose exec db psql -U postgres -d service_analytics -c "\dt"`
+- Check logs: `docker compose logs api`
+- Review migration status: `docker compose exec api python -m alembic current`
+- Verify database: `docker compose exec db psql -U postgres -d service_analytics -c "\dt app.*"`
+- Run smoke tests: `docker compose exec api python scripts/smoke.py`

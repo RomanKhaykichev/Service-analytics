@@ -30,11 +30,17 @@ services:
     environment:
       # Database connection
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@db:5432/service_analytics}
+      DB_SCHEMA: ${DB_SCHEMA:-app}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB:-service_analytics}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      # App settings
+      APP_ENV: ${APP_ENV:-dev}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # JWT (use strong secrets in production!)
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-secret-key-min-32-chars}
     ports:
       - "8000:8000"
     depends_on:

@@ -9,6 +9,13 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
     allowedHosts: ["resumes-football-officer-learn.trycloudflare.com"],
+    proxy: {
+      "/api": {
+        target: process.env.VITE_API_URL || "http://127.0.0.1:8000",
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {

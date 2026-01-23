@@ -17,9 +17,15 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Copy application code
 COPY apps/api/app/ ./app/
+COPY apps/api/alembic/ ./alembic/
+COPY apps/api/alembic.ini ./
+COPY apps/api/scripts/ ./scripts/
+
+# Make entrypoint executable
+RUN chmod +x ./scripts/entrypoint.sh
 
 # Expose port
 EXPOSE 8000
 
-# Run uvicorn
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Use entrypoint script (runs migrations before starting API)
+ENTRYPOINT ["./scripts/entrypoint.sh"]
