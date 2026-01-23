@@ -20,6 +20,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -92,6 +102,8 @@ export function ExpensesView({ periodCode = "30d", shopId = null }: ExpensesView
   const [sortColumn, setSortColumn] = useState<keyof ExtraExpense | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [toDelete, setToDelete] = useState<ExtraExpense | null>(null);
 
   // Form state
   const [newExpense, setNewExpense] = useState({
@@ -274,9 +286,22 @@ export function ExpensesView({ periodCode = "30d", shopId = null }: ExpensesView
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (id: number) => {
-    if (confirm("Вы уверены, что хотите удалить этот расход?")) {
-      deleteMutation.mutate(id);
+  const handleDeleteClick = (expense: ExtraExpense) => {
+    setToDelete(expense);
+    setDeleteOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!toDelete) return;
+    try {
+      await deleteMutation.mutateAsync(toDelete.id);
+      setDeleteOpen(false);
+      setToDelete(null);
+    } catch (error) {
+      // Ошибка уже обработана в onError deleteMutation (toast)
+      // Диалог можно оставить открытым или закрыть - закрываем для UX
+      setDeleteOpen(false);
+      setToDelete(null);
     }
   };
 
@@ -443,7 +468,7 @@ export function ExpensesView({ periodCode = "30d", shopId = null }: ExpensesView
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-destructive hover:text-destructive"
-                            onClick={() => handleDelete(expense.id)}
+                            onClick={() => handleDeleteClick(expense)}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -624,6 +649,33 @@ export function ExpensesView({ periodCode = "30d", shopId = null }: ExpensesView
           </div>
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Вы уверены, что хотите удалить этот расход?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Это действие нельзя отменить.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setDeleteOpen(false);
+              setToDelete(null);
+            }}>
+              Нет
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleConfirmDelete}
+              disabled={deleteMutation.isPending}
+            >
+              Да
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
