@@ -82,22 +82,25 @@ def get_profit_sql(revenue_expr: str, commission_expr: str, logistics_expr: str,
                 0.0"""
 
 
-def get_avg_check_sql(revenue_expr: str, buyouts_expr: str) -> str:
+def get_avg_check_sql(revenue_expr: str, orders_expr: str) -> str:
     """
-    Generate SQL expression for average check calculation (same formula as KPI).
+    Generate SQL expression for average check calculation.
     
-    Formula: revenue / buyouts_qty (if buyouts_qty > 0)
+    Formula: revenue / NULLIF(orders_qty, 0) (if orders_qty > 0)
     Rounded to integer (no kopecks).
+    
+    Note: Uses orders_qty (all orders) for period-level calculation,
+    not buyouts_qty (completed orders only).
     
     Args:
         revenue_expr: SQL expression for revenue (e.g., "s.revenue_sum")
-        buyouts_expr: SQL expression for buyouts quantity (e.g., "s.buyouts_qty")
+        orders_expr: SQL expression for orders quantity (e.g., "s.orders_qty")
     
     Returns:
         SQL expression for avg_check
     """
     return f"""CASE 
-                    WHEN COALESCE({buyouts_expr}, 0) > 0 
-                    THEN ROUND(COALESCE({revenue_expr}, 0) / {buyouts_expr})
+                    WHEN COALESCE({orders_expr}, 0) > 0 
+                    THEN ROUND(COALESCE({revenue_expr}, 0) / NULLIF({orders_expr}, 0))
                     ELSE 0
                 END"""

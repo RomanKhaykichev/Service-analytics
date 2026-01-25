@@ -683,7 +683,7 @@ async def get_orders_sales_daily(
                 {metrics_sql['returns_qty']} AS returns_qty,
                 {metrics_sql['revenue_sum']} AS revenue_sum,
                 {get_profit_sql(metrics_sql['revenue_sum'], metrics_sql['commission_sum'], metrics_sql['logistics_sum'], metrics_sql['cogs_sum'])} AS profit_sum,
-                {get_avg_check_sql(metrics_sql['revenue_sum'], metrics_sql['buyouts_qty'])} AS avg_check
+                {get_avg_check_sql(metrics_sql['revenue_sum'], metrics_sql['orders_qty'])} AS avg_check
             FROM {qname("fact_sales")}
             WHERE user_id = CAST(:user_id AS uuid)
                 {shop_condition}
