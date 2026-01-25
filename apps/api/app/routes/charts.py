@@ -9,6 +9,7 @@ from app.db import get_db, qname
 from app.deps import require_user
 from app.routes.kpi import get_data_end_date, period_range, normalize_period
 from app.utils.statuses import get_status_sql_condition
+from app.utils.metrics import get_status_conditions, get_sales_metrics_sql, get_profit_sql, get_avg_check_sql
 from app.schemas import (
     RevenueDailyResponse,
     RevenuePoint,
@@ -556,9 +557,31 @@ async def get_orders_sales_daily(
     user_id: UUID = Depends(require_user),
     period: str = Query(default="30d", description="Period: 7d, 30d, 90d, or all"),
     shop_id: Optional[str] = Query(default=None, description="Shop UUID"),
+    group_by: str = Query(default="day", description="Grouping: day, week, or month"),
     db: Session = Depends(get_db)
 ):
-    """Get daily orders and sales chart data with all metrics: orders, buyouts, returns, stock, revenue, profit, avg_check."""
+    """Get orders and sales chart data grouped by time period (day/week/month).
+    
+    All metrics are calculated using the SAME formulas as /api/kpi/summary to ensure consistency.
+    Metrics are calculated at the period level (not pre-aggregated), then grouped by time period.
+    
+    Formulas (same as KPI):
+    - orders_qty: SUM(qty) WITHOUT status filter (same as KPI ordersCount)
+    - buyouts_qty: SUM(qty) WHERE status='завершен' (same as KPI completedCount)
+    - returns_qty: SUM(returns_qty) from all rows (same as KPI returnsCount)
+    - revenue_sum: SUM(revenue_sum) WHERE status='завершен' (same as KPI revenue)
+    - profit_sum: revenue - total_expenses (same as KPI profit)
+      where total_expenses = commission + logistics + cogs + taxes_1pct + extra_expenses
+    - avg_check: revenue / buyouts_qty calculated at period level (same as KPI averageCheck)
+      Note: NOT average of daily values, but period-level calculation
+    
+    Grouping:
+    - day: GROUP BY date_created::date
+    - week: GROUP BY date_trunc('week', date_created)
+    - month: GROUP BY date_trunc('month', date_created)
+    
+    Note: stock_qty is excluded from this chart.
+    """
     # Normalize period
     period_code = normalize_period(period)
     
@@ -607,12 +630,29 @@ async def get_orders_sales_daily(
                 detail="Invalid shop_id format (must be UUID)"
             )
     
-    logger.info(f"get_orders_sales_daily: user_id={user_id}, period={period_code}, shop_id={shop_id}, date_from={date_from_iso}, date_to={date_to_iso}")
+    # Normalize group_by
+    group_by_normalized = group_by.lower().strip()
+    if group_by_normalized not in ("day", "week", "month"):
+        group_by_normalized = "day"
+    
+    logger.info(f"get_orders_sales_daily: user_id={user_id}, period={period_code}, shop_id={shop_id}, group_by={group_by_normalized}, date_from={date_from_iso}, date_to={date_to_iso}")
     
     try:
-        # Get status conditions
-        completed_condition = get_status_sql_condition('completed')
-        orders_condition = get_status_sql_condition('orders')  # всё кроме отмен
+        # Use the SAME status conditions as in KPI (from shared utility)
+        status_conditions = get_status_conditions()
+        processing_status_condition = status_conditions['processing']
+        completed_status_condition = status_conditions['completed']
+        
+        # Determine grouping expression based on group_by parameter
+        if group_by_normalized == "week":
+            period_date_expr = "date_trunc('week', date_created)::date"
+            period_date_alias = "period_date"
+        elif group_by_normalized == "month":
+            period_date_expr = "date_trunc('month', date_created)::date"
+            period_date_alias = "period_date"
+        else:  # day (default)
+            period_date_expr = "date_created::date"
+            period_date_alias = "period_date"
         
         # Build parameters
         params = {
@@ -627,137 +667,30 @@ async def get_orders_sales_daily(
             params["shop_id"] = shop_id
             shop_condition = "AND shop_id = CAST(:shop_id AS uuid)"
         
-        # Build query - агрегируем по дням все метрики
-        # 1. Sales metrics from fact_sales
-        # 2. Expenses metrics from fact_expenses (grouped by date_written_off)
-        # 3. Stock metrics from fact_leftout_snapshot (grouped by loaded_at::date)
-        # 4. Join all by date series
+        # Get SQL expressions for metrics (using shared utility functions)
+        # These expressions use the SAME formulas as KPI to ensure consistency
+        metrics_sql = get_sales_metrics_sql(table_alias="")
+        
+        # Build query - агрегируем по периодам все метрики по ТЕМ ЖЕ формулам, что и KPI
+        # Все формулы должны совпадать с /api/kpi/summary для обеспечения консистентности
+        # Метрики считаются на уровне периода, затем группируются по времени
         
         query = text(f"""
-            WITH date_series AS (
-                SELECT generate_series(
-                    CAST(:date_from AS date),
-                    CAST(:date_to AS date),
-                    '1 day'::interval
-                )::date AS day
-            ),
-            sales_day AS (
-                SELECT 
-                    date_created::date AS d,
-                    -- orders_qty: SUM(qty) WHERE status != отмен
-                    COALESCE(SUM(CASE WHEN ({orders_condition}) THEN qty ELSE 0 END), 0) AS orders_qty,
-                    -- buyouts_qty: SUM(qty) WHERE status = завершен
-                    COALESCE(SUM(CASE WHEN ({completed_condition}) THEN qty ELSE 0 END), 0) AS buyouts_qty,
-                    -- returns_qty: SUM(returns_qty)
-                    COALESCE(SUM(returns_qty), 0) AS returns_qty,
-                    -- revenue_sum: SUM(revenue_sum) WHERE status = завершен
-                    COALESCE(SUM(CASE WHEN ({completed_condition}) THEN revenue_sum ELSE 0 END), 0) AS revenue_sum,
-                    -- commission_sum: SUM(commission_sum) WHERE status = завершен
-                    COALESCE(SUM(CASE WHEN ({completed_condition}) THEN commission_sum ELSE 0 END), 0) AS commission_sum,
-                    -- logistics_sum: SUM(logistics_sum) WHERE status = завершен
-                    COALESCE(SUM(CASE WHEN ({completed_condition}) THEN logistics_sum ELSE 0 END), 0) AS logistics_sum,
-                    -- cogs_sum: SUM(cogs_sum) WHERE status = завершен OR processing
-                    COALESCE(SUM(
-                        CASE 
-                            WHEN ({completed_condition}) OR (status IN ('processing', 'в обработке'))
-                            THEN cogs_sum 
-                            ELSE 0 
-                        END
-                    ), 0) AS cogs_sum
-                FROM {qname("fact_sales")}
-                WHERE user_id = CAST(:user_id AS uuid)
-                    {shop_condition}
-                    AND date_created >= CAST(:date_from AS date)
-                    AND date_created < CAST(:date_to AS date) + INTERVAL '1 day'
-                GROUP BY date_created::date
-            ),
-            expenses_day AS (
-                SELECT 
-                    date_written_off::date AS d,
-                    -- Total expenses per day: commission + logistics + product_cost + taxes + extra_expenses
-                    -- Для упрощения: считаем только основные расходы из fact_expenses
-                    -- Комиссия и логистика уже в fact_sales, но для графика нужны расходы по дням
-                    -- Используем fact_expenses для расходов по дням
-                    COALESCE(SUM(
-                        CASE 
-                            WHEN (COALESCE(source, '') ILIKE '%маркетинг%' OR COALESCE(source, '') ILIKE '%marketing%')
-                                 AND (COALESCE(operation_type, '') ILIKE '%оплат%' OR COALESCE(operation_type, '') ILIKE '%payment%')
-                            THEN COALESCE(cost_sum, 0)
-                            ELSE 0
-                        END
-                    ), 0) +
-                    COALESCE(SUM(
-                        CASE 
-                            WHEN lower(trim(COALESCE(operation_type, ''))) = 'оплата' 
-                            THEN COALESCE(cost_sum, 0)
-                            WHEN lower(trim(COALESCE(operation_type, ''))) = 'возврат' 
-                            THEN -COALESCE(cost_sum, 0)
-                            ELSE 0
-                        END
-                    ), 0) +
-                    COALESCE(SUM(
-                        CASE 
-                            WHEN COALESCE(service, '') ILIKE '%штраф%'
-                            THEN COALESCE(amount_sum, 0)
-                            ELSE 0
-                        END
-                    ), 0) AS expenses_sum
-                FROM {qname("fact_expenses")}
-                WHERE user_id = CAST(:user_id AS uuid)
-                    AND date_written_off >= CAST(:date_from AS date)
-                    AND date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'
-                GROUP BY date_written_off::date
-            ),
-            stock_day AS (
-                SELECT 
-                    loaded_at::date AS d,
-                    COALESCE(SUM(in_sale + marketplace_side), 0) AS stock_qty
-                FROM {qname("fact_leftout_snapshot")}
-                WHERE user_id = CAST(:user_id AS uuid)
-                    {shop_condition}
-                    AND loaded_at >= CAST(:date_from AS date)
-                    AND loaded_at < CAST(:date_to AS date) + INTERVAL '1 day'
-                GROUP BY loaded_at::date
-            ),
-            manual_expenses_day AS (
-                SELECT 
-                    expense_date AS d,
-                    COALESCE(SUM(amount_sum), 0) AS extra_expenses_sum
-                FROM {qname("manual_expenses")}
-                WHERE user_id = CAST(:user_id AS uuid)
-                    AND is_deleted = false
-                    {shop_condition}
-                    AND expense_date >= CAST(:date_from AS date)
-                    AND expense_date < CAST(:date_to AS date) + INTERVAL '1 day'
-                GROUP BY expense_date
-            )
             SELECT 
-                d.day::date AS date,
-                COALESCE(s.orders_qty, 0) AS orders_qty,
-                COALESCE(s.buyouts_qty, 0) AS buyouts_qty,
-                COALESCE(s.returns_qty, 0) AS returns_qty,
-                COALESCE(st.stock_qty, 0) AS stock_qty,
-                COALESCE(s.revenue_sum, 0) AS revenue_sum,
-                -- profit_sum: revenue - (commission + logistics + cogs + taxes 1% + expenses from fact_expenses + manual_expenses)
-                COALESCE(s.revenue_sum, 0) - 
-                COALESCE(s.commission_sum, 0) - 
-                COALESCE(s.logistics_sum, 0) - 
-                COALESCE(s.cogs_sum, 0) - 
-                (COALESCE(s.revenue_sum, 0) * 0.01) - 
-                COALESCE(e.expenses_sum, 0) - 
-                COALESCE(me.extra_expenses_sum, 0) AS profit_sum,
-                -- avg_check: revenue / buyouts_qty (if buyouts_qty > 0)
-                CASE 
-                    WHEN COALESCE(s.buyouts_qty, 0) > 0 
-                    THEN ROUND(COALESCE(s.revenue_sum, 0) / s.buyouts_qty)
-                    ELSE 0
-                END AS avg_check
-            FROM date_series d
-            LEFT JOIN sales_day s ON s.d = d.day
-            LEFT JOIN expenses_day e ON e.d = d.day
-            LEFT JOIN stock_day st ON st.d = d.day
-            LEFT JOIN manual_expenses_day me ON me.d = d.day
-            ORDER BY d.day ASC
+                {period_date_expr} AS {period_date_alias},
+                {metrics_sql['orders_qty']} AS orders_qty,
+                {metrics_sql['buyouts_qty']} AS buyouts_qty,
+                {metrics_sql['returns_qty']} AS returns_qty,
+                {metrics_sql['revenue_sum']} AS revenue_sum,
+                {get_profit_sql(metrics_sql['revenue_sum'], metrics_sql['commission_sum'], metrics_sql['logistics_sum'], metrics_sql['cogs_sum'])} AS profit_sum,
+                {get_avg_check_sql(metrics_sql['revenue_sum'], metrics_sql['buyouts_qty'])} AS avg_check
+            FROM {qname("fact_sales")}
+            WHERE user_id = CAST(:user_id AS uuid)
+                {shop_condition}
+                AND date_created >= CAST(:date_from AS date)
+                AND date_created < CAST(:date_to AS date) + INTERVAL '1 day'
+            GROUP BY {period_date_expr}
+            ORDER BY {period_date_expr} ASC
         """)
         
         result = db.execute(query, params)
@@ -768,22 +701,21 @@ async def get_orders_sales_daily(
         points = []
         for row in rows:
             try:
-                day = row[0]
-                date_str = day.isoformat() if hasattr(day, 'isoformat') else str(day)
+                period_date = row[0]
+                date_str = period_date.isoformat() if hasattr(period_date, 'isoformat') else str(period_date)
                 orders_qty = float(row[1]) if row[1] is not None else 0.0
                 buyouts_qty = float(row[2]) if row[2] is not None else 0.0
                 returns_qty = float(row[3]) if row[3] is not None else 0.0
-                stock_qty = float(row[4]) if row[4] is not None else 0.0
-                revenue_sum = float(row[5]) if row[5] is not None else 0.0
-                profit_sum = float(row[6]) if row[6] is not None else 0.0
-                avg_check = float(row[7]) if row[7] is not None else 0.0
+                revenue_sum = float(row[4]) if row[4] is not None else 0.0
+                profit_sum = float(row[5]) if row[5] is not None else 0.0
+                avg_check = float(row[6]) if row[6] is not None else 0.0
                 
                 points.append(OrdersSalesDailyPoint(
                     date=date_str,
                     orders_qty=orders_qty,
                     buyouts_qty=buyouts_qty,
                     returns_qty=returns_qty,
-                    stock_qty=stock_qty,
+                    stock_qty=0.0,  # Складские остатки убраны из графика (always 0.0 for backward compatibility)
                     revenue_sum=revenue_sum,
                     profit_sum=profit_sum,
                     avg_check=avg_check

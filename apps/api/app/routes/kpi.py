@@ -9,6 +9,7 @@ from app.db import get_db, qname
 from app.deps import require_user
 from app.utils.statuses import get_status_sql_condition
 from app.utils.barcode import barcode_norm_sql
+from app.utils.metrics import get_status_conditions
 from fastapi import Depends
 
 logger = logging.getLogger(__name__)
@@ -147,13 +148,11 @@ def kpi_summary(
             sales_params["date_from"] = date_from.isoformat()
         
         # A) SALES aggregation
-        # Status normalization: lower(trim(status))
-        # According to TZ: exact match with normalized status
-        processing_status_condition = "lower(trim(status)) = 'в обработке'"
-        # Completed: support both 'завершен' and 'завершён' (with ё)
-        completed_status_condition = "lower(trim(status)) IN ('завершен', 'завершён')"
-        # Cancelled: support both 'отменен' and 'отменён' (with ё)
-        cancelled_status_condition = "lower(trim(status)) IN ('отменен', 'отменён')"
+        # Use shared status conditions from utils.metrics to ensure consistency with Charts
+        status_conditions = get_status_conditions()
+        processing_status_condition = status_conditions['processing']
+        completed_status_condition = status_conditions['completed']
+        cancelled_status_condition = status_conditions['cancelled']
         
         # Define conditions for use in other queries
         completed_condition = completed_status_condition
