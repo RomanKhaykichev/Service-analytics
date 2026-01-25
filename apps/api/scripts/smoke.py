@@ -25,8 +25,10 @@ def check_endpoint(
     path: str,
     expected_status: int = 200,
     auth_token: Optional[str] = None,
+    user_id: Optional[str] = None,
     json_data: Optional[dict] = None,
-    description: str = ""
+    description: str = "",
+    check_json: bool = False
 ) -> bool:
     """Check if an endpoint responds correctly."""
     url = f"{API_BASE_URL}{path}"
@@ -34,6 +36,9 @@ def check_endpoint(
     
     if auth_token:
         headers["Authorization"] = f"Bearer {auth_token}"
+    elif user_id:
+        # Use X-User-Id header for dev mode
+        headers["X-User-Id"] = user_id
     
     try:
         if method.upper() == "GET":
@@ -45,7 +50,19 @@ def check_endpoint(
             return False
         
         if response.status_code == expected_status:
-            print(f"✅ {description or path}: {response.status_code}")
+            status_msg = f"✅ {description or path}: {response.status_code}"
+            if check_json:
+                try:
+                    data = response.json()
+                    if isinstance(data, dict) and "ok" in data:
+                        status_msg += f" (ok: {data.get('ok')})"
+                    elif isinstance(data, list):
+                        status_msg += f" (items: {len(data)})"
+                    elif isinstance(data, dict) and "expenses" in data:
+                        status_msg += f" (expenses: {len(data.get('expenses', []))})"
+                except:
+                    pass
+            print(status_msg)
             return True
         else:
             print(f"❌ {description or path}: Expected {expected_status}, got {response.status_code}")
@@ -75,25 +92,44 @@ def main():
     
     # 1. Health check (no auth required)
     results.append(
-        check_endpoint("GET", "/health", description="Health check")
+        check_endpoint("GET", "/api/health", description="GET /api/health", check_json=True)
     )
     
-    # 2. Shops endpoint (requires auth, but we check if it's accessible)
-    # In production, you might want to skip this or use a test token
+    # 2. Test endpoints with auth (JWT token or X-User-Id for dev mode)
     auth_token = os.getenv("SMOKE_TEST_TOKEN")
+    test_user_id = os.getenv("SMOKE_TEST_USER_ID", "00000000-0000-0000-0000-000000000001")
+    
     if auth_token:
+        # Use JWT token if provided
+        user_id = None
+        print(f"ℹ️  Using JWT token for authentication")
+    else:
+        # Use X-User-Id header for dev mode
+        user_id = test_user_id
+        print(f"ℹ️  Using X-User-Id header (dev mode): {user_id}")
+    print()
+    
+    # Test endpoints
+    if auth_token or user_id:
         results.append(
-            check_endpoint("GET", "/api/shops", auth_token=auth_token, description="GET /api/shops")
+            check_endpoint("GET", "/api/shops", user_id=user_id, auth_token=auth_token, 
+                          description="GET /api/shops", check_json=True)
         )
         results.append(
-            check_endpoint("GET", "/api/kpi/summary?period=30d", auth_token=auth_token, description="GET /api/kpi/summary")
+            check_endpoint("GET", "/api/kpi/summary?period=30d", user_id=user_id, auth_token=auth_token,
+                          description="GET /api/kpi/summary?period=30d", check_json=True)
         )
         results.append(
-            check_endpoint("GET", "/api/extra-expenses?period=30d", auth_token=auth_token, description="GET /api/extra-expenses")
+            check_endpoint("GET", "/api/charts/revenue-daily?period=30d", user_id=user_id, auth_token=auth_token,
+                          description="GET /api/charts/revenue-daily?period=30d", check_json=True)
+        )
+        results.append(
+            check_endpoint("GET", "/api/extra-expenses?period=30d", user_id=user_id, auth_token=auth_token,
+                          description="GET /api/extra-expenses?period=30d", check_json=True)
         )
     else:
-        print("⚠️  SMOKE_TEST_TOKEN not set, skipping authenticated endpoints")
-        print("   Set SMOKE_TEST_TOKEN env var to test authenticated endpoints")
+        print("⚠️  No authentication method available")
+        print("   Set SMOKE_TEST_TOKEN (JWT) or SMOKE_TEST_USER_ID (dev mode) env var")
     
     # Summary
     print()

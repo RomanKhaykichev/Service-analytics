@@ -94,3 +94,25 @@ class UzumServicesDailyResponse(BaseModel):
     points: list[UzumServicesPoint]
     period: PeriodInfo
     filters: UzumServicesFilters
+
+
+# Orders and Sales daily chart (all metrics)
+class OrdersSalesDailyPoint(BaseModel):
+    date: str  # YYYY-MM-DD format
+    orders_qty: float  # Заказы
+    buyouts_qty: float  # Выкупы
+    returns_qty: float  # Возвраты
+    stock_qty: float  # Складские остатки
+    revenue_sum: float  # Выручка
+    profit_sum: float  # Прибыль
+    avg_check: float  # Средний чек
+
+
+class OrdersSalesDailyFilters(BaseModel):
+    shop_id: Optional[str] = None
+
+
+class OrdersSalesDailyResponse(BaseModel):
+    points: list[OrdersSalesDailyPoint]
+    period: PeriodInfo
+    filters: OrdersSalesDailyFilters

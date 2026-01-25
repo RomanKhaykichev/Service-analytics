@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.db import get_db, qname
@@ -14,15 +14,13 @@ settings = get_settings()
 
 @router.get("/debug/db")
 async def debug_db(
-    request: Request,
+    user_id: UUID = Depends(require_user),
     db: Session = Depends(get_db)
 ):
     """
     Debug endpoint to check database connection and schema configuration.
     Requires authentication (JWT or X-User-Id header).
     """
-    # Require authentication
-    user_id = require_user(request)
     
     try:
         # Get current database name
@@ -78,9 +76,9 @@ async def debug_db(
 
 @router.get("/debug/period")
 async def debug_period(
-    request: Request,
     period: str = Query(default="30d", description="Period: 7d, 30d, 90d, or all"),
     shop_id: Optional[str] = Query(default=None, description="Shop UUID"),
+    user_id: UUID = Depends(require_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -88,8 +86,6 @@ async def debug_period(
     Returns: ok, user_id, period, shop_id, period_range, data_end_date, year_start, price_window_from, price_window_to.
     """
     from app.routes.kpi import get_data_end_date, period_range, normalize_period
-    
-    user_id = require_user(request)
     
     # Validate shop_id if provided
     if shop_id:
@@ -139,15 +135,14 @@ async def debug_period(
 
 @router.get("/debug/stock")
 async def debug_stock(
-    request: Request,
     shop_id: Optional[str] = Query(default=None, description="Shop UUID"),
+    user_id: UUID = Depends(require_user),
     db: Session = Depends(get_db)
 ):
     """
     Debug endpoint to check stock calculation from fact_leftout_snapshot.
     Returns: last_loaded_at, stockQuantity, rows_cnt, rows_with_stock (marketplace_side>0).
     """
-    user_id = require_user(request)
     
     # Validate shop_id if provided
     if shop_id:

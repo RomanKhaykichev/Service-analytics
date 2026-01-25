@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query, Depends, HTTPException, Request
+from fastapi import APIRouter, Query, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional
@@ -14,7 +14,6 @@ router = APIRouter()
 
 @router.get("/products", response_model=ProductsResponse)
 async def get_products(
-    request: Request,
     period: str = Query(default="30d", regex="^(7d|30d|60d|90d|all)$"),
     shop_id: Optional[str] = Query(default=None),
     q: Optional[str] = Query(default=None),
@@ -22,10 +21,10 @@ async def get_products(
     order: str = Query(default="desc", regex="^(asc|desc)$"),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
+    user_id: UUID = Depends(require_user),
     db: Session = Depends(get_db)
 ):
     """Get top products with sales data from v_sales_daily."""
-    user_id = require_user(request)
     
     try:
         # Simplified query: top products by revenue from v_sales_daily

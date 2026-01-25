@@ -110,7 +110,7 @@ class ExtraExpenseCreate(BaseModel):
     expense_date: date
     amount_sum: float
     shop_id: Optional[str] = None
-    category: Optional[str] = None
+    category: str = "Прочее"  # Default category if not provided
     comment: Optional[str] = None
 
 
@@ -185,6 +185,10 @@ async def get_extra_expenses(
     shop_filter = ""
     if shop_id:
         shop_filter = "AND e.shop_id = CAST(:shop_id AS uuid)"
+    else:
+        # If shop_id is not provided, show all expenses (including those with shop_id = NULL)
+        # No additional filter needed
+        pass
     
     query = text(f"""
         SELECT 
@@ -242,7 +246,7 @@ async def create_extra_expense(
         "expense_date": expense.expense_date.isoformat(),
         "amount_sum": expense.amount_sum,
         "shop_id": expense.shop_id if expense.shop_id else None,
-        "category": expense.category,
+        "category": expense.category or "Прочее",  # Ensure category is not None
         "comment": expense.comment
     }
     
@@ -407,12 +411,17 @@ async def update_extra_expense(
         params["amount_sum"] = expense.amount_sum
     
     if expense.shop_id is not None:
-        updates.append("shop_id = CAST(:shop_id AS uuid)")
-        params["shop_id"] = expense.shop_id
+        # Allow setting shop_id to NULL explicitly
+        if expense.shop_id == "" or expense.shop_id.lower() == "null":
+            updates.append("shop_id = NULL")
+        else:
+            updates.append("shop_id = CAST(:shop_id AS uuid)")
+            params["shop_id"] = expense.shop_id
+    # If shop_id is None, don't update it (keep current value)
     
     if expense.category is not None:
         updates.append("category = :category")
-        params["category"] = expense.category
+        params["category"] = expense.category or "Прочее"  # Ensure category is not None
     
     if expense.comment is not None:
         updates.append("comment = :comment")

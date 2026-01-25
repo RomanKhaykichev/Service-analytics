@@ -18,6 +18,9 @@ from .charts import (
     UzumServicesPoint,
     UzumServicesFilters,
     UzumServicesDailyResponse,
+    OrdersSalesDailyPoint,
+    OrdersSalesDailyFilters,
+    OrdersSalesDailyResponse,
 )
 from .products import ProductItem, ProductsResponse
 from .kpi import KPISummaryResponse
@@ -44,6 +47,9 @@ __all__ = [
     "UzumServicesPoint",
     "UzumServicesFilters",
     "UzumServicesDailyResponse",
+    "OrdersSalesDailyPoint",
+    "OrdersSalesDailyFilters",
+    "OrdersSalesDailyResponse",
     "ProductItem",
     "ProductsResponse",
     "KPISummaryResponse",

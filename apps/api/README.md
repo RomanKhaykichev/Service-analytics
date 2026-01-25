@@ -29,6 +29,12 @@ Copy-Item .env.example .env
 # Отредактировать .env и указать правильные данные для подключения к БД
 # DATABASE_URL=postgresql+psycopg2://postgres:PASSWORD@localhost:5432/service_analytics
 
+# ⚠️ ВАЖНО: Применить миграции базы данных перед запуском!
+# Windows PowerShell:
+.\scripts\migrate.ps1
+# Или вручную:
+python -m alembic upgrade head
+
 # Запустить сервер
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
@@ -166,6 +172,80 @@ apps/api/
 ├── requirements.txt     # Зависимости Python
 └── README.md           # Этот файл
 ```
+
+## Миграции базы данных
+
+**⚠️ КРИТИЧЕСКИ ВАЖНО:** Перед первым запуском API необходимо применить миграции базы данных!
+
+### Применение миграций
+
+**Windows PowerShell:**
+```powershell
+.\scripts\migrate.ps1
+```
+
+**Linux/Mac:**
+```bash
+./scripts/migrate.sh
+```
+
+**Или вручную:**
+```bash
+python -m alembic upgrade head
+```
+
+### Проверка наличия таблицы
+
+После применения миграций можно проверить наличие таблицы:
+
+**В PostgreSQL:**
+```sql
+SELECT to_regclass('app.map_shop_barcode');
+-- Должно вернуть: app.map_shop_barcode (не NULL)
+```
+
+**Или через Python скрипт:**
+```bash
+python scripts/check_db.py
+```
+
+### Проверка состояния миграций
+
+Проверить текущую версию миграций:
+```bash
+python -m alembic current
+```
+
+Просмотреть историю миграций:
+```bash
+python -m alembic history
+```
+
+### Проверка наличия критических таблиц
+
+Перед импортом данных рекомендуется проверить наличие критических таблиц:
+
+```bash
+python scripts/check_db.py
+```
+
+Скрипт проверит наличие следующих таблиц:
+- `app.map_shop_barcode` (критически важно для импортов)
+- `app.manual_expenses`
+- `app.fact_sales`
+- `app.fact_expenses`
+- `app.dim_shop`
+
+Если таблицы отсутствуют, скрипт выдаст ошибку и подскажет, как исправить.
+
+### Автоматическая проверка при старте
+
+API автоматически проверяет состояние миграций при старте и логирует:
+- Текущую Alembic revision
+- Наличие критических таблиц
+- Предупреждения, если миграции не применены
+
+Если миграции не применены, в логах будет видно сообщение с инструкцией по исправлению.
 
 ## Разработка
 

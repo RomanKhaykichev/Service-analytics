@@ -95,9 +95,16 @@ def require_user(
         )
 
 
-def require_user_id(request: Request) -> UUID:
+def require_user_id(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+) -> UUID:
     """
     Legacy dependency for X-User-Id header only.
     Deprecated: use require_user() instead.
+    
+    This function is kept for backward compatibility but should not be used in new code.
+    Use `user_id: UUID = Depends(require_user)` instead.
     """
-    return require_user(request)
+    # Delegate to require_user to maintain same behavior
+    return require_user(request, credentials)

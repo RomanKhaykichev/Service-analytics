@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional
@@ -8,6 +8,7 @@ import logging
 from app.db import get_db, qname
 from app.deps import require_user
 from app.utils.statuses import get_status_sql_condition
+from app.utils.barcode import barcode_norm_sql
 from fastapi import Depends
 
 logger = logging.getLogger(__name__)
@@ -83,12 +84,11 @@ def period_range(period_code: str, data_end_date: datetime.date) -> dict:
 
 @router.get("/kpi/summary")
 def kpi_summary(
-    request: Request,
     period: str = "30d",
     shop_id: Optional[str] = None,
+    user_id: UUID = Depends(require_user),
     db: Session = Depends(get_db)
 ):
-    user_id = require_user(request)
     
     # Normalize period
     period_code = normalize_period(period)
@@ -502,14 +502,14 @@ def kpi_summary(
                     -- barcode_norm вычисляется на лету: нормализация barcode (удаление пробелов)
                     SELECT
                         NULLIF(TRIM(sku), '') AS sku,
-                        NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), '') AS barcode_norm,
+                        {barcode_norm_sql('barcode')} AS barcode_norm,
                         COALESCE(in_sale, 0) AS stock_qty,
                         MAX(loaded_at) AS stock_snapshot_at
                     FROM {qname("fact_leftout_snapshot")}
                     WHERE user_id = CAST(:user_id AS uuid)
                         AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
                         AND loaded_at = CAST(:snap_loaded_at AS timestamp)
-                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), ''), COALESCE(in_sale, 0)
+                    GROUP BY NULLIF(TRIM(sku), ''), {barcode_norm_sql('barcode')}, COALESCE(in_sale, 0)
                 ),
                 unit_cogs_by_product AS (
                     -- ТЗ: unit_cogs = единичная себестоимость из sells_report
@@ -522,14 +522,14 @@ def kpi_summary(
                     -- barcode_norm вычисляется на лету: нормализация barcode (удаление пробелов)
                     SELECT
                         NULLIF(TRIM(sku), '') AS sku,
-                        NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), '') AS barcode_norm,
+                        {barcode_norm_sql('barcode')} AS barcode_norm,
                         COALESCE(
                             SUM(cogs_sum) / NULLIF(SUM(qty), 0),
                             0
                         ) AS unit_cogs
                     FROM {qname("fact_sales")}
                     WHERE {stock_cogs_where_clause}
-                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), '')
+                    GROUP BY NULLIF(TRIM(sku), ''), {barcode_norm_sql('barcode')}
                 ),
                 unit_price_by_product AS (
                     -- ТЗ: unit_price = единичная цена из sells_report
@@ -542,14 +542,14 @@ def kpi_summary(
                     -- barcode_norm вычисляется на лету: нормализация barcode (удаление пробелов)
                     SELECT
                         NULLIF(TRIM(sku), '') AS sku,
-                        NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), '') AS barcode_norm,
+                        {barcode_norm_sql('barcode')} AS barcode_norm,
                         COALESCE(
                             SUM(price_sum) / NULLIF(SUM(qty), 0),
                             0
                         ) AS unit_price
                     FROM {qname("fact_sales")}
                     WHERE {stock_cogs_where_clause}
-                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), '')
+                    GROUP BY NULLIF(TRIM(sku), ''), {barcode_norm_sql('barcode')}
                 ),
                 stock_with_cogs AS (
                     -- Сопоставление товаров из snap с unit_cogs и unit_price
@@ -712,7 +712,7 @@ def kpi_summary(
                     -- barcode_norm вычисляется на лету: нормализация barcode (удаление пробелов)
                     SELECT
                         NULLIF(TRIM(sku), '') AS sku,
-                        NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), '') AS barcode_norm,
+                        {barcode_norm_sql('barcode')} AS barcode_norm,
                         SUM(qty) AS qty_period,
                         SUM(revenue_sum) AS rev_period
                     FROM {qname("fact_sales")}
@@ -721,7 +721,7 @@ def kpi_summary(
                         AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
                         AND date_created >= CAST(:date_from_for_avg AS date)
                         AND date_created < CAST(:date_to AS date) + INTERVAL '1 day'
-                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), '')
+                    GROUP BY NULLIF(TRIM(sku), ''), {barcode_norm_sql('barcode')}
                 ),
                 price_window AS (
                     -- Weighted average price из окна для расчета цены (только завершенные заказы)
@@ -730,7 +730,7 @@ def kpi_summary(
                     -- barcode_norm вычисляется на лету: нормализация barcode (удаление пробелов)
                     SELECT
                         NULLIF(TRIM(sku), '') AS sku,
-                        NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), '') AS barcode_norm,
+                        {barcode_norm_sql('barcode')} AS barcode_norm,
                         SUM(revenue_sum) AS rev_window,
                         SUM(qty) AS qty_window
                     FROM {qname("fact_sales")}
@@ -739,7 +739,7 @@ def kpi_summary(
                         AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
                         AND date_created >= CAST(:price_window_from AS date)
                         AND date_created < CAST(:date_to AS date) + INTERVAL '1 day'
-                    GROUP BY NULLIF(TRIM(sku), ''), NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), '')
+                    GROUP BY NULLIF(TRIM(sku), ''), {barcode_norm_sql('barcode')}
                 ),
                 snap AS (
                     -- Текущий snapshot склада из fact_leftout_snapshot
@@ -747,7 +747,7 @@ def kpi_summary(
                     -- barcode_norm вычисляется на лету: нормализация barcode (удаление пробелов)
                     SELECT
                         NULLIF(TRIM(sku), '') AS sku,
-                        NULLIF(TRIM(regexp_replace(barcode, '\s+', '', 'g')), '') AS barcode_norm,
+                        {barcode_norm_sql('barcode')} AS barcode_norm,
                         COALESCE(in_sale, 0) + COALESCE(sdh_stock, 0) AS stock_fbo
                     FROM {qname("fact_leftout_snapshot")}
                     WHERE user_id = CAST(:user_id AS uuid)

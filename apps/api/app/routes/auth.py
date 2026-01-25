@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from datetime import datetime, timezone
@@ -283,14 +283,13 @@ async def logout(
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user(
-    request: Request,
+    user_id: UUID = Depends(require_user),
     db: Session = Depends(get_db)
 ):
     """
     Get current authenticated user.
     Requires Bearer access token or X-User-Id header (dev mode).
     """
-    user_id = require_user(request)
     
     user = db.query(User).filter(User.id == user_id).first()
     if not user:

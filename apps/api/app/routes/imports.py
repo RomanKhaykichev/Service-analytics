@@ -9,9 +9,29 @@ import logging
 import io
 from app.db import get_db, qname
 from app.deps import require_user
+from app.utils.barcode import barcode_norm_sql
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def table_exists(db: Session, full_name: str) -> bool:
+    """
+    Check if a table exists in the database.
+    
+    Args:
+        db: Database session
+        full_name: Full table name with schema, e.g. 'app.map_shop_barcode'
+    
+    Returns:
+        True if table exists, False otherwise
+    """
+    try:
+        result = db.execute(text("SELECT to_regclass(:t) IS NOT NULL"), {"t": full_name})
+        return result.scalar() is True
+    except Exception as e:
+        logger.warning(f"Error checking table existence for {full_name}: {e}")
+        return False
 
 # Маппинги колонок (из import/import_batch.py)
 SHEETS = {
@@ -297,15 +317,6 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
     params = {"user_id": user_id_str, "batch_id": batch_id}
     
     if report_type == "sales":
-        # Update barcode_norm in staging table (normalize barcode_raw)
-        db.execute(text(f"""
-            UPDATE {qname('stg_sales')}
-            SET barcode_norm = NULLIF(TRIM(regexp_replace(barcode_raw, '\s+', '', 'g')), '')
-            WHERE user_id = CAST(:user_id AS uuid) 
-              AND upload_batch_id = CAST(:batch_id AS uuid)
-              AND barcode_raw IS NOT NULL
-        """), params)
-        
         # Delete old batch data first
         db.execute(text(f"DELETE FROM {qname('fact_sales')} WHERE user_id = CAST(:user_id AS uuid) AND upload_batch_id = CAST(:batch_id AS uuid)"), params)
         
@@ -372,8 +383,6 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                     s.order_no,
                     s.sku,
                     s.barcode,
-                    -- Normalize barcode: remove all whitespace, trim, preserve leading zeros
-                    NULLIF(TRIM(regexp_replace(s.barcode, '\s+', '', 'g')), '') AS barcode_norm,
                     s.product_name,
                     s.category,
                     -- Integer fields: remove all non-digit characters except minus sign
@@ -390,23 +399,24 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                 FROM src s
                 LEFT JOIN {qname('map_shop_sku')} m
                     ON m.user_id = s.user_id
-                   AND m.barcode = s.barcode
+                   AND {barcode_norm_sql('m.barcode')} = {barcode_norm_sql('s.barcode')}
             )
             INSERT INTO {qname('fact_sales')} (
                 user_id, upload_batch_id, shop_id,
                 status, date_created, date_received, order_no,
-                sku, barcode, barcode_norm, product_name, category,
+                sku, barcode, product_name, category,
                 qty, returns_qty,
                 revenue_sum, revenue_net_sum, commission_sum, logistics_sum, price_sum, promo_sum, cogs_sum
             )
             SELECT
                 user_id, upload_batch_id, shop_id,
                 status, date_created, date_received, order_no,
-                sku, barcode, barcode_norm, product_name, category,
+                sku, barcode, product_name, category,
                 qty, returns_qty,
                 revenue_sum, revenue_net_sum, commission_sum, logistics_sum, price_sum, promo_sum, cogs_sum
             FROM casted
             WHERE date_created IS NOT NULL
+              AND barcode IS NOT NULL
             ON CONFLICT (user_id, order_no, barcode, date_created) DO UPDATE
             SET
                 upload_batch_id = EXCLUDED.upload_batch_id,
@@ -414,7 +424,6 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                 status = EXCLUDED.status,
                 date_received = EXCLUDED.date_received,
                 sku = EXCLUDED.sku,
-                barcode_norm = EXCLUDED.barcode_norm,
                 product_name = EXCLUDED.product_name,
                 category = EXCLUDED.category,
                 qty = EXCLUDED.qty,
@@ -430,7 +439,7 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
         count = result.rowcount
         
         # Populate map_shop_barcode from fact_sales (after insert)
-        # Use most frequent sku/product_id for each barcode_norm
+        # Use most frequent sku/product_id for each normalized barcode
         db.execute(text(f"""
             INSERT INTO {qname('map_shop_barcode')} (user_id, upload_batch_id, shop_id, barcode_norm, sku, product_id)
             WITH ranked AS (
@@ -438,18 +447,19 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                     fs.user_id,
                     fs.upload_batch_id,
                     fs.shop_id,
-                    fs.barcode_norm,
+                    {barcode_norm_sql('fs.barcode')} AS barcode_norm,
                     fs.sku,
                     fs.product_name AS product_id,  -- Using product_name as product_id fallback
                     ROW_NUMBER() OVER (
-                        PARTITION BY fs.user_id, COALESCE(fs.shop_id, '00000000-0000-0000-0000-000000000000'::uuid), fs.barcode_norm
+                        PARTITION BY fs.user_id, COALESCE(fs.shop_id, '00000000-0000-0000-0000-000000000000'::uuid), {barcode_norm_sql('fs.barcode')}
                         ORDER BY COUNT(*) DESC, fs.date_created DESC
                     ) AS rn
                 FROM {qname('fact_sales')} fs
                 WHERE fs.user_id = CAST(:user_id AS uuid) 
                   AND fs.upload_batch_id = CAST(:batch_id AS uuid)
-                  AND fs.barcode_norm IS NOT NULL
-                GROUP BY fs.user_id, fs.upload_batch_id, fs.shop_id, fs.barcode_norm, fs.sku, fs.product_name, fs.date_created
+                  AND fs.barcode IS NOT NULL
+                  AND {barcode_norm_sql('fs.barcode')} IS NOT NULL
+                GROUP BY fs.user_id, fs.upload_batch_id, fs.shop_id, {barcode_norm_sql('fs.barcode')}, fs.sku, fs.product_name, fs.date_created
             )
             SELECT user_id, upload_batch_id, shop_id, barcode_norm, sku, product_id
             FROM ranked
@@ -459,7 +469,8 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                 shop_id = COALESCE(EXCLUDED.shop_id, map_shop_barcode.shop_id),
                 sku = COALESCE(EXCLUDED.sku, map_shop_barcode.sku),
                 product_id = COALESCE(EXCLUDED.product_id, map_shop_barcode.product_id),
-                last_seen_at = now()
+                last_seen_at = now(),
+                updated_at = now()
         """), params)
         
         # Verification: Compare row counts and aggregates between stg_sales and fact_sales
@@ -482,7 +493,7 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                 FROM stg_valid s
                 INNER JOIN {qname('map_shop_sku')} m
                     ON m.user_id = CAST(:user_id AS uuid)
-                   AND m.barcode = s.barcode
+                   AND {barcode_norm_sql('m.barcode')} = {barcode_norm_sql('s.barcode')}
             ),
             stg_counts AS (
                 SELECT 
@@ -652,15 +663,6 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
         return count
     
     elif report_type == "inventory":
-        # Update barcode_norm in staging table (normalize barcode_raw)
-        db.execute(text(f"""
-            UPDATE {qname('stg_leftout')}
-            SET barcode_norm = NULLIF(TRIM(regexp_replace(barcode_raw, '\s+', '', 'g')), '')
-            WHERE user_id = CAST(:user_id AS uuid) 
-              AND upload_batch_id = CAST(:batch_id AS uuid)
-              AND barcode_raw IS NOT NULL
-        """), params)
-        
         # First upsert shops
         db.execute(text(f"""
             WITH shops AS (
@@ -705,19 +707,20 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                 sl.user_id,
                 sl.upload_batch_id,
                 ds.shop_id,
-                NULLIF(TRIM(regexp_replace(trim(sl.barcode_raw), '\s+', '', 'g')), '') AS barcode_norm,
+                {barcode_norm_sql('sl.barcode_raw')} AS barcode_norm,
                 NULLIF(trim(sl.sku_raw), '') AS sku,
                 NULLIF(trim(sl.product_id_raw), '') AS product_id
             FROM {qname('stg_leftout')} sl
             JOIN {qname('dim_shop')} ds ON ds.user_id = sl.user_id AND ds.shop_name = NULLIF(trim(sl.shop_raw), '')
             WHERE sl.user_id = CAST(:user_id AS uuid) AND sl.upload_batch_id = CAST(:batch_id AS uuid)
-              AND NULLIF(TRIM(regexp_replace(trim(sl.barcode_raw), '\s+', '', 'g')), '') IS NOT NULL
+              AND {barcode_norm_sql('sl.barcode_raw')} IS NOT NULL
             ON CONFLICT (user_id, COALESCE(shop_id, '00000000-0000-0000-0000-000000000000'::uuid), barcode_norm) DO UPDATE
             SET upload_batch_id = EXCLUDED.upload_batch_id,
                 shop_id = COALESCE(EXCLUDED.shop_id, map_shop_barcode.shop_id),
                 sku = COALESCE(EXCLUDED.sku, map_shop_barcode.sku),
                 product_id = COALESCE(EXCLUDED.product_id, map_shop_barcode.product_id),
-                last_seen_at = now()
+                last_seen_at = now(),
+                updated_at = now()
         """), params)
         
         # Delete old batch data
@@ -762,8 +765,6 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                     upload_batch_id,
                     shop_id,
                     NULLIF(trim(barcode_raw), '') AS barcode,
-                    -- Normalize barcode: remove all whitespace, trim, preserve leading zeros
-                    NULLIF(TRIM(regexp_replace(trim(barcode_raw), '\s+', '', 'g')), '') AS barcode_norm,
                     NULLIF(trim(product_name_raw), '') AS product_name,
                     NULLIF(trim(product_id_raw), '') AS product_id,
                     NULLIF(trim(sku_raw), '') AS sku,
@@ -796,7 +797,7 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
             )
             INSERT INTO {qname('fact_leftout_snapshot')} (
                 user_id, upload_batch_id, shop_id,
-                product_name, product_id, sku, barcode, barcode_norm,
+                product_name, product_id, sku, barcode,
                 ending, availability_indicator, planned_end_date, coverage_days,
                 recommended_qty, fbs_stock, marketplace_side, in_supply, in_sale,
                 to_customer, from_customer, sdh_stock, photo_stock, defect_stock,
@@ -804,12 +805,13 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
             )
             SELECT
                 user_id, upload_batch_id, shop_id,
-                product_name, product_id, sku, barcode, barcode_norm,
+                product_name, product_id, sku, barcode,
                 ending, availability_indicator, planned_end_date, coverage_days,
                 recommended_qty, fbs_stock, marketplace_side, in_supply, in_sale,
                 to_customer, from_customer, sdh_stock, photo_stock, defect_stock,
                 potential_per_unit, potential_total
             FROM casted
+            WHERE barcode IS NOT NULL
             ON CONFLICT (user_id, upload_batch_id, shop_id, sku) DO UPDATE
             SET
                 product_name = EXCLUDED.product_name,
@@ -837,14 +839,6 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
         return count
     
     elif report_type == "storage":
-        # Update barcode_norm in staging table (normalize barcode_raw)
-        db.execute(text(f"""
-            UPDATE {qname('stg_storage')}
-            SET barcode_norm = NULLIF(TRIM(regexp_replace(barcode_raw, '\s+', '', 'g')), '')
-            WHERE user_id = CAST(:user_id AS uuid) 
-              AND upload_batch_id = CAST(:batch_id AS uuid)
-              AND barcode_raw IS NOT NULL
-        """), params)
         # Upsert shops
         db.execute(text(f"""
             WITH shops AS (
@@ -892,8 +886,6 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                     NULLIF(trim(product_id_raw), '') AS product_id,
                     NULLIF(trim(sku_raw), '') AS sku,
                     NULLIF(trim(barcode_raw), '') AS barcode,
-                    -- Normalize barcode: remove all whitespace, trim, preserve leading zeros
-                    NULLIF(TRIM(regexp_replace(trim(barcode_raw), '\s+', '', 'g')), '') AS barcode_norm,
                     NULLIF(trim(size_group_raw), '') AS size_group,
                     CAST(replace(NULLIF(regexp_replace(trim(turnover_days_raw), '[^0-9,.-]', '', 'g'), ''), ',', '.') AS numeric(18,4)) AS turnover_days,
                     NULLIF(trim(storage_type_raw), '') AS storage_type,
@@ -902,20 +894,20 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
             )
             INSERT INTO {qname('fact_storage_snapshot')} (
                 user_id, upload_batch_id, shop_id,
-                product_name, product_id, sku, barcode, barcode_norm, size_group,
+                product_name, product_id, sku, barcode, size_group,
                 turnover_days, storage_type, fee_total_30d
             )
             SELECT
                 user_id, upload_batch_id, shop_id,
-                product_name, product_id, sku, barcode, barcode_norm, size_group,
+                product_name, product_id, sku, barcode, size_group,
                 turnover_days, storage_type, fee_total_30d
             FROM casted
+            WHERE barcode IS NOT NULL
             ON CONFLICT (user_id, upload_batch_id, shop_id, sku) DO UPDATE
             SET
                 product_name = EXCLUDED.product_name,
                 product_id = EXCLUDED.product_id,
                 barcode = EXCLUDED.barcode,
-                barcode_norm = EXCLUDED.barcode_norm,
                 size_group = EXCLUDED.size_group,
                 turnover_days = EXCLUDED.turnover_days,
                 storage_type = EXCLUDED.storage_type,
