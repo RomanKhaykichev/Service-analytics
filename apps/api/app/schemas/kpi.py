@@ -28,6 +28,7 @@ class KPISummaryResponse(BaseModel):
     uzumFines: float
     taxes1pct: float
     productCost: float
+    extraExpenses: float
     stockQuantity: float
     stockCost: float
     stockRetailPrice: float

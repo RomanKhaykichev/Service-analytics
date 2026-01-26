@@ -183,7 +183,7 @@ const Index = () => {
     {
       icon: <Info className="w-4 h-4" />,
       label: "Доп. расходы",
-      value: "N/A",
+      value: formatCurrency(metrics.extraExpenses),
       tooltip: "Расходы занесенные во вкладке Доп. расходы."
     }
   ] : [];
@@ -301,7 +301,7 @@ const Index = () => {
         </div>
       ) : activeTab === "daily" ? (
         <div className="mt-6">
-          <DailyView viewMode={viewMode} />
+          <DailyView viewMode={viewMode} periodCode={periodCode} shopId={shopId} />
         </div>
       ) : activeTab === "products" ? (
         <div className="mt-6">

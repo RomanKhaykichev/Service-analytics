@@ -36,6 +36,7 @@ interface DashboardMetrics {
   uzumFines: number;
   taxes1pct: number;
   productCost: number;
+  extraExpenses: number;
 
   // Склад
   stockQuantity: number;

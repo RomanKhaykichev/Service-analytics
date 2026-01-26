@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   LineChart,
   Line,
@@ -26,22 +26,15 @@ import {
 } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { useOrdersSalesDaily } from "@/hooks/useOrdersSalesDaily";
+import { format, startOfWeek, endOfWeek, addDays } from "date-fns";
+import { ru } from "date-fns/locale";
 
-const chartData = [
-  { date: "01.12", orders: 145, purchases: 120, returns: 8, stock: 8500, revenue: 2450000, profit: 340000, avgCheck: 20417 },
-  { date: "02.12", orders: 168, purchases: 142, returns: 12, stock: 8200, revenue: 2890000, profit: 420000, avgCheck: 20352 },
-  { date: "03.12", orders: 132, purchases: 108, returns: 6, stock: 7900, revenue: 2180000, profit: 290000, avgCheck: 20185 },
-  { date: "04.12", orders: 98, purchases: 85, returns: 4, stock: 7600, revenue: 1720000, profit: 210000, avgCheck: 20235 },
-  { date: "05.12", orders: 76, purchases: 62, returns: 3, stock: 7400, revenue: 1250000, profit: 145000, avgCheck: 20161 },
-  { date: "06.12", orders: 112, purchases: 95, returns: 7, stock: 8100, revenue: 1920000, profit: 265000, avgCheck: 20211 },
-  { date: "07.12", orders: 156, purchases: 134, returns: 9, stock: 8800, revenue: 2710000, profit: 385000, avgCheck: 20224 },
-  { date: "08.12", orders: 189, purchases: 165, returns: 11, stock: 9200, revenue: 3340000, profit: 490000, avgCheck: 20242 },
-  { date: "09.12", orders: 210, purchases: 185, returns: 14, stock: 9800, revenue: 3750000, profit: 560000, avgCheck: 20270 },
-  { date: "10.12", orders: 234, purchases: 208, returns: 16, stock: 10500, revenue: 4210000, profit: 645000, avgCheck: 20240 },
-  { date: "11.12", orders: 256, purchases: 228, returns: 18, stock: 11200, revenue: 4620000, profit: 720000, avgCheck: 20263 },
-  { date: "12.12", orders: 278, purchases: 250, returns: 15, stock: 12500, revenue: 5060000, profit: 810000, avgCheck: 20240 },
-  { date: "13.12", orders: 295, purchases: 268, returns: 12, stock: 13161, revenue: 5430000, profit: 890000, avgCheck: 20269 },
-];
+interface DailyViewProps {
+  viewMode?: string;
+  periodCode?: string;
+  shopId?: string | null;
+}
 
 const tableData = [
   { date: "13.12.2024", orderedQty: 295, purchasedQty: 268, canceledQty: 12, revenue: 5430000, commission: 543000, costPrice: 271500, logistics: 108600, advertising: 81450, taxes: 162900, additionalExpenses: 54300, netProfit: 4207750 },
@@ -59,24 +52,73 @@ const tableData = [
   { date: "01.12.2024", orderedQty: 145, purchasedQty: 120, canceledQty: 8, revenue: 2450000, commission: 245000, costPrice: 122500, logistics: 49000, advertising: 36750, taxes: 73500, additionalExpenses: 24500, netProfit: 1898750 },
 ];
 
+// Конфигурация цветов серий графика (привязана к ключам метрик для стабильности)
+const SERIES_COLORS: Record<string, string> = {
+  orders: "#2563EB",    // Заказы - синий
+  buyouts: "#16A34A",   // Выкупы - зелёный
+  returns: "#DC2626",    // Возвраты - красный
+  revenue: "#F59E0B",   // Выручка - оранжевый
+  profit: "#7C3AED",    // Прибыль - фиолетовый
+  avgCheck: "#06B6D4",  // Средний чек - голубой
+};
+
 const chartFilters = [
-  { key: "orders", label: "Заказы", color: "hsl(var(--chart-1))" },
-  { key: "purchases", label: "Выкупы", color: "hsl(var(--chart-2))" },
-  { key: "returns", label: "Возвраты", color: "hsl(var(--chart-3))" },
-  { key: "stock", label: "Складские остатки", color: "hsl(var(--chart-4))" },
-  { key: "revenue", label: "Выручка", color: "hsl(var(--primary))" },
-  { key: "profit", label: "Прибыль", color: "hsl(var(--accent))" },
-  { key: "avgCheck", label: "Средний чек", color: "hsl(var(--warning))" },
+  { key: "orders", label: "Заказы", color: SERIES_COLORS.orders },
+  { key: "buyouts", label: "Выкупы", color: SERIES_COLORS.buyouts },
+  { key: "returns", label: "Возвраты", color: SERIES_COLORS.returns },
+  { key: "revenue", label: "Выручка", color: SERIES_COLORS.revenue },
+  { key: "profit", label: "Прибыль", color: SERIES_COLORS.profit },
+  { key: "avgCheck", label: "Средний чек", color: SERIES_COLORS.avgCheck },
 ];
 
 type SortDirection = "asc" | "desc" | null;
-type SortColumn = keyof typeof tableData[0] | null;
+type SortColumn = string | null;
 
-interface DailyViewProps {
-  viewMode?: string;
-}
+type GroupByType = "day" | "week" | "month";
 
-export function DailyView({ viewMode = "day" }: DailyViewProps) {
+export function DailyView({ viewMode = "day", periodCode = "30d", shopId = null }: DailyViewProps) {
+  // State for time grouping filter
+  const [groupBy, setGroupBy] = useState<GroupByType>("day");
+  
+  // Load data from backend
+  const { data: ordersSalesData, isLoading: loading, error } = useOrdersSalesDaily({ periodCode, shopId, groupBy });
+  
+  // Format date label based on grouping
+  const formatDateLabel = (dateStr: string, grouping: GroupByType): string => {
+    const date = new Date(dateStr);
+    switch (grouping) {
+      case "week": {
+        // ISO week starts on Monday
+        const weekStart = startOfWeek(date, { weekStartsOn: 1 });
+        const weekEnd = endOfWeek(date, { weekStartsOn: 1 });
+        return `${format(weekStart, "dd.MM")}–${format(weekEnd, "dd.MM")}`;
+      }
+      case "month":
+        // Format as "MMM yyyy" (e.g., "Янв 2026")
+        return format(date, "MMM yyyy", { locale: ru });
+      case "day":
+      default:
+        return format(date, "dd.MM");
+    }
+  };
+  
+  // Transform data for chart: format dates based on grouping and map field names
+  const chartData = useMemo(() => {
+    if (!ordersSalesData?.points || ordersSalesData.points.length === 0) {
+      return [];
+    }
+    return ordersSalesData.points.map((point) => {
+      return {
+        date: formatDateLabel(point.date, groupBy),
+        orders: point.orders_qty,      // Заказы - метрика orders_qty
+        buyouts: point.buyouts_qty,    // Выкупы - метрика buyouts_qty
+        returns: point.returns_qty,
+        revenue: point.revenue_sum,
+        profit: point.profit_sum,
+        avgCheck: point.avg_check,
+      };
+    });
+  }, [ordersSalesData, groupBy]);
   const [activeFilters, setActiveFilters] = useState<string[]>(["orders", "revenue"]);
   const [sortColumn, setSortColumn] = useState<SortColumn>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
@@ -150,9 +192,41 @@ export function DailyView({ viewMode = "day" }: DailyViewProps) {
     <div className="space-y-6">
       {/* Chart Section */}
       <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
-        <div className="flex flex-wrap items-center justify-between mb-4 gap-3">
-          <h3 className="font-semibold text-foreground">График заказов и продаж</h3>
-          <div className="flex flex-wrap gap-2">
+        {/* Header: title + grouping filter + metric buttons */}
+        <div className="flex items-center gap-3 flex-wrap mb-4">
+          {/* Left group: title + grouping filter */}
+          <div className="flex items-center gap-2 flex-1 min-w-[320px]">
+            <h3 className="font-semibold text-foreground">График заказов и продаж</h3>
+            {/* Time grouping filter */}
+            <div className="flex gap-1 border border-border rounded-md p-1 flex-shrink-0 whitespace-nowrap">
+              <Button
+                variant={groupBy === "day" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setGroupBy("day")}
+                className="text-xs h-7"
+              >
+                Дни
+              </Button>
+              <Button
+                variant={groupBy === "week" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setGroupBy("week")}
+                className="text-xs h-7"
+              >
+                Недели
+              </Button>
+              <Button
+                variant={groupBy === "month" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setGroupBy("month")}
+                className="text-xs h-7"
+              >
+                Месяцы
+              </Button>
+            </div>
+          </div>
+          {/* Right group: metric filters */}
+          <div className="flex items-center gap-2 ml-auto flex-wrap justify-end flex-shrink-0">
             {chartFilters.map((filter) => (
               <Button
                 key={filter.key}
@@ -173,59 +247,73 @@ export function DailyView({ viewMode = "day" }: DailyViewProps) {
         </div>
 
         <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis
-                dataKey="date"
-                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-                axisLine={{ stroke: "hsl(var(--border))" }}
-              />
-              <YAxis
-                yAxisId="left"
-                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-                axisLine={{ stroke: "hsl(var(--border))" }}
-              />
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-                axisLine={{ stroke: "hsl(var(--border))" }}
-                tickFormatter={(value) => value >= 1000000 ? `${(value / 1000000).toFixed(1)}M` : value >= 1000 ? `${(value / 1000).toFixed(0)}k` : value}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "hsl(var(--card))",
-                  border: "1px solid hsl(var(--border))",
-                  borderRadius: "8px",
-                }}
-                formatter={(value: number, name: string) => {
-                  const filter = chartFilters.find((f) => f.key === name);
-                  return [formatNumber(value), filter?.label || name];
-                }}
-              />
-              <Legend
-                formatter={(value) => {
-                  const filter = chartFilters.find((f) => f.key === value);
-                  return filter?.label || value;
-                }}
-              />
-              {chartFilters.map((filter) =>
-                activeFilters.includes(filter.key) ? (
-                  <Line
-                    key={filter.key}
-                    yAxisId={["revenue", "profit", "stock"].includes(filter.key) ? "right" : "left"}
-                    type="monotone"
-                    dataKey={filter.key}
-                    stroke={filter.color}
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4 }}
-                  />
-                ) : null
-              )}
-            </LineChart>
-          </ResponsiveContainer>
+          {loading ? (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+              Загрузка...
+            </div>
+          ) : error ? (
+            <div className="flex items-center justify-center h-full text-destructive">
+              Ошибка загрузки данных
+            </div>
+          ) : chartData.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-muted-foreground">
+              Нет данных за выбранный период
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+                  axisLine={{ stroke: "hsl(var(--border))" }}
+                />
+                <YAxis
+                  yAxisId="left"
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+                  axisLine={{ stroke: "hsl(var(--border))" }}
+                />
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+                  axisLine={{ stroke: "hsl(var(--border))" }}
+                  tickFormatter={(value) => value >= 1000000 ? `${(value / 1000000).toFixed(1)}M` : value >= 1000 ? `${(value / 1000).toFixed(0)}k` : value}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "8px",
+                  }}
+                  formatter={(value: number, name: string) => {
+                    const filter = chartFilters.find((f) => f.key === name);
+                    return [formatNumber(value), filter?.label || name];
+                  }}
+                />
+                <Legend
+                  formatter={(value) => {
+                    const filter = chartFilters.find((f) => f.key === value);
+                    return filter?.label || value;
+                  }}
+                />
+                {chartFilters.map((filter) =>
+                  activeFilters.includes(filter.key) ? (
+                    <Line
+                      key={filter.key}
+                      yAxisId={["revenue", "avgCheck"].includes(filter.key) ? "right" : ["profit"].includes(filter.key) ? "right" : "left"}
+                      type="monotone"
+                      dataKey={filter.key}
+                      stroke={filter.color}
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 4 }}
+                    />
+                  ) : null
+                )}
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
 
