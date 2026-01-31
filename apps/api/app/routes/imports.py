@@ -39,6 +39,7 @@ SHEETS = {
     "expenses": "Отчет по услугам",
     "inventory": "Остатки (новый)",  # leftout -> inventory
     "storage": "Отчет по хранению",
+    "leftout_old": "Остатки (старый)",
 }
 
 SALES_MAP = {
@@ -109,11 +110,24 @@ STORAGE_MAP = {
     "Всего за хранение последние 30 дней, сум": "fee_total_30d_raw",
 }
 
+# Старый формат остатков (left-out-report_old): без магазина, привязка только по barcode_norm к fact_storage_snapshot
+LEFTOUT_OLD_MAP = {
+    "Штрихкод": "barcode_raw",
+    "Наименование": "product_name_raw",
+    "SKU": "sku_raw",
+    "ID товара": "product_id_raw",
+    "В продаже": "in_sale_raw",
+    "В поставке": "to_ship_raw",
+    "Всего": "total_stock_raw",
+    "Доступно к отгрузке": "available_to_ship_raw",
+}
+
 REQUIRED = {
     "sales": ["Дата создания", "№ заказа", "Штрихкод"],
     "expenses": ["ID операции", "Дата списания"],
     "inventory": ["Магазин", "Штрихкод"],
     "leftout": ["Магазин", "Штрихкод"],  # Same as inventory
+    "leftout_old": ["Штрихкод"],
     "storage": ["Магазин", "Штрихкод"],
 }
 
@@ -121,6 +135,7 @@ REPORT_TYPE_TO_FILE_TYPE = {
     "sales": "sales",
     "expenses": "expenses",
     "inventory": "leftout",  # inventory -> leftout для внутренней логики
+    "inventory_old": "leftout_old",
     "storage": "storage",
 }
 
@@ -130,34 +145,107 @@ def norm(s):
     return " ".join(str(s).replace("\n", " ").replace("\r", " ").replace("\u00a0", " ").strip().split())
 
 
+def _norm_col_leftout_old(s) -> str:
+    """Normalize column name for left-out-report_old validation: trim, collapse spaces, lower."""
+    return " ".join(str(s).replace("\n", " ").replace("\r", " ").replace("\u00a0", " ").strip().lower().split())
+
+
+# Required column names for left-out-report_old (after _norm_col_leftout_old)
+LEFTOUT_OLD_REQUIRED_NORMALIZED = {"штрихкод", "sku", "id товара", "наименование", "в продаже"}
+
+
+def validate_leftout_old_xlsx(file_bytes: bytes) -> None:
+    """
+    Strict validation: accept only files that look like left-out-report_old.
+    Raises HTTPException(400) with diagnostic detail if the file is not valid.
+    Call this BEFORE any DB operations (before delete_old_data/create_batch).
+    """
+    buf = io.BytesIO(file_bytes)
+    xl = pd.ExcelFile(buf, engine="openpyxl")
+    sheet_names = xl.sheet_names
+
+    for sheet_name in sheet_names:
+        for header_row in range(30):
+            try:
+                df = pd.read_excel(
+                    xl,
+                    sheet_name=sheet_name,
+                    header=header_row,
+                    nrows=0,
+                    engine="openpyxl",
+                )
+            except Exception:
+                continue
+            cols = [c for c in df.columns if c is not None and not str(c).startswith("Unnamed")]
+            if not cols:
+                continue
+            normalized = [_norm_col_leftout_old(c) for c in cols]
+            norm_set = set(normalized)
+            if "штрихкод" not in norm_set or "в продаже" not in norm_set:
+                continue
+            # Found header with Штрихкод and В продаже — check all required
+            missing = LEFTOUT_OLD_REQUIRED_NORMALIZED - norm_set
+            if missing:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Файл не соответствует формату left-out-report_old. "
+                        f"Ожидаемые колонки (минимум): {sorted(LEFTOUT_OLD_REQUIRED_NORMALIZED)}. "
+                        f"Найденные колонки (нормализованные): {sorted(norm_set)}. "
+                        f"Не хватает: {sorted(missing)}. "
+                        f"Листы в файле: {sheet_names}."
+                    ),
+                )
+            return  # valid
+
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "Файл не похож на left-out-report_old: ни на одном листе не найдена строка заголовка "
+            "с колонками «Штрихкод» и «В продаже». Принимается только файл формата left-out-report_old. "
+            f"Листы в файле: {sheet_names}."
+        ),
+    )
+
+
 def read_excel_as_str(file_content: bytes, sheet: str, file_type: str = None) -> pd.DataFrame:
     """Read Excel with header=1 and proper converters for barcode/sku.
-    If sheet is not found, raises ValueError with available sheet names.
+    If sheet is not found: for leftout_old use first sheet and log; otherwise raise ValueError.
     """
     buf = io.BytesIO(file_content)
     xl = pd.ExcelFile(buf, engine="openpyxl")
+    sheet_used = sheet
     if sheet not in xl.sheet_names:
-        raise ValueError(
-            f"Лист '{sheet}' не найден в файле. Доступные листы: {xl.sheet_names}"
-        )
+        if file_type == "leftout_old" and xl.sheet_names:
+            sheet_used = xl.sheet_names[0]
+            logger.warning(
+                "read_excel_as_str(leftout_old): expected sheet %r not found, using first sheet %r. Available: %s",
+                sheet,
+                sheet_used,
+                xl.sheet_names,
+            )
+        else:
+            raise ValueError(
+                f"Лист '{sheet}' не найден в файле. Доступные листы: {xl.sheet_names}"
+            )
     converters = {}
-    if file_type in ("leftout", "storage"):
+    if file_type in ("leftout", "storage", "leftout_old"):
         converters = {
             "Штрихкод": lambda x: str(x) if pd.notna(x) else "",
             "SKU": lambda x: str(x) if pd.notna(x) else "",
         }
     df = pd.read_excel(
         xl,
-        sheet_name=sheet,
+        sheet_name=sheet_used,
         header=1,
-        dtype={"Штрихкод": "string", "SKU": "string"} if file_type in ("leftout", "storage") else None,
+        dtype={"Штрихкод": "string", "SKU": "string"} if file_type in ("leftout", "storage", "leftout_old") else None,
         converters=converters if converters else None,
         engine="openpyxl"
     )
     df = df.loc[:, [c for c in df.columns if c and not str(c).startswith("Unnamed")]]
     # Normalize column names (strip, collapse spaces)
     df.columns = [norm(c) for c in df.columns]
-    # Canonicalize known variants for storage/leftout: "магазин" / " Магазин " -> "Магазин"
+    # Canonicalize known variants for storage/leftout: "магазин" / " Магазин " -> "Магазин" (not for leftout_old)
     if file_type in ("leftout", "storage"):
         cols = list(df.columns)
         for i, c in enumerate(cols):
@@ -168,8 +256,8 @@ def read_excel_as_str(file_content: bytes, sheet: str, file_type: str = None) ->
     df = df.applymap(lambda x: str(x).strip() if isinstance(x, str) else x)
     df = df.dropna(how="all")
     
-    # Filter rows with empty barcode for leftout/storage
-    if file_type in ("leftout", "storage") and "Штрихкод" in df.columns:
+    # Filter rows with empty barcode for leftout/storage/leftout_old
+    if file_type in ("leftout", "storage", "leftout_old") and "Штрихкод" in df.columns:
         df = df[df["Штрихкод"].notna() & (df["Штрихкод"].astype(str).str.strip() != "")]
     
     return df
@@ -185,6 +273,14 @@ def validate_required(df: pd.DataFrame, file_type: str):
 
 def to_staging(df: pd.DataFrame, mapping: dict, user_id: str, batch_id: str, table: str, db: Session, file_type: str = None):
     """Load data to staging table with proper type handling."""
+    # Safe: skip write to leftout_old staging if table does not exist (migration not applied)
+    if table == "stg_leftout_old":
+        if not table_exists(db, qname("stg_leftout_old")):
+            logger.warning(
+                "to_staging(leftout_old): table %s does not exist (to_regclass returned null), skipping insert",
+                qname("stg_leftout_old"),
+            )
+            return
     out = pd.DataFrame()
     out["row_num"] = (df.reset_index().index + 3).astype(int)
 
@@ -246,6 +342,21 @@ def to_staging(df: pd.DataFrame, mapping: dict, user_id: str, batch_id: str, tab
         for col in ["turnover_days_raw", "fee_total_30d_raw"]:
             if col in out.columns:
                 out[col] = pd.to_numeric(out[col], errors="coerce")
+    elif file_type == "leftout_old":
+        # String fields: strip; no shop — binding only via fact_storage_snapshot by barcode_norm
+        for col in ["barcode_raw", "product_name_raw", "sku_raw", "product_id_raw",
+                    "in_sale_raw", "to_ship_raw", "total_stock_raw", "available_to_ship_raw"]:
+            if col in out.columns:
+                out[col] = out[col].apply(lambda x: str(x).strip() if pd.notna(x) else None)
+        # barcode_norm: strip + remove all whitespace (same as SQL NULLIF(TRIM(regexp_replace(...))))
+        if "barcode_raw" in out.columns:
+            def _norm_barcode(x):
+                if pd.isna(x) or x is None:
+                    return None
+                s = str(x).strip()
+                s = "".join(s.split())
+                return s if s else None
+            out["barcode_norm"] = out["barcode_raw"].apply(_norm_barcode)
     else:
         # Trim string fields for other file types
         for col in out.columns:
@@ -325,6 +436,24 @@ def delete_old_data(db: Session, user_id: UUID, report_type: str):
     elif report_type == "storage":
         db.execute(text(f"DELETE FROM {qname('fact_storage_snapshot')} WHERE user_id = CAST(:user_id AS uuid)"), {"user_id": user_id_str})
         db.execute(text(f"DELETE FROM {qname('stg_storage')} WHERE user_id = CAST(:user_id AS uuid)"), {"user_id": user_id_str})
+    elif report_type == "inventory_old":
+        # Safe delete: only if tables exist (migration may not be applied yet)
+        fact_table = qname("fact_leftout_old_snapshot")
+        stg_table = qname("stg_leftout_old")
+        if table_exists(db, fact_table):
+            db.execute(text(f"DELETE FROM {fact_table} WHERE user_id = CAST(:user_id AS uuid)"), {"user_id": user_id_str})
+        else:
+            logger.warning(
+                "delete_old_data(inventory_old): table %s does not exist (to_regclass returned null), skipping delete",
+                fact_table,
+            )
+        if table_exists(db, stg_table):
+            db.execute(text(f"DELETE FROM {stg_table} WHERE user_id = CAST(:user_id AS uuid)"), {"user_id": user_id_str})
+        else:
+            logger.warning(
+                "delete_old_data(inventory_old): table %s does not exist (to_regclass returned null), skipping delete",
+                stg_table,
+            )
     
     # Note: No commit here - caller will commit the transaction
 
@@ -974,6 +1103,49 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
         # Note: No commit here - caller will commit the transaction
         return count
     
+    elif report_type == "inventory_old":
+        # Safe: only touch leftout_old tables if they exist (migration may not be applied)
+        fact_table = qname("fact_leftout_old_snapshot")
+        if not table_exists(db, fact_table):
+            logger.warning(
+                "populate_facts(inventory_old): table %s does not exist, skipping; run migration to create stg_leftout_old and fact_leftout_old_snapshot",
+                fact_table,
+            )
+            return 0
+        # No dim_shop — binding only via fact_storage_snapshot by barcode_norm
+        db.execute(text(f"DELETE FROM {fact_table} WHERE user_id = CAST(:user_id AS uuid) AND upload_batch_id = CAST(:batch_id AS uuid)"), params)
+        
+        # Parse in_sale_raw -> int: strip, remove thousand separators/spaces, clamp >= 0
+        result = db.execute(text(f"""
+            INSERT INTO {fact_table} (
+                user_id, upload_batch_id, loaded_at,
+                barcode, barcode_norm, sku, product_id, product_name, in_sale
+            )
+            SELECT
+                sl.user_id,
+                sl.upload_batch_id,
+                now() AS loaded_at,
+                NULLIF(trim(sl.barcode_raw), '') AS barcode,
+                sl.barcode_norm,
+                NULLIF(trim(sl.sku_raw), '') AS sku,
+                NULLIF(trim(sl.product_id_raw), '') AS product_id,
+                NULLIF(trim(sl.product_name_raw), '') AS product_name,
+                GREATEST(0, COALESCE(CAST(NULLIF(regexp_replace(regexp_replace(trim(COALESCE(sl.in_sale_raw, '')), '\\s+', '', 'g'), ',', '', 'g'), '') AS int), 0)) AS in_sale
+            FROM {qname('stg_leftout_old')} sl
+            WHERE sl.user_id = CAST(:user_id AS uuid) AND sl.upload_batch_id = CAST(:batch_id AS uuid)
+              AND sl.barcode_norm IS NOT NULL
+              AND sl.barcode_norm != ''
+            ON CONFLICT (user_id, upload_batch_id, barcode_norm) DO UPDATE SET
+                loaded_at = now(),
+                barcode = EXCLUDED.barcode,
+                sku = EXCLUDED.sku,
+                product_id = EXCLUDED.product_id,
+                product_name = EXCLUDED.product_name,
+                in_sale = EXCLUDED.in_sale
+        """), params)
+        count = result.rowcount
+        return count
+    
     return 0
 
 
@@ -990,7 +1162,7 @@ async def import_xlsx(
     
     Accepts:
     - file: XLSX file (multipart/form-data)
-    - reportType: sales|inventory|expenses|storage|leftout
+    - reportType: sales|inventory|expenses|storage|inventory_old
     - fileName: optional file name
     
     Returns:
@@ -1002,7 +1174,7 @@ async def import_xlsx(
     """
     
     # Validate reportType - accept common variants
-    valid_report_types = ["sales", "inventory", "expenses", "storage", "leftout"]
+    valid_report_types = ["sales", "inventory", "expenses", "storage", "leftout", "inventory_old"]
     if reportType not in valid_report_types:
         logger.warning(f"Unknown reportType: {reportType}, accepting anyway")
         # Don't fail, just log warning
@@ -1014,6 +1186,12 @@ async def import_xlsx(
             status_code=400,
             detail="Invalid file type. Only .xlsx and .xls files are supported"
         )
+    
+    # Strict validation for inventory_old: accept only left-out-report_old format, BEFORE any DB ops
+    file_content_early = None
+    if reportType == "inventory_old":
+        file_content_early = await file.read()
+        validate_leftout_old_xlsx(file_content_early)
     
     # Start transaction - all operations in one transaction
     try:
@@ -1052,7 +1230,10 @@ async def import_xlsx(
         saved_filename = f"{reportType}{file_ext}"
         saved_path = batch_dir / saved_filename
         
-        file_content = await file.read()
+        if file_content_early is not None:
+            file_content = file_content_early
+        else:
+            file_content = await file.read()
         with open(saved_path, "wb") as f:
             f.write(file_content)
         
@@ -1097,6 +1278,7 @@ async def import_xlsx(
             "expenses": EXP_MAP,
             "inventory": LEFTOUT_MAP,
             "storage": STORAGE_MAP,
+            "inventory_old": LEFTOUT_OLD_MAP,
         }.get(reportType, {})
         
         if not mapping:
@@ -1144,6 +1326,7 @@ async def import_xlsx(
             "expenses": "stg_expenses",
             "inventory": "stg_leftout",
             "storage": "stg_storage",
+            "inventory_old": "stg_leftout_old",
         }.get(reportType)
         
         if not staging_table:
@@ -1202,12 +1385,25 @@ async def import_xlsx(
             params_log
         ).scalar() or 0
         
+        # Safe: only COUNT if table exists (migration may not be applied)
+        leftout_old_count = 0
+        if table_exists(db, qname("fact_leftout_old_snapshot")):
+            leftout_old_count = db.execute(
+                text(f"SELECT COUNT(*) FROM {qname('fact_leftout_old_snapshot')} WHERE user_id = CAST(:user_id AS uuid) AND upload_batch_id = CAST(:batch_id AS uuid)"),
+                params_log
+            ).scalar() or 0
+        else:
+            logger.warning(
+                "import_xlsx: table %s does not exist (to_regclass returned null), returning count=0 for logging",
+                qname("fact_leftout_old_snapshot"),
+            )
+        
         logger.info(
             f"Import successful (overwrite mode): user_id={user_id}, upload_batch_id={batch_id}, "
             f"reportType={reportType}, rowsImported={rows_imported}, "
             f"fact_sales={sales_count}, fact_expenses={expenses_count}, "
             f"fact_leftout_snapshot={inventory_count}, fact_storage_snapshot={storage_count}, "
-            f"saved_as={saved_as}"
+            f"fact_leftout_old_snapshot={leftout_old_count}, saved_as={saved_as}"
         )
         
         return {

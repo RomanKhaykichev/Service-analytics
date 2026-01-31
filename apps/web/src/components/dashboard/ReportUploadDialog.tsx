@@ -40,6 +40,7 @@ const reportTypes = [
   { id: "inventory", label: "Отчет по остаткам", hint: "left-out-report" },
   { id: "expenses", label: "Отчет по услугам", hint: "expenses-report" },
   { id: "storage", label: "Отчет по хранению", hint: "seller-storage-report" },
+  { id: "inventory_old", label: "Остатки (старый формат)", hint: "left-out-report_old" },
 ];
 
 export function ReportUploadDialog() {
@@ -161,7 +162,7 @@ export function ReportUploadDialog() {
         const result = await response.json();
 
         if (!response.ok || result.error) {
-          throw new Error(result.error || 'Upload failed');
+          throw new Error(result.detail || result.error || 'Upload failed');
         }
 
         setUploadedFiles(prev => ({
@@ -393,6 +394,11 @@ export function ReportUploadDialog() {
                 </label>
                 <p className="text-[10px] text-muted-foreground mt-1 text-center leading-tight">
                   <span className="font-mono">{report.hint}.xlsx</span>
+                  {report.id === "inventory_old" && (
+                    <span className="block mt-0.5 text-amber-600 dark:text-amber-500">
+                      Принимается только left-out-report_old
+                    </span>
+                  )}
                 </p>
               </div>
             );
