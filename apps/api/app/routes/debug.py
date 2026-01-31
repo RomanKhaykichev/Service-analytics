@@ -4,6 +4,7 @@ from sqlalchemy import text
 from app.db import get_db, qname
 from app.deps import require_user
 from app.settings import get_settings
+from app.utils.shop_filter import normalize_shop
 from uuid import UUID
 from typing import Optional
 from datetime import datetime, timedelta
@@ -72,6 +73,40 @@ async def debug_db(
             status_code=500,
             detail=f"Database debug error: {str(e)}"
         )
+
+
+@router.get("/debug/shop-filter")
+async def debug_shop_filter(
+    shop: Optional[str] = Query(default=None, description="Shop name (seller-storage) to diagnose"),
+    user_id: UUID = Depends(require_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Diagnostic: which shop/shop_norm was received and how many barcodes fall into the shop set.
+    Dev-only helper to verify shop filter is applied consistently.
+    """
+    shop_norm = normalize_shop(shop)
+    barcode_count = None
+    if shop_norm:
+        try:
+            r = db.execute(
+                text(f"""
+                    SELECT COUNT(DISTINCT COALESCE(barcode_norm, NULLIF(TRIM(regexp_replace(CAST(barcode AS text), '\\s+', '', 'g')), '')))
+                    FROM {qname("fact_storage_snapshot")}
+                    WHERE user_id = CAST(:user_id AS uuid)
+                      AND upper(regexp_replace(trim(COALESCE(shop_raw, '')), '\\s+', ' ', 'g')) = :shop_norm
+                """),
+                {"user_id": str(user_id), "shop_norm": shop_norm}
+            )
+            barcode_count = r.scalar()
+        except Exception as e:
+            barcode_count = f"Error: {e}"
+    return {
+        "shop": shop,
+        "shop_norm": shop_norm,
+        "barcode_count_in_shop_set": barcode_count,
+        "user_id": str(user_id),
+    }
 
 
 @router.get("/debug/period")

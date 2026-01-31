@@ -17,6 +17,7 @@ interface StockResponse {
   items: StockItem[];
   filters: {
     shop_id: string | null;
+    shop: string | null;
     q: string;
   };
 }
@@ -24,9 +25,11 @@ interface StockResponse {
 interface UseStockCurrentParams {
   limit: number;
   shopId?: string | null;
+  /** Shop name (string) from seller-storage for filtering by barcode */
+  shop?: string | null;
 }
 
-export function useStockCurrent({ limit, shopId }: UseStockCurrentParams) {
+export function useStockCurrent({ limit, shopId, shop }: UseStockCurrentParams) {
   const [items, setItems] = useState<StockItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +39,7 @@ export function useStockCurrent({ limit, shopId }: UseStockCurrentParams) {
       try {
         setLoading(true);
         setError(null);
-        const params = buildQueryParams({ limit: String(limit), shopId });
+        const params = buildQueryParams({ limit: String(limit), shopId, shop });
         const data = await apiGet<StockResponse>("/api/charts/stock-current", params);
         setItems(data.items);
       } catch (err) {
@@ -47,7 +50,7 @@ export function useStockCurrent({ limit, shopId }: UseStockCurrentParams) {
     };
 
     loadStock();
-  }, [limit, shopId]);
+  }, [limit, shopId, shop]);
 
   return { items, loading, error };
 }

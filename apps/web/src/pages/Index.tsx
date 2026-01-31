@@ -39,7 +39,7 @@ const Index = () => {
 
   // Load revenue and UZUM services data (filtered by selectedShop via barcode_norm)
   const { points: revenuePoints } = useRevenueDaily({ periodCode, shopId, shop: selectedShop });
-  const { items: stockItems } = useStockCurrent({ limit: 50, shopId });
+  const { items: stockItems } = useStockCurrent({ limit: 50, shopId, shop: selectedShop });
   const { points: uzumServicesPoints, loading: uzumServicesLoading, error: uzumServicesError } = useUzumServicesDaily({ periodCode, shopId, shop: selectedShop });
 
   // Transform revenue data for RevenueDailyChart (YYYY-MM-DD -> dd.MM)

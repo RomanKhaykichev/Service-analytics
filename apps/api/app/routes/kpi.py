@@ -11,6 +11,7 @@ from app.deps import require_user
 from app.utils.statuses import get_status_sql_condition
 from app.utils.barcode import barcode_norm_sql
 from app.utils.metrics import get_status_conditions
+from app.utils.shop_filter import normalize_shop, shop_filter_condition, storage_barcode_filter_sql
 from app.settings import get_settings
 from fastapi import Depends
 
@@ -134,11 +135,8 @@ def kpi_summary(
                 detail="Invalid shop_id format (must be UUID). For seller-storage filtering use 'shop' parameter instead."
             )
     
-    # Нормализуем shop для seller-storage фильтрации
-    shop_norm = None
-    if shop:
-        shop_norm = shop.upper().strip()
-        shop_norm = re.sub(r'\s+', ' ', shop_norm)  # normalize whitespace
+    # Нормализуем shop для seller-storage фильтрации (единый helper)
+    shop_norm = normalize_shop(shop)
     
     logger.info(f"kpi_summary: user_id={user_id}, shop_id={shop_id}, shop={shop}, shop_norm={shop_norm}, period={period_code}, period_range={period_range_dict}")
     
@@ -158,18 +156,9 @@ def kpi_summary(
             "shop_norm": shop_norm,  # Can be None (seller-storage name, normalized)
         }
         
-        # Sales shop filter: by storage barcodes (shop_norm) or by shop_id (UUID)
-        # When shop_norm: only rows whose barcode_norm exists in fact_storage_snapshot for that shop
-        sales_shop_filter = ""
-        if shop_norm:
-            sales_shop_filter = f"""EXISTS (
-                SELECT 1 FROM {qname("fact_storage_snapshot")} fss
-                WHERE fss.user_id = fact_sales.user_id
-                  AND COALESCE(fss.barcode_norm, {barcode_norm_sql('fss.barcode')}) = COALESCE(fact_sales.barcode_norm, {barcode_norm_sql('fact_sales.barcode')})
-                  AND upper(regexp_replace(trim(COALESCE(fss.shop_raw, '')), '\\s+', ' ', 'g')) = :shop_norm
-            )"""
-        elif shop_id:
-            sales_shop_filter = "(:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))"
+        # Sales shop filter: by storage barcodes (shop_norm) or by shop_id (UUID) — единый helper
+        sales_shop_filter, sales_shop_params = shop_filter_condition(shop, shop_id, outer_table_alias="fact_sales")
+        params_base.update(sales_shop_params)
         
         # Build base WHERE conditions for sales (filtered by periodRange and shop)
         sales_where = ["user_id = CAST(:user_id AS uuid)"]
@@ -592,22 +581,10 @@ def kpi_summary(
             "shop_norm": shop_norm  # Can be None (string для seller-storage)
         }
         
-        # Фильтр для leftout: если передан shop (seller-storage) - фильтруем через JOIN с fact_storage_snapshot
-        # Если передан shop_id (UUID) - фильтруем напрямую по shop_id
-        # Для max_loaded_query используем упрощённый фильтр (без EXISTS, т.к. нужен только MAX)
+        # Фильтр для leftout: единый helper (seller-storage по barcode_norm или shop_id)
         leftout_max_filter = ""
         if shop_norm:
-            # Фильтр по seller-storage: только товары (barcode_norm), присутствующие в выбранном магазине storage.
-            # Связь по barcode_norm; shop_raw — колонка «Магазин»; сравнение с upper(normalize(shop_raw)).
-            leftout_max_filter = f"""
-                AND EXISTS (
-                    SELECT 1 
-                    FROM {qname("fact_storage_snapshot")} fss
-                    WHERE fss.user_id = CAST(:user_id AS uuid)
-                        AND COALESCE(fss.barcode_norm, {barcode_norm_sql('fss.barcode')}) = COALESCE(fact_leftout_snapshot.barcode_norm, {barcode_norm_sql('fact_leftout_snapshot.barcode')})
-                        AND upper(regexp_replace(trim(COALESCE(fss.shop_raw, '')), '\\s+', ' ', 'g')) = :shop_norm
-                )
-            """
+            leftout_max_filter = "\n                " + storage_barcode_filter_sql("fact_leftout_snapshot", prefix_and=True)
         elif shop_id:
             leftout_max_filter = "AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))"
         

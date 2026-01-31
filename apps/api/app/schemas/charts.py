@@ -37,6 +37,7 @@ class StockItem(BaseModel):
 
 class StockFilters(BaseModel):
     shop_id: Optional[str] = None
+    shop: Optional[str] = None  # Seller-storage shop name when filtering by barcode
     q: Optional[str] = None
 
 

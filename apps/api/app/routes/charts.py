@@ -12,6 +12,7 @@ from app.routes.kpi import get_data_end_date, period_range, normalize_period
 from app.utils.statuses import get_status_sql_condition
 from app.utils.metrics import get_status_conditions, get_sales_metrics_sql, get_profit_sql, get_avg_check_sql
 from app.utils.barcode import barcode_norm_sql
+from app.utils.shop_filter import normalize_shop, shop_filter_condition, storage_barcode_filter_sql
 from app.schemas import (
     RevenueDailyResponse,
     RevenuePoint,
@@ -62,12 +63,7 @@ async def get_revenue_daily(
     date_from_iso = period_range_dict["date_from"]
     date_from = datetime.fromisoformat(date_from_iso).date() if date_from_iso else None
     
-    # Normalize shop (seller-storage name) for barcode-based filter
-    shop_norm = None
-    if shop:
-        shop_norm = shop.upper().strip()
-        shop_norm = re.sub(r'\s+', ' ', shop_norm)
-    
+    shop_norm = normalize_shop(shop)
     logger.info(f"get_revenue_daily: user_id={user_id}, period={period_code}, shop_id={shop_id}, shop={shop}, shop_norm={shop_norm}, period_range={period_range_dict}")
     
     # Validate shop_id if provided (only when shop is not used)
@@ -91,19 +87,10 @@ async def get_revenue_daily(
             "date_to": date_to_iso
         }
         
-        # Shop filter: by storage barcodes (shop_norm) or by shop_id (UUID)
-        shop_condition = ""
-        if shop_norm:
-            params["shop_norm"] = shop_norm
-            shop_condition = f"""AND EXISTS (
-                SELECT 1 FROM {qname("fact_storage_snapshot")} fss
-                WHERE fss.user_id = fact_sales.user_id
-                  AND COALESCE(fss.barcode_norm, {barcode_norm_sql('fss.barcode')}) = COALESCE(fact_sales.barcode_norm, {barcode_norm_sql('fact_sales.barcode')})
-                  AND upper(regexp_replace(trim(COALESCE(fss.shop_raw, '')), '\\s+', ' ', 'g')) = :shop_norm
-            )"""
-        elif shop_id:
-            params["shop_id"] = shop_id
-            shop_condition = "AND shop_id = CAST(:shop_id AS uuid)"
+        # Shop filter: единый helper (storage barcode или shop_id)
+        shop_condition_frag, shop_params = shop_filter_condition(shop, shop_id, outer_table_alias="fact_sales")
+        params.update(shop_params)
+        shop_condition = f"AND {shop_condition_frag}" if shop_condition_frag else ""
         
         # Build date_from condition
         date_from_condition = ""
@@ -177,50 +164,43 @@ async def get_revenue_daily(
 async def get_stock_current(
     user_id: UUID = Depends(require_user),
     shop_id: Optional[str] = Query(default=None, description="Shop UUID"),
+    shop: Optional[str] = Query(default=None, description="Shop name (string) for seller-storage filtering by barcode"),
     q: Optional[str] = Query(default=None, description="Search in sku, product_name, barcode"),
     db: Session = Depends(get_db)
 ):
-    """Get current stock snapshot from v_product_current_stock."""
-    logger.info(f"get_stock_current: user_id={user_id}, shop_id={shop_id}, q={q}")
+    """Get current stock snapshot from v_product_current_stock. Filter by shop (seller-storage) via barcode set."""
+    shop_norm = normalize_shop(shop)
+    logger.info(f"get_stock_current: user_id={user_id}, shop_id={shop_id}, shop={shop}, shop_norm={shop_norm}, q={q}")
     
     try:
-        # Build WHERE conditions
-        conditions = ["user_id = CAST(:user_id AS uuid)"]
+        conditions = ["v.user_id = CAST(:user_id AS uuid)"]
         params = {"user_id": str(user_id)}
         
-        # Add shop_id filter if provided
-        if shop_id:
-            try:
-                UUID(shop_id)  # Validate UUID format
-                conditions.append("shop_id = CAST(:shop_id AS uuid)")
-                params["shop_id"] = shop_id
-            except ValueError:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Invalid shop_id format (must be UUID)"
-                )
+        # Shop filter: единый helper (storage barcode или shop_id)
+        shop_cond, shop_params = shop_filter_condition(shop, shop_id, outer_table_alias="v")
+        params.update(shop_params)
+        if shop_cond:
+            conditions.append(shop_cond)
         
-        # Add search filter if provided
         if q:
-            conditions.append("(sku ILIKE :q OR product_name ILIKE :q OR barcode ILIKE :q)")
+            conditions.append("(v.sku ILIKE :q OR v.product_name ILIKE :q OR v.barcode ILIKE :q)")
             params["q"] = f"%{q}%"
         
-        # Build query - select all available fields from view
         where_clause = " AND ".join(conditions)
         query = text(f"""
             SELECT 
-                barcode,
-                sku,
-                product_name,
-                stock_qty,
-                coverage_days,
-                turnover_days,
-                fee_total_30d,
-                storage_type,
-                size_group
-            FROM {qname("v_product_current_stock")}
+                v.barcode,
+                v.sku,
+                v.product_name,
+                v.stock_qty,
+                v.coverage_days,
+                v.turnover_days,
+                v.fee_total_30d,
+                v.storage_type,
+                v.size_group
+            FROM {qname("v_product_current_stock")} v
             WHERE {where_clause}
-            ORDER BY stock_qty DESC NULLS LAST, fee_total_30d DESC NULLS LAST
+            ORDER BY v.stock_qty DESC NULLS LAST, v.fee_total_30d DESC NULLS LAST
             LIMIT 200
         """)
         
@@ -262,7 +242,7 @@ async def get_stock_current(
         
         return StockCurrentResponse(
             items=items,
-            filters=StockFilters(shop_id=shop_id, q=q or "")
+            filters=StockFilters(shop_id=shop_id, shop=shop, q=q or "")
         )
     except HTTPException:
         raise
@@ -465,11 +445,7 @@ async def get_uzum_services_daily(
     date_from_iso = period_range_dict["date_from"]
     date_from = datetime.fromisoformat(date_from_iso).date() if date_from_iso else None
     
-    # Normalize shop (seller-storage name) for barcode-based filter
-    shop_norm = None
-    if shop:
-        shop_norm = shop.upper().strip()
-        shop_norm = re.sub(r'\s+', ' ', shop_norm)
+    shop_norm = normalize_shop(shop)
     
     # For period=all, if date_from is None, use MIN(date_written_off) or very early date
     if period_code == "all" and date_from is None:
@@ -546,15 +522,9 @@ async def get_uzum_services_daily(
             "date_from": date_from_iso,
             "date_to": date_to_iso
         }
-        shop_condition_sales = ""
-        if shop_norm:
-            params_sales["shop_norm"] = shop_norm
-            shop_condition_sales = f"""AND EXISTS (
-                SELECT 1 FROM {qname("fact_storage_snapshot")} fss
-                WHERE fss.user_id = fact_sales.user_id
-                  AND COALESCE(fss.barcode_norm, {barcode_norm_sql('fss.barcode')}) = COALESCE(fact_sales.barcode_norm, {barcode_norm_sql('fact_sales.barcode')})
-                  AND upper(regexp_replace(trim(COALESCE(fss.shop_raw, '')), '\\s+', ' ', 'g')) = :shop_norm
-            )"""
+        shop_condition_sales_frag, shop_sales_params = shop_filter_condition(shop, shop_id, outer_table_alias="fact_sales")
+        params_sales.update(shop_sales_params)
+        shop_condition_sales = f"AND {shop_condition_sales_frag}" if shop_condition_sales_frag else ""
         
         query_sales = text(f"""
             SELECT 
@@ -654,11 +624,7 @@ async def get_orders_sales_daily(
     date_from_iso = period_range_dict["date_from"]
     date_from = datetime.fromisoformat(date_from_iso).date() if date_from_iso else None
     
-    # Normalize shop (seller-storage name) for barcode-based filter
-    shop_norm = None
-    if shop:
-        shop_norm = shop.upper().strip()
-        shop_norm = re.sub(r'\s+', ' ', shop_norm)
+    shop_norm = normalize_shop(shop)
     
     # For period=all, if date_from is None, use MIN(date_created) or very early date
     if period_code == "all" and date_from is None:
@@ -725,19 +691,10 @@ async def get_orders_sales_daily(
             "date_to": date_to_iso
         }
         
-        # Shop filter: by storage barcodes (shop_norm) or by shop_id (UUID)
-        shop_condition = ""
-        if shop_norm:
-            params["shop_norm"] = shop_norm
-            shop_condition = f"""AND EXISTS (
-                SELECT 1 FROM {qname("fact_storage_snapshot")} fss
-                WHERE fss.user_id = fact_sales.user_id
-                  AND COALESCE(fss.barcode_norm, {barcode_norm_sql('fss.barcode')}) = COALESCE(fact_sales.barcode_norm, {barcode_norm_sql('fact_sales.barcode')})
-                  AND upper(regexp_replace(trim(COALESCE(fss.shop_raw, '')), '\\s+', ' ', 'g')) = :shop_norm
-            )"""
-        elif shop_id:
-            params["shop_id"] = shop_id
-            shop_condition = "AND fact_sales.shop_id = CAST(:shop_id AS uuid)"
+        # Shop filter: единый helper (storage barcode или shop_id)
+        shop_condition_frag, shop_params = shop_filter_condition(shop, shop_id, outer_table_alias="fact_sales")
+        params.update(shop_params)
+        shop_condition = f"AND {shop_condition_frag}" if shop_condition_frag else ""
         
         # Get SQL expressions for metrics (table_alias for fact_sales)
         metrics_sql = get_sales_metrics_sql(table_alias="fact_sales")
