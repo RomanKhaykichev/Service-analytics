@@ -5,7 +5,6 @@ from typing import Optional
 from uuid import UUID
 from datetime import datetime, timedelta
 import logging
-import re
 from app.db import get_db, qname
 from app.deps import require_user
 from app.utils.statuses import get_status_sql_condition
