@@ -17,6 +17,8 @@ interface UzumServicesChartProps {
     storage?: number | null;
     ads?: number | null;
     fines?: number | null;
+    commission?: number | null;
+    logistics?: number | null;
   }>;
   loading?: boolean;
   error?: string | null;
@@ -55,6 +57,8 @@ export function UzumServicesChart({ points, loading, error }: UzumServicesChartP
       storage: Number(p.storage ?? 0),
       ads: Number(p.ads ?? 0),
       fines: Number(p.fines ?? 0),
+      commission: Number(p.commission ?? 0),
+      logistics: Number(p.logistics ?? 0),
     };
   });
 
@@ -90,6 +94,8 @@ export function UzumServicesChart({ points, loading, error }: UzumServicesChartP
               {entry.dataKey === "storage" && "Хранение"}
               {entry.dataKey === "ads" && "Реклама"}
               {entry.dataKey === "fines" && "Штрафы"}
+              {entry.dataKey === "commission" && "Комиссия"}
+              {entry.dataKey === "logistics" && "Логистика"}
             </span>
           </button>
         ))}
@@ -167,6 +173,8 @@ export function UzumServicesChart({ points, loading, error }: UzumServicesChartP
                 if (name === "storage") return [formattedValue, "Хранение"];
                 if (name === "ads") return [formattedValue, "Реклама"];
                 if (name === "fines") return [formattedValue, "Штрафы"];
+                if (name === "commission") return [formattedValue, "Комиссия"];
+                if (name === "logistics") return [formattedValue, "Логистика"];
                 return [formattedValue, name];
               }}
             />
@@ -197,6 +205,24 @@ export function UzumServicesChart({ points, loading, error }: UzumServicesChartP
               dot={false}
               activeDot={{ r: 4 }}
               hide={hiddenLines.has("fines")}
+            />
+            <Line
+              type="monotone"
+              dataKey="commission"
+              stroke="hsl(var(--chart-4))"
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 4 }}
+              hide={hiddenLines.has("commission")}
+            />
+            <Line
+              type="monotone"
+              dataKey="logistics"
+              stroke="hsl(var(--chart-5))"
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 4 }}
+              hide={hiddenLines.has("logistics")}
             />
           </LineChart>
         </ResponsiveContainer>

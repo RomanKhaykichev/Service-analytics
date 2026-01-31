@@ -49,13 +49,16 @@ interface DashboardMetrics {
   stockZeroReason: string | null;
 }
 
-export function useDashboardMetrics(periodCode: PeriodCode = "30d", shopId?: string) {
+export function useDashboardMetrics(periodCode: PeriodCode = "30d", shopId?: string, shop?: string) {
   const { user } = useAuth();
 
   const { data: metrics, isLoading: loading, error } = useQuery({
-    queryKey: ['kpiSummary', periodCode, shopId],
+    queryKey: ['kpiSummary', periodCode, shopId, shop],
     queryFn: async () => {
-      const params = buildQueryParams({ period: periodCode, shopId });
+      // Если передан shop (строка магазина из seller-storage) - отправляем shop, иначе shop_id (UUID)
+      const params = shop 
+        ? buildQueryParams({ period: periodCode, shop })
+        : buildQueryParams({ period: periodCode, shopId });
       return await apiGet<DashboardMetrics>("/api/kpi/summary", params);
     },
     enabled: !!user,

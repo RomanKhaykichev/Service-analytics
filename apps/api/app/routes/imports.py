@@ -131,16 +131,23 @@ def norm(s):
 
 
 def read_excel_as_str(file_content: bytes, sheet: str, file_type: str = None) -> pd.DataFrame:
-    """Read Excel with header=1 and proper converters for barcode/sku."""
+    """Read Excel with header=1 and proper converters for barcode/sku.
+    If sheet is not found, raises ValueError with available sheet names.
+    """
+    buf = io.BytesIO(file_content)
+    xl = pd.ExcelFile(buf, engine="openpyxl")
+    if sheet not in xl.sheet_names:
+        raise ValueError(
+            f"Лист '{sheet}' не найден в файле. Доступные листы: {xl.sheet_names}"
+        )
     converters = {}
     if file_type in ("leftout", "storage"):
         converters = {
             "Штрихкод": lambda x: str(x) if pd.notna(x) else "",
             "SKU": lambda x: str(x) if pd.notna(x) else "",
         }
-    
     df = pd.read_excel(
-        io.BytesIO(file_content),
+        xl,
         sheet_name=sheet,
         header=1,
         dtype={"Штрихкод": "string", "SKU": "string"} if file_type in ("leftout", "storage") else None,
@@ -148,8 +155,16 @@ def read_excel_as_str(file_content: bytes, sheet: str, file_type: str = None) ->
         engine="openpyxl"
     )
     df = df.loc[:, [c for c in df.columns if c and not str(c).startswith("Unnamed")]]
-    # Normalize column names
+    # Normalize column names (strip, collapse spaces)
     df.columns = [norm(c) for c in df.columns]
+    # Canonicalize known variants for storage/leftout: "магазин" / " Магазин " -> "Магазин"
+    if file_type in ("leftout", "storage"):
+        cols = list(df.columns)
+        for i, c in enumerate(cols):
+            if c and str(c).strip().lower() == "магазин":
+                cols[i] = "Магазин"
+                break
+        df.columns = cols
     df = df.applymap(lambda x: str(x).strip() if isinstance(x, str) else x)
     df = df.dropna(how="all")
     
@@ -209,6 +224,23 @@ def to_staging(df: pd.DataFrame, mapping: dict, user_id: str, batch_id: str, tab
                     "size_group_raw", "storage_type_raw"]:
             if col in out.columns:
                 out[col] = out[col].apply(lambda x: str(x).strip() if pd.notna(x) else None)
+        
+        # Диагностика после маппинга: проверяем shop_raw vs sku_raw
+        if "shop_raw" in out.columns and "sku_raw" in out.columns:
+            shop_raw_non_null = out["shop_raw"].dropna()
+            sku_raw_non_null = out["sku_raw"].dropna()
+            shop_unique = shop_raw_non_null.nunique() if len(shop_raw_non_null) > 0 else 0
+            sku_unique = sku_raw_non_null.nunique() if len(sku_raw_non_null) > 0 else 0
+            logger.info(f"[STORAGE TO_STAGING] After mapping: shop_raw unique={shop_unique}, sku_raw unique={sku_unique}")
+            # Проверка: если shop_raw содержит значения из SKU (например, много уникальных значений как в SKU) - это баг
+            if shop_unique > 0 and sku_unique > 0:
+                shop_sample = shop_raw_non_null.head(5).tolist()
+                sku_sample = sku_raw_non_null.head(5).tolist()
+                logger.info(f"[STORAGE TO_STAGING] shop_raw sample: {shop_sample}")
+                logger.info(f"[STORAGE TO_STAGING] sku_raw sample: {sku_sample}")
+                # Если shop_raw содержит слишком много уникальных значений (как SKU) - предупреждение
+                if shop_unique > 100 and shop_unique > sku_unique * 0.8:
+                    logger.warning(f"[STORAGE TO_STAGING] WARNING: shop_raw has {shop_unique} unique values (similar to sku_raw={sku_unique}). Possible mapping error!")
         
         # Numeric fields
         for col in ["turnover_days_raw", "fee_total_30d_raw"]:
@@ -395,7 +427,8 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                     COALESCE(NULLIF(replace(regexp_replace(trim(s.logistics_raw), '[^0-9,.-]', '', 'g'), ',', '.'), '')::numeric, 0) AS logistics_sum,
                     COALESCE(NULLIF(replace(regexp_replace(trim(s.price_raw), '[^0-9,.-]', '', 'g'), ',', '.'), '')::numeric, 0) AS price_sum,
                     COALESCE(NULLIF(replace(regexp_replace(trim(s.promo_raw), '[^0-9,.-]', '', 'g'), ',', '.'), '')::numeric, 0) AS promo_sum,
-                    COALESCE(NULLIF(replace(regexp_replace(trim(s.cogs_raw), '[^0-9,.-]', '', 'g'), ',', '.'), '')::numeric, 0) AS cogs_sum
+                    COALESCE(NULLIF(replace(regexp_replace(trim(s.cogs_raw), '[^0-9,.-]', '', 'g'), ',', '.'), '')::numeric, 0) AS cogs_sum,
+                    {barcode_norm_sql('s.barcode')} AS barcode_norm
                 FROM src s
                 LEFT JOIN {qname('map_shop_sku')} m
                     ON m.user_id = s.user_id
@@ -404,14 +437,14 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
             INSERT INTO {qname('fact_sales')} (
                 user_id, upload_batch_id, shop_id,
                 status, date_created, date_received, order_no,
-                sku, barcode, product_name, category,
+                sku, barcode, product_name, category, barcode_norm,
                 qty, returns_qty,
                 revenue_sum, revenue_net_sum, commission_sum, logistics_sum, price_sum, promo_sum, cogs_sum
             )
             SELECT
                 user_id, upload_batch_id, shop_id,
                 status, date_created, date_received, order_no,
-                sku, barcode, product_name, category,
+                sku, barcode, product_name, category, barcode_norm,
                 qty, returns_qty,
                 revenue_sum, revenue_net_sum, commission_sum, logistics_sum, price_sum, promo_sum, cogs_sum
             FROM casted
@@ -426,6 +459,7 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                 sku = EXCLUDED.sku,
                 product_name = EXCLUDED.product_name,
                 category = EXCLUDED.category,
+                barcode_norm = EXCLUDED.barcode_norm,
                 qty = EXCLUDED.qty,
                 returns_qty = EXCLUDED.returns_qty,
                 revenue_sum = EXCLUDED.revenue_sum,
@@ -792,12 +826,23 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                     CAST(NULLIF(regexp_replace(trim(photo_raw), '[^0-9]', '', 'g'), '') AS int) AS photo_stock,
                     CAST(NULLIF(regexp_replace(trim(defect_raw), '[^0-9]', '', 'g'), '') AS int) AS defect_stock,
                     CAST(replace(NULLIF(regexp_replace(trim(potential_per_unit_raw), '[^0-9,.-]', '', 'g'), ''), ',', '.') AS numeric(18,2)) AS potential_per_unit,
-                    CAST(replace(NULLIF(regexp_replace(trim(potential_total_raw), '[^0-9,.-]', '', 'g'), ''), ',', '.') AS numeric(18,2)) AS potential_total
+                    CAST(replace(NULLIF(regexp_replace(trim(potential_total_raw), '[^0-9,.-]', '', 'g'), ''), ',', '.') AS numeric(18,2)) AS potential_total,
+                    {barcode_norm_sql('barcode_raw')} AS barcode_norm
                 FROM src
+            ),
+            casted_with_norm AS (
+                SELECT
+                    user_id, upload_batch_id, shop_id,
+                    product_name, product_id, sku, barcode, barcode_norm,
+                    ending, availability_indicator, planned_end_date, coverage_days,
+                    recommended_qty, fbs_stock, marketplace_side, in_supply, in_sale,
+                    to_customer, from_customer, sdh_stock, photo_stock, defect_stock,
+                    potential_per_unit, potential_total
+                FROM casted
             )
             INSERT INTO {qname('fact_leftout_snapshot')} (
                 user_id, upload_batch_id, shop_id,
-                product_name, product_id, sku, barcode,
+                product_name, product_id, sku, barcode, barcode_norm,
                 ending, availability_indicator, planned_end_date, coverage_days,
                 recommended_qty, fbs_stock, marketplace_side, in_supply, in_sale,
                 to_customer, from_customer, sdh_stock, photo_stock, defect_stock,
@@ -805,18 +850,19 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
             )
             SELECT
                 user_id, upload_batch_id, shop_id,
-                product_name, product_id, sku, barcode,
+                product_name, product_id, sku, barcode, barcode_norm,
                 ending, availability_indicator, planned_end_date, coverage_days,
                 recommended_qty, fbs_stock, marketplace_side, in_supply, in_sale,
                 to_customer, from_customer, sdh_stock, photo_stock, defect_stock,
                 potential_per_unit, potential_total
-            FROM casted
+            FROM casted_with_norm
             WHERE barcode IS NOT NULL
             ON CONFLICT (user_id, upload_batch_id, shop_id, sku) DO UPDATE
             SET
                 product_name = EXCLUDED.product_name,
                 product_id = EXCLUDED.product_id,
                 barcode = EXCLUDED.barcode,
+                barcode_norm = EXCLUDED.barcode_norm,
                 ending = EXCLUDED.ending,
                 availability_indicator = EXCLUDED.availability_indicator,
                 planned_end_date = EXCLUDED.planned_end_date,
@@ -864,6 +910,7 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                     ss.user_id,
                     ss.upload_batch_id,
                     ds.shop_id,
+                    NULLIF(trim(ss.shop_raw), '') AS shop_raw,
                     NULLIF(trim(ss.product_name_raw), '') AS product_name_raw,
                     NULLIF(trim(ss.product_id_raw), '') AS product_id_raw,
                     NULLIF(trim(ss.sku_raw), '') AS sku_raw,
@@ -881,7 +928,7 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
             ),
             casted AS (
                 SELECT
-                    user_id, upload_batch_id, shop_id,
+                    user_id, upload_batch_id, shop_id, shop_raw,
                     NULLIF(trim(product_name_raw), '') AS product_name,
                     NULLIF(trim(product_id_raw), '') AS product_id,
                     NULLIF(trim(sku_raw), '') AS sku,
@@ -891,23 +938,33 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                     NULLIF(trim(storage_type_raw), '') AS storage_type,
                     CAST(replace(NULLIF(regexp_replace(trim(fee_total_30d_raw), '[^0-9,.-]', '', 'g'), ''), ',', '.') AS numeric(18,2)) AS fee_total_30d
                 FROM src
+            ),
+            casted_with_norm AS (
+                SELECT
+                    user_id, upload_batch_id, shop_id, shop_raw,
+                    product_name, product_id, sku, barcode,
+                    {barcode_norm_sql('barcode')} AS barcode_norm,
+                    size_group, turnover_days, storage_type, fee_total_30d
+                FROM casted
             )
             INSERT INTO {qname('fact_storage_snapshot')} (
-                user_id, upload_batch_id, shop_id,
-                product_name, product_id, sku, barcode, size_group,
+                user_id, upload_batch_id, shop_id, shop_raw,
+                product_name, product_id, sku, barcode, barcode_norm, size_group,
                 turnover_days, storage_type, fee_total_30d
             )
             SELECT
-                user_id, upload_batch_id, shop_id,
-                product_name, product_id, sku, barcode, size_group,
+                user_id, upload_batch_id, shop_id, shop_raw,
+                product_name, product_id, sku, barcode, barcode_norm, size_group,
                 turnover_days, storage_type, fee_total_30d
-            FROM casted
+            FROM casted_with_norm
             WHERE barcode IS NOT NULL
             ON CONFLICT (user_id, upload_batch_id, shop_id, sku) DO UPDATE
             SET
+                shop_raw = EXCLUDED.shop_raw,
                 product_name = EXCLUDED.product_name,
                 product_id = EXCLUDED.product_id,
                 barcode = EXCLUDED.barcode,
+                barcode_norm = EXCLUDED.barcode_norm,
                 size_group = EXCLUDED.size_group,
                 turnover_days = EXCLUDED.turnover_days,
                 storage_type = EXCLUDED.storage_type,
@@ -1048,6 +1105,38 @@ async def import_xlsx(
                 status_code=400,
                 detail=f"No mapping found for reportType: {reportType}"
             )
+        
+        # Диагностика для seller-storage: проверяем наличие колонки "Магазин"
+        if file_type == "storage":
+            logger.info(
+                f"[STORAGE IMPORT] reportType={reportType}, file_type={file_type}, sheet_name={sheet_name}, "
+                f"columns={list(df.columns)}, rows={len(df)}"
+            )
+            logger.info(f"[STORAGE IMPORT] df.head(3)=\n{df.head(3).to_string()}")
+            if "Магазин" not in df.columns:
+                db.rollback()
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Колонка 'Магазин' не найдена в файле seller-storage. Найдены колонки: {list(df.columns)}"
+                )
+            shop_col = df["Магазин"]
+            shop_sample = shop_col.dropna().head(5).tolist()
+            shop_unique_count = shop_col.dropna().nunique()
+            logger.info(f"[STORAGE IMPORT] Column 'Магазин' found. Sample: {shop_sample}, distinct shops: {shop_unique_count}")
+            # Проверяем, что "Магазин" НЕ маппится в sku_raw
+            if mapping.get("Магазин") != "shop_raw":
+                db.rollback()
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"ОШИБКА МАППИНГА: Колонка 'Магазин' должна маппиться в 'shop_raw', но маппится в '{mapping.get('Магазин')}'"
+                )
+            # Проверяем, что "SKU" маппится в sku_raw, а не в shop_raw
+            if mapping.get("SKU") == "shop_raw":
+                db.rollback()
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"ОШИБКА МАППИНГА: Колонка 'SKU' НЕ должна маппиться в 'shop_raw', должна маппиться в 'sku_raw'"
+                )
         
         # Step 5: Load to staging
         staging_table = {

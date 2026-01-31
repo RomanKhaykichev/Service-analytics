@@ -14,7 +14,7 @@ import { ShipmentView } from "@/components/dashboard/ShipmentView";
 import { HeaderActions } from "@/components/dashboard/HeaderActions";
 import { ProductsView } from "@/components/dashboard/ProductsView";
 import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
-import { useShops } from "@/hooks/useShops";
+import { useStorageShops } from "@/hooks/useStorageShops";
 import { useRevenueDaily } from "@/hooks/useRevenueDaily";
 import { useStockCurrent } from "@/hooks/useStockCurrent";
 import { useUzumServicesDaily } from "@/hooks/useUzumServicesDaily";
@@ -29,15 +29,18 @@ const Index = () => {
   const [store, setStore] = useState("all");
   const [viewMode, setViewMode] = useState("day");
 
-  const { shops } = useShops();
+  // Фильтр магазинов: используем ТОЛЬКО магазины из seller-storage (колонка "Магазин")
+  const { shops } = useStorageShops();
   
-  const { metrics, loading, error } = useDashboardMetrics(periodCode, store === "all" ? undefined : store);
-  const shopId = store === "all" ? null : store;
+  // Для seller-storage фильтрация по строке магазина (shop), а не по UUID (shop_id)
+  const selectedShop = store === "all" ? undefined : store;  // строка магазина из seller-storage
+  const { metrics, loading, error } = useDashboardMetrics(periodCode, undefined, selectedShop);
+  const shopId = null;  // Не используем shop_id для seller-storage метрик
 
-  // Load revenue and UZUM services data
-  const { points: revenuePoints } = useRevenueDaily({ periodCode, shopId });
+  // Load revenue and UZUM services data (filtered by selectedShop via barcode_norm)
+  const { points: revenuePoints } = useRevenueDaily({ periodCode, shopId, shop: selectedShop });
   const { items: stockItems } = useStockCurrent({ limit: 50, shopId });
-  const { points: uzumServicesPoints, loading: uzumServicesLoading, error: uzumServicesError } = useUzumServicesDaily({ periodCode, shopId });
+  const { points: uzumServicesPoints, loading: uzumServicesLoading, error: uzumServicesError } = useUzumServicesDaily({ periodCode, shopId, shop: selectedShop });
 
   // Transform revenue data for RevenueDailyChart (YYYY-MM-DD -> dd.MM)
   const revenueChartData = revenuePoints.length > 0 ? revenuePoints.map((point) => {
@@ -301,7 +304,7 @@ const Index = () => {
         </div>
       ) : activeTab === "daily" ? (
         <div className="mt-6">
-          <DailyView viewMode={viewMode} periodCode={periodCode} shopId={shopId} />
+          <DailyView viewMode={viewMode} periodCode={periodCode} shopId={shopId} shop={selectedShop} />
         </div>
       ) : activeTab === "products" ? (
         <div className="mt-6">

@@ -5,11 +5,13 @@ from typing import Optional
 from uuid import UUID
 from datetime import datetime, timedelta
 import logging
+import re
 from app.db import get_db, qname
 from app.deps import require_user
 from app.routes.kpi import get_data_end_date, period_range, normalize_period
 from app.utils.statuses import get_status_sql_condition
 from app.utils.metrics import get_status_conditions, get_sales_metrics_sql, get_profit_sql, get_avg_check_sql
+from app.utils.barcode import barcode_norm_sql
 from app.schemas import (
     RevenueDailyResponse,
     RevenuePoint,
@@ -39,10 +41,13 @@ router = APIRouter()
 async def get_revenue_daily(
     user_id: UUID = Depends(require_user),
     period: str = Query(default="30d", description="Period: 7d, 30d, 90d, or all"),
-    shop_id: Optional[str] = Query(default=None, description="Shop UUID"),
+    shop_id: Optional[str] = Query(default=None, description="Shop UUID (dim_shop)"),
+    shop: Optional[str] = Query(default=None, description="Shop name (string) for seller-storage filtering by barcode"),
     db: Session = Depends(get_db)
 ):
-    """Get daily revenue chart data from fact_sales with revenue, orders, and averageCheck."""
+    """Get daily revenue chart data from fact_sales with revenue, orders, and averageCheck.
+    When shop (string) is set, filter by products present in fact_storage_snapshot for that shop (barcode_norm).
+    """
     # Normalize period
     period_code = normalize_period(period)
     
@@ -57,16 +62,22 @@ async def get_revenue_daily(
     date_from_iso = period_range_dict["date_from"]
     date_from = datetime.fromisoformat(date_from_iso).date() if date_from_iso else None
     
-    logger.info(f"get_revenue_daily: user_id={user_id}, period={period_code}, shop_id={shop_id}, period_range={period_range_dict}")
+    # Normalize shop (seller-storage name) for barcode-based filter
+    shop_norm = None
+    if shop:
+        shop_norm = shop.upper().strip()
+        shop_norm = re.sub(r'\s+', ' ', shop_norm)
     
-    # Validate shop_id if provided
-    if shop_id:
+    logger.info(f"get_revenue_daily: user_id={user_id}, period={period_code}, shop_id={shop_id}, shop={shop}, shop_norm={shop_norm}, period_range={period_range_dict}")
+    
+    # Validate shop_id if provided (only when shop is not used)
+    if shop_id and not shop:
         try:
             UUID(shop_id)
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid shop_id format (must be UUID)"
+                detail="Invalid shop_id format (must be UUID). For seller-storage use 'shop' parameter."
             )
     
     try:
@@ -80,9 +91,17 @@ async def get_revenue_daily(
             "date_to": date_to_iso
         }
         
-        # Build shop_id filter condition
+        # Shop filter: by storage barcodes (shop_norm) or by shop_id (UUID)
         shop_condition = ""
-        if shop_id:
+        if shop_norm:
+            params["shop_norm"] = shop_norm
+            shop_condition = f"""AND EXISTS (
+                SELECT 1 FROM {qname("fact_storage_snapshot")} fss
+                WHERE fss.user_id = fact_sales.user_id
+                  AND COALESCE(fss.barcode_norm, {barcode_norm_sql('fss.barcode')}) = COALESCE(fact_sales.barcode_norm, {barcode_norm_sql('fact_sales.barcode')})
+                  AND upper(regexp_replace(trim(COALESCE(fss.shop_raw, '')), '\\s+', ' ', 'g')) = :shop_norm
+            )"""
+        elif shop_id:
             params["shop_id"] = shop_id
             shop_condition = "AND shop_id = CAST(:shop_id AS uuid)"
         
@@ -93,17 +112,18 @@ async def get_revenue_daily(
             date_from_condition = "AND date_created >= CAST(:date_from AS date)"
         
         # Build query - агрегируем по d = date_created::date
+        # Use unqualified fact_sales in FROM so EXISTS correlation works (table is schema-qualified via qname in FROM)
         query = text(f"""
             SELECT 
                 date_created::date AS day,
                 COALESCE(SUM(CASE WHEN ({completed_condition}) THEN revenue_sum ELSE 0 END), 0) AS revenue,
                 COALESCE(SUM(CASE WHEN ({orders_condition}) THEN qty ELSE 0 END), 0) AS orders,
                 COALESCE(SUM(CASE WHEN ({completed_condition}) THEN qty ELSE 0 END), 0) AS completed_qty
-            FROM {qname("fact_sales")}
-            WHERE user_id = CAST(:user_id AS uuid)
+            FROM {qname("fact_sales")} fact_sales
+            WHERE fact_sales.user_id = CAST(:user_id AS uuid)
                 {shop_condition}
                 {date_from_condition}
-                AND date_created < CAST(:date_to AS date) + INTERVAL '1 day'
+                AND fact_sales.date_created < CAST(:date_to AS date) + INTERVAL '1 day'
             GROUP BY date_created::date
             ORDER BY day ASC
         """)
@@ -141,7 +161,7 @@ async def get_revenue_daily(
                 date_from=date_from_iso or "",
                 date_to=date_to_iso
             ),
-            filters=RevenueFilters(shop_id=shop_id)
+            filters=RevenueFilters(shop_id=shop_id, shop=shop)
         )
     except HTTPException:
         raise
@@ -425,11 +445,12 @@ async def get_stock_daily(
 async def get_uzum_services_daily(
     user_id: UUID = Depends(require_user),
     period: str = Query(default="30d", description="Period: 7d, 30d, 90d, or all"),
-    shop_id: Optional[str] = Query(default=None, description="Shop UUID (ignored for services - they are common)"),
+    shop_id: Optional[str] = Query(default=None, description="Shop UUID"),
+    shop: Optional[str] = Query(default=None, description="Shop name (string) for seller-storage filtering by barcode"),
     db: Session = Depends(get_db)
 ):
-    """Get daily UZUM services chart data (storage, ads, fines) from fact_expenses.
-    Services are common across all shops, so shop_id is ignored."""
+    """Get daily UZUM services chart data: storage, ads, fines from fact_expenses;
+    commission, logistics from fact_sales (filterable by shop via barcode_norm)."""
     # Normalize period
     period_code = normalize_period(period)
     
@@ -443,6 +464,12 @@ async def get_uzum_services_daily(
     date_to_date = datetime.fromisoformat(date_to_iso).date()
     date_from_iso = period_range_dict["date_from"]
     date_from = datetime.fromisoformat(date_from_iso).date() if date_from_iso else None
+    
+    # Normalize shop (seller-storage name) for barcode-based filter
+    shop_norm = None
+    if shop:
+        shop_norm = shop.upper().strip()
+        shop_norm = re.sub(r'\s+', ' ', shop_norm)
     
     # For period=all, if date_from is None, use MIN(date_written_off) or very early date
     if period_code == "all" and date_from is None:
@@ -464,26 +491,19 @@ async def get_uzum_services_daily(
         date_from = date_to_date - timedelta(days=29)
         date_from_iso = date_from.isoformat()
     
-    logger.info(f"get_uzum_services_daily: user_id={user_id}, period={period_code}, date_from={date_from_iso}, date_to={date_to_iso} (shop_id ignored)")
+    logger.info(f"get_uzum_services_daily: user_id={user_id}, period={period_code}, shop={shop}, shop_norm={shop_norm}, date_from={date_from_iso}, date_to={date_to_iso}")
     
     try:
-        # Build parameters (shop_id is ignored - services are common)
-        params = {
+        params_expenses = {
             "user_id": str(user_id),
             "date_from": date_from_iso,
             "date_to": date_to_iso
         }
         
-        # Build query: группируем по date_written_off::date
-        # Хранение: Услуга='Оплата за услуги хранения'
-        # Реклама: Источник ILIKE '%маркетинг%' AND Тип операции ILIKE '%оплат%'
-        # Штрафы: Услуга ILIKE '%штраф%'
-        query = text(f"""
+        # 1) Expenses: storage, ads, fines (no barcode filter)
+        query_expenses = text(f"""
             SELECT 
                 date_written_off::date AS day,
-                -- Хранение UZUM: определяется только по Тип операции
-                -- Тип операции='Оплата' → прибавляется, 'Возврат' → вычитается
-                -- Фильтр по Услуга убран согласно обновлённому ТЗ
                 COALESCE(SUM(
                     CASE 
                         WHEN lower(trim(COALESCE(operation_type, ''))) = 'оплата' 
@@ -493,7 +513,6 @@ async def get_uzum_services_daily(
                         ELSE 0
                     END
                 ), 0) AS storage,
-                -- Реклама UZUM: Источник ILIKE '%маркетинг%' AND Тип операции ILIKE '%оплат%'
                 COALESCE(SUM(
                     CASE 
                         WHEN (COALESCE(source, '') ILIKE '%маркетинг%' OR COALESCE(source, '') ILIKE '%marketing%')
@@ -502,7 +521,6 @@ async def get_uzum_services_daily(
                         ELSE 0
                     END
                 ), 0) AS ads,
-                -- Штрафы UZUM: Услуга ILIKE '%штраф%'
                 COALESCE(SUM(
                     CASE 
                         WHEN COALESCE(service, '') ILIKE '%штраф%'
@@ -518,21 +536,77 @@ async def get_uzum_services_daily(
             ORDER BY day ASC
         """)
         
-        result = db.execute(query, params)
-        rows = result.fetchall()
+        result_expenses = db.execute(query_expenses, params_expenses)
+        rows_expenses = result_expenses.fetchall()
         
-        # Convert to response format
-        points = [
-            UzumServicesPoint(
-                date=row[0].isoformat() if hasattr(row[0], 'isoformat') else str(row[0]),
+        # 2) Sales: commission, logistics (filterable by shop via barcode_norm)
+        completed_condition = get_status_sql_condition('completed')
+        params_sales = {
+            "user_id": str(user_id),
+            "date_from": date_from_iso,
+            "date_to": date_to_iso
+        }
+        shop_condition_sales = ""
+        if shop_norm:
+            params_sales["shop_norm"] = shop_norm
+            shop_condition_sales = f"""AND EXISTS (
+                SELECT 1 FROM {qname("fact_storage_snapshot")} fss
+                WHERE fss.user_id = fact_sales.user_id
+                  AND COALESCE(fss.barcode_norm, {barcode_norm_sql('fss.barcode')}) = COALESCE(fact_sales.barcode_norm, {barcode_norm_sql('fact_sales.barcode')})
+                  AND upper(regexp_replace(trim(COALESCE(fss.shop_raw, '')), '\\s+', ' ', 'g')) = :shop_norm
+            )"""
+        
+        query_sales = text(f"""
+            SELECT 
+                date_created::date AS day,
+                COALESCE(SUM(commission_sum), 0) AS commission,
+                COALESCE(SUM(logistics_sum), 0) AS logistics
+            FROM {qname("fact_sales")} fact_sales
+            WHERE fact_sales.user_id = CAST(:user_id AS uuid)
+                AND ({completed_condition})
+                {shop_condition_sales}
+                AND fact_sales.date_created >= CAST(:date_from AS date)
+                AND fact_sales.date_created < CAST(:date_to AS date) + INTERVAL '1 day'
+            GROUP BY date_created::date
+            ORDER BY day ASC
+        """)
+        result_sales = db.execute(query_sales, params_sales)
+        rows_sales = result_sales.fetchall()
+        sales_by_day = {}
+        for row in rows_sales:
+            day = row[0]
+            key = day.isoformat() if hasattr(day, 'isoformat') else str(day)
+            sales_by_day[key] = (float(row[1] or 0), float(row[2] or 0))
+        
+        # Merge: for each expense row add commission/logistics from sales_by_day
+        points = []
+        for row in rows_expenses:
+            day = row[0]
+            date_str = day.isoformat() if hasattr(day, 'isoformat') else str(day)
+            commission, logistics = sales_by_day.get(date_str, (0.0, 0.0))
+            points.append(UzumServicesPoint(
+                date=date_str,
                 storage=float(row[1] or 0),
                 ads=float(row[2] or 0),
-                fines=float(row[3] or 0)
-            )
-            for row in rows
-        ]
+                fines=float(row[3] or 0),
+                commission=commission,
+                logistics=logistics
+            ))
         
-        # Return response
+        # Ensure all sales days appear even if no expenses that day
+        for date_str in sales_by_day:
+            if not any(p.date == date_str for p in points):
+                commission, logistics = sales_by_day[date_str]
+                points.append(UzumServicesPoint(
+                    date=date_str,
+                    storage=0.0,
+                    ads=0.0,
+                    fines=0.0,
+                    commission=commission,
+                    logistics=logistics
+                ))
+        points.sort(key=lambda p: p.date)
+        
         return UzumServicesDailyResponse(
             points=points,
             period=PeriodInfo(
@@ -540,7 +614,7 @@ async def get_uzum_services_daily(
                 date_from=date_from_iso or "",
                 date_to=date_to_iso
             ),
-            filters=UzumServicesFilters(shop_id=None)  # Always None - services are common
+            filters=UzumServicesFilters(shop_id=shop_id, shop=shop)
         )
     except HTTPException:
         raise
@@ -557,30 +631,14 @@ async def get_orders_sales_daily(
     user_id: UUID = Depends(require_user),
     period: str = Query(default="30d", description="Period: 7d, 30d, 90d, or all"),
     shop_id: Optional[str] = Query(default=None, description="Shop UUID"),
+    shop: Optional[str] = Query(default=None, description="Shop name (string) for seller-storage filtering by barcode"),
     group_by: str = Query(default="day", description="Grouping: day, week, or month"),
     db: Session = Depends(get_db)
 ):
     """Get orders and sales chart data grouped by time period (day/week/month).
     
-    All metrics are calculated using the SAME formulas as /api/kpi/summary to ensure consistency.
-    Metrics are calculated at the period level (not pre-aggregated), then grouped by time period.
-    
-    Formulas (same as KPI):
-    - orders_qty: SUM(qty) WITHOUT status filter (same as KPI ordersCount)
-    - buyouts_qty: SUM(qty) WHERE status='завершен' (same as KPI completedCount)
-    - returns_qty: SUM(returns_qty) from all rows (same as KPI returnsCount)
-    - revenue_sum: SUM(revenue_sum) WHERE status='завершен' (same as KPI revenue)
-    - profit_sum: revenue - total_expenses (same as KPI profit)
-      where total_expenses = commission + logistics + cogs + taxes_1pct + extra_expenses
-    - avg_check: revenue / buyouts_qty calculated at period level (same as KPI averageCheck)
-      Note: NOT average of daily values, but period-level calculation
-    
-    Grouping:
-    - day: GROUP BY date_created::date
-    - week: GROUP BY date_trunc('week', date_created)
-    - month: GROUP BY date_trunc('month', date_created)
-    
-    Note: stock_qty is excluded from this chart.
+    When shop (string) is set, filter by products in fact_storage_snapshot for that shop (barcode_norm).
+    All metrics use the SAME formulas as /api/kpi/summary.
     """
     # Normalize period
     period_code = normalize_period(period)
@@ -595,6 +653,12 @@ async def get_orders_sales_daily(
     date_to_date = datetime.fromisoformat(date_to_iso).date()
     date_from_iso = period_range_dict["date_from"]
     date_from = datetime.fromisoformat(date_from_iso).date() if date_from_iso else None
+    
+    # Normalize shop (seller-storage name) for barcode-based filter
+    shop_norm = None
+    if shop:
+        shop_norm = shop.upper().strip()
+        shop_norm = re.sub(r'\s+', ' ', shop_norm)
     
     # For period=all, if date_from is None, use MIN(date_created) or very early date
     if period_code == "all" and date_from is None:
@@ -620,14 +684,14 @@ async def get_orders_sales_daily(
     if shop_id == "":
         shop_id = None
     
-    # Validate shop_id if provided
-    if shop_id:
+    # Validate shop_id if provided (only when shop is not used)
+    if shop_id and not shop:
         try:
             UUID(shop_id)
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid shop_id format (must be UUID)"
+                detail="Invalid shop_id format (must be UUID). For seller-storage use 'shop' parameter."
             )
     
     # Normalize group_by
@@ -635,7 +699,7 @@ async def get_orders_sales_daily(
     if group_by_normalized not in ("day", "week", "month"):
         group_by_normalized = "day"
     
-    logger.info(f"get_orders_sales_daily: user_id={user_id}, period={period_code}, shop_id={shop_id}, group_by={group_by_normalized}, date_from={date_from_iso}, date_to={date_to_iso}")
+    logger.info(f"get_orders_sales_daily: user_id={user_id}, period={period_code}, shop_id={shop_id}, shop={shop}, shop_norm={shop_norm}, group_by={group_by_normalized}, date_from={date_from_iso}, date_to={date_to_iso}")
     
     try:
         # Use the SAME status conditions as in KPI (from shared utility)
@@ -643,15 +707,15 @@ async def get_orders_sales_daily(
         processing_status_condition = status_conditions['processing']
         completed_status_condition = status_conditions['completed']
         
-        # Determine grouping expression based on group_by parameter
+        # Determine grouping expression based on group_by parameter (use alias for correlation)
         if group_by_normalized == "week":
-            period_date_expr = "date_trunc('week', date_created)::date"
+            period_date_expr = "date_trunc('week', fact_sales.date_created)::date"
             period_date_alias = "period_date"
         elif group_by_normalized == "month":
-            period_date_expr = "date_trunc('month', date_created)::date"
+            period_date_expr = "date_trunc('month', fact_sales.date_created)::date"
             period_date_alias = "period_date"
         else:  # day (default)
-            period_date_expr = "date_created::date"
+            period_date_expr = "fact_sales.date_created::date"
             period_date_alias = "period_date"
         
         # Build parameters
@@ -661,20 +725,24 @@ async def get_orders_sales_daily(
             "date_to": date_to_iso
         }
         
-        # Build shop_id filter condition
+        # Shop filter: by storage barcodes (shop_norm) or by shop_id (UUID)
         shop_condition = ""
-        if shop_id:
+        if shop_norm:
+            params["shop_norm"] = shop_norm
+            shop_condition = f"""AND EXISTS (
+                SELECT 1 FROM {qname("fact_storage_snapshot")} fss
+                WHERE fss.user_id = fact_sales.user_id
+                  AND COALESCE(fss.barcode_norm, {barcode_norm_sql('fss.barcode')}) = COALESCE(fact_sales.barcode_norm, {barcode_norm_sql('fact_sales.barcode')})
+                  AND upper(regexp_replace(trim(COALESCE(fss.shop_raw, '')), '\\s+', ' ', 'g')) = :shop_norm
+            )"""
+        elif shop_id:
             params["shop_id"] = shop_id
-            shop_condition = "AND shop_id = CAST(:shop_id AS uuid)"
+            shop_condition = "AND fact_sales.shop_id = CAST(:shop_id AS uuid)"
         
-        # Get SQL expressions for metrics (using shared utility functions)
-        # These expressions use the SAME formulas as KPI to ensure consistency
-        metrics_sql = get_sales_metrics_sql(table_alias="")
+        # Get SQL expressions for metrics (table_alias for fact_sales)
+        metrics_sql = get_sales_metrics_sql(table_alias="fact_sales")
         
-        # Build query - агрегируем по периодам все метрики по ТЕМ ЖЕ формулам, что и KPI
-        # Все формулы должны совпадать с /api/kpi/summary для обеспечения консистентности
-        # Метрики считаются на уровне периода, затем группируются по времени
-        
+        # Build query - FROM with alias fact_sales for EXISTS correlation
         query = text(f"""
             SELECT 
                 {period_date_expr} AS {period_date_alias},
@@ -684,11 +752,11 @@ async def get_orders_sales_daily(
                 {metrics_sql['revenue_sum']} AS revenue_sum,
                 {get_profit_sql(metrics_sql['revenue_sum'], metrics_sql['commission_sum'], metrics_sql['logistics_sum'], metrics_sql['cogs_sum'])} AS profit_sum,
                 {get_avg_check_sql(metrics_sql['revenue_sum'], metrics_sql['orders_qty'])} AS avg_check
-            FROM {qname("fact_sales")}
-            WHERE user_id = CAST(:user_id AS uuid)
+            FROM {qname("fact_sales")} fact_sales
+            WHERE fact_sales.user_id = CAST(:user_id AS uuid)
                 {shop_condition}
-                AND date_created >= CAST(:date_from AS date)
-                AND date_created < CAST(:date_to AS date) + INTERVAL '1 day'
+                AND fact_sales.date_created >= CAST(:date_from AS date)
+                AND fact_sales.date_created < CAST(:date_to AS date) + INTERVAL '1 day'
             GROUP BY {period_date_expr}
             ORDER BY {period_date_expr} ASC
         """)
@@ -732,7 +800,7 @@ async def get_orders_sales_daily(
                 date_from=date_from_iso or "",
                 date_to=date_to_iso
             ),
-            filters=OrdersSalesDailyFilters(shop_id=shop_id)
+            filters=OrdersSalesDailyFilters(shop_id=shop_id, shop=shop)
         )
     except HTTPException:
         raise

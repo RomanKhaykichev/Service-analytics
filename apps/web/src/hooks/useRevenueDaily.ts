@@ -18,20 +18,22 @@ interface RevenueDailyResponse {
   };
   filters: {
     shop_id: string | null;
+    shop: string | null;
   };
 }
 
 interface UseRevenueDailyParams {
   periodCode: PeriodCode;
   shopId?: string | null;
+  /** Shop name (string) from seller-storage for filtering by barcode */
+  shop?: string | null;
 }
 
-export function useRevenueDaily({ periodCode, shopId }: UseRevenueDailyParams) {
+export function useRevenueDaily({ periodCode, shopId, shop }: UseRevenueDailyParams) {
   const { data, isLoading: loading, error } = useQuery({
-    queryKey: ['revenueDaily', periodCode, shopId],
+    queryKey: ['revenueDaily', periodCode, shop ?? 'all', shopId ?? 'all'],
     queryFn: async () => {
-      // Use periodCode directly (backend supports 7d/30d/90d/all)
-      const params = buildQueryParams({ period: periodCode, shopId });
+      const params = buildQueryParams({ period: periodCode, shopId, shop });
       return await apiGet<RevenueDailyResponse>("/api/charts/revenue-daily", params);
     },
   });

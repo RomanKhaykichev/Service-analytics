@@ -11,6 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 from sqlalchemy import text
+from sqlalchemy import inspect
 
 # revision identifiers, used by Alembic.
 revision: str = '20260126_create_map_shop_barcode'
@@ -22,7 +23,61 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # Create schema 'app' if it doesn't exist
     op.execute(text("CREATE SCHEMA IF NOT EXISTS app"))
-    
+
+    bind = op.get_bind()
+    insp = inspect(bind)
+    if insp.has_table("map_shop_barcode", schema="app"):
+        # Table already exists (e.g. created manually or re-run) — only ensure indexes
+        op.execute(text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_map_shop_barcode_user_shop_barcode
+            ON app.map_shop_barcode (
+                user_id,
+                (COALESCE(shop_id, '00000000-0000-0000-0000-000000000000'::uuid)),
+                barcode_norm
+            )
+        """))
+        op.create_index(
+            'ix_map_shop_barcode_user_id',
+            'map_shop_barcode',
+            ['user_id'],
+            unique=False,
+            schema='app',
+            if_not_exists=True
+        )
+        op.create_index(
+            'ix_map_shop_barcode_barcode_norm',
+            'map_shop_barcode',
+            ['barcode_norm'],
+            unique=False,
+            schema='app',
+            if_not_exists=True
+        )
+        op.create_index(
+            'ix_map_shop_barcode_user_barcode',
+            'map_shop_barcode',
+            ['user_id', 'barcode_norm'],
+            unique=False,
+            schema='app',
+            if_not_exists=True
+        )
+        op.create_index(
+            'ix_map_shop_barcode_user_shop',
+            'map_shop_barcode',
+            ['user_id', 'shop_id'],
+            unique=False,
+            schema='app',
+            if_not_exists=True
+        )
+        op.create_index(
+            'ix_map_shop_barcode_user_last_seen',
+            'map_shop_barcode',
+            ['user_id', 'last_seen_at'],
+            unique=False,
+            schema='app',
+            if_not_exists=True
+        )
+        return
+
     # Create map_shop_barcode table
     # This table stores normalized barcode mappings for linking data across reports
     op.create_table(

@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional
 from uuid import UUID
 from datetime import datetime, timedelta
 import logging
+import re
 from app.db import get_db, qname
 from app.deps import require_user
 from app.utils.statuses import get_status_sql_condition
@@ -89,10 +90,19 @@ def period_range(period_code: str, data_end_date: datetime.date) -> dict:
 def kpi_summary(
     period: str = "30d",
     shop_id: Optional[str] = None,
+    shop: Optional[str] = Query(default=None, description="Shop name (string) for seller-storage filtering"),
     user_id: UUID = Depends(require_user),
     db: Session = Depends(get_db)
 ):
+    """
+    Get KPI summary metrics.
     
+    Filtering:
+    - shop_id (UUID): for sales/expenses/warehouse metrics (from dim_shop)
+    - shop (string): for seller-storage metrics (from stg_storage.shop_raw)
+    
+    If both provided, shop_id is used for non-storage metrics, shop for storage metrics.
+    """
     # Normalize period
     period_code = normalize_period(period)
     
@@ -113,31 +123,58 @@ def kpi_summary(
     date_from_iso = period_range_dict["date_from"]
     date_from = datetime.fromisoformat(date_from_iso).date() if date_from_iso else None
     
-    # Validate shop_id if provided
-    if shop_id:
+    # Validate shop_id if provided (only if shop is NOT provided)
+    # Если передан shop (строка) - это для seller-storage, shop_id не валидируем как UUID
+    if shop_id and not shop:
         try:
             UUID(shop_id)
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail="Invalid shop_id format (must be UUID)"
+                detail="Invalid shop_id format (must be UUID). For seller-storage filtering use 'shop' parameter instead."
             )
     
-    logger.info(f"kpi_summary: user_id={user_id}, shop_id={shop_id}, period={period_code}, period_range={period_range_dict}")
+    # Нормализуем shop для seller-storage фильтрации
+    shop_norm = None
+    if shop:
+        shop_norm = shop.upper().strip()
+        shop_norm = re.sub(r'\s+', ' ', shop_norm)  # normalize whitespace
+    
+    logger.info(f"kpi_summary: user_id={user_id}, shop_id={shop_id}, shop={shop}, shop_norm={shop_norm}, period={period_code}, period_range={period_range_dict}")
     
     try:
-        # Base parameters - ALWAYS includes user_id and date_to
+        # Diagnostic: log current database and schema for troubleshooting search_path / barcode_norm issues
+        try:
+            diag_row = db.execute(text("SELECT current_database(), current_schema()")).fetchone()
+            logger.info(f"kpi_summary: current_database={diag_row[0]}, current_schema={diag_row[1]}")
+        except Exception as diag_err:
+            logger.warning(f"kpi_summary: could not get schema diagnostic: {diag_err}")
+
+        # Base parameters - ALWAYS includes user_id and date_to; shop_norm for storage filter
         params_base = {
             "user_id": str(user_id),
             "date_to": date_to_iso,
-            "shop_id": shop_id,  # Can be None
+            "shop_id": shop_id,  # Can be None (UUID)
+            "shop_norm": shop_norm,  # Can be None (seller-storage name, normalized)
         }
         
-        # Build base WHERE conditions for sales (filtered by periodRange)
-        sales_where = [
-            "user_id = CAST(:user_id AS uuid)",
-            "(:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))"
-        ]
+        # Sales shop filter: by storage barcodes (shop_norm) or by shop_id (UUID)
+        # When shop_norm: only rows whose barcode_norm exists in fact_storage_snapshot for that shop
+        sales_shop_filter = ""
+        if shop_norm:
+            sales_shop_filter = f"""EXISTS (
+                SELECT 1 FROM {qname("fact_storage_snapshot")} fss
+                WHERE fss.user_id = fact_sales.user_id
+                  AND COALESCE(fss.barcode_norm, {barcode_norm_sql('fss.barcode')}) = COALESCE(fact_sales.barcode_norm, {barcode_norm_sql('fact_sales.barcode')})
+                  AND upper(regexp_replace(trim(COALESCE(fss.shop_raw, '')), '\\s+', ' ', 'g')) = :shop_norm
+            )"""
+        elif shop_id:
+            sales_shop_filter = "(:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))"
+        
+        # Build base WHERE conditions for sales (filtered by periodRange and shop)
+        sales_where = ["user_id = CAST(:user_id AS uuid)"]
+        if sales_shop_filter:
+            sales_where.append(sales_shop_filter)
         if date_from:
             sales_where.append("date_created >= CAST(:date_from AS date)")
         sales_where.append("date_created < CAST(:date_to AS date) + INTERVAL '1 day'")
@@ -482,17 +519,13 @@ def kpi_summary(
             prev_date_from = date_from - timedelta(days=period_length_days)  # from - L
             prev_date_to = date_to_date - timedelta(days=period_length_days)  # to - L
             
-            prev_params = {
-                "user_id": str(user_id),
-                "prev_date_from": prev_date_from.isoformat(),
-                "prev_date_to": prev_date_to.isoformat(),
-                "shop_id": shop_id,  # Always include, can be None
-            }
+            prev_params = {**params_base, "prev_date_from": prev_date_from.isoformat(), "prev_date_to": prev_date_to.isoformat()}
             
             prev_where = ["user_id = CAST(:user_id AS uuid)"]
             prev_where.append("date_created >= CAST(:prev_date_from AS date)")
             prev_where.append("date_created < CAST(:prev_date_to AS date) + INTERVAL '1 day'")
-            prev_where.append("(:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))")
+            if sales_shop_filter:
+                prev_where.append(sales_shop_filter)
             
             prev_where_clause = " AND ".join(prev_where)
             
@@ -530,8 +563,9 @@ def kpi_summary(
             f"({completed_condition})",
             "date_created >= CAST(:year_start AS date)",
             "date_created < CAST(:date_to AS date) + INTERVAL '1 day'",
-            "(:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))"
         ]
+        if sales_shop_filter:
+            cumulative_where.append(sales_shop_filter)
         
         cumulative_where_clause = " AND ".join(cumulative_where)
         
@@ -549,19 +583,39 @@ def kpi_summary(
         
         logger.info(f"cumulativeRevenue: year={date_to_date.year}, year_start={year_start_iso}, date_to={date_to_iso}, value={cumulative_revenue}")
         
-        # F) STOCK aggregation (не зависит от period, только от user_id и shop_id)
+        # F) STOCK aggregation (не зависит от period, только от user_id и shop_id/shop)
         # Используем fact_leftout_snapshot.in_sale (В продаже, шт) для расчета остатков
-        # A) Получить текущий loaded_at (max по user_id и опционально shop_id)
+        # A) Получить текущий loaded_at (max по user_id и опционально shop_id или shop)
         stock_params = {
             "user_id": str(user_id),
-            "shop_id": shop_id  # Can be None
+            "shop_id": shop_id,  # Can be None (UUID для leftout)
+            "shop_norm": shop_norm  # Can be None (string для seller-storage)
         }
+        
+        # Фильтр для leftout: если передан shop (seller-storage) - фильтруем через JOIN с fact_storage_snapshot
+        # Если передан shop_id (UUID) - фильтруем напрямую по shop_id
+        # Для max_loaded_query используем упрощённый фильтр (без EXISTS, т.к. нужен только MAX)
+        leftout_max_filter = ""
+        if shop_norm:
+            # Фильтр по seller-storage: только товары (barcode_norm), присутствующие в выбранном магазине storage.
+            # Связь по barcode_norm; shop_raw — колонка «Магазин»; сравнение с upper(normalize(shop_raw)).
+            leftout_max_filter = f"""
+                AND EXISTS (
+                    SELECT 1 
+                    FROM {qname("fact_storage_snapshot")} fss
+                    WHERE fss.user_id = CAST(:user_id AS uuid)
+                        AND COALESCE(fss.barcode_norm, {barcode_norm_sql('fss.barcode')}) = COALESCE(fact_leftout_snapshot.barcode_norm, {barcode_norm_sql('fact_leftout_snapshot.barcode')})
+                        AND upper(regexp_replace(trim(COALESCE(fss.shop_raw, '')), '\\s+', ' ', 'g')) = :shop_norm
+                )
+            """
+        elif shop_id:
+            leftout_max_filter = "AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))"
         
         max_loaded_query = text(f"""
             SELECT MAX(loaded_at) AS snap_loaded_at
             FROM {qname("fact_leftout_snapshot")}
             WHERE user_id = CAST(:user_id AS uuid)
-                AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
+                {leftout_max_filter}
         """)
         
         max_loaded_result = db.execute(max_loaded_query, stock_params)
@@ -600,14 +654,18 @@ def kpi_summary(
             if date_from:
                 stock_params["date_from"] = date_from.isoformat()
             
-            # Фильтры для fact_sales (те же, что и для основного запроса)
+            # Фильтры для fact_sales (те же, что и для основного запроса: period + shop)
             stock_sales_where = ["user_id = CAST(:user_id AS uuid)", f"({completed_condition})"]
-            stock_sales_where.append("(:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))")
+            if sales_shop_filter:
+                stock_sales_where.append(sales_shop_filter)
             if date_from:
                 stock_sales_where.append("date_created >= CAST(:date_from AS date)")
             stock_sales_where.append("date_created < CAST(:date_to AS date) + INTERVAL '1 day'")
             
             stock_sales_where_clause = " AND ".join(stock_sales_where)
+            
+            # Формируем фильтр для snap CTE (тот же, что и для max_loaded_query)
+            snap_filter = leftout_max_filter
             
             stock_query = text(f"""
                 WITH snap AS (
@@ -621,7 +679,7 @@ def kpi_summary(
                         MAX(loaded_at) AS stock_snapshot_at
                     FROM {qname("fact_leftout_snapshot")}
                     WHERE user_id = CAST(:user_id AS uuid)
-                        AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
+                        {snap_filter}
                         AND loaded_at = CAST(:snap_loaded_at AS timestamp)
                     GROUP BY NULLIF(TRIM(sku), ''), {barcode_norm_sql('barcode')}, COALESCE(in_sale, 0)
                 ),
@@ -766,13 +824,13 @@ def kpi_summary(
         price_window_to = date_to_iso
         lost_revenue_params["price_window_from"] = price_window_from
         
-        # A) Определить snap_loaded_at (самый свежий snapshot до date_to, НЕ ограничивать >= date_from)
+        # A) Определить snap_loaded_at (самый свежий snapshot до date_to; фильтр shop = leftout_max_filter)
         # Используем fact_leftout_snapshot как единый источник склада
         snap_loaded_at_query = text(f"""
             SELECT MAX(loaded_at) AS snap_loaded_at
             FROM {qname("fact_leftout_snapshot")}
             WHERE user_id = CAST(:user_id AS uuid)
-                AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
+                {leftout_max_filter}
                 AND loaded_at < CAST(:date_to AS date) + INTERVAL '1 day'
         """)
         
@@ -810,16 +868,13 @@ def kpi_summary(
                     FROM {qname("fact_sales")}
                     WHERE user_id = CAST(:user_id AS uuid)
                         AND ({completed_condition})
-                        AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
+                        {f'AND {sales_shop_filter}' if sales_shop_filter else ''}
                         AND date_created >= CAST(:date_from_for_avg AS date)
                         AND date_created < CAST(:date_to AS date) + INTERVAL '1 day'
                     GROUP BY NULLIF(TRIM(sku), ''), {barcode_norm_sql('barcode')}
                 ),
                 price_window AS (
                     -- Weighted average price из окна для расчета цены (только завершенные заказы)
-                    -- Если period=all, используем последние 90 дней (зафиксировано в комментарии)
-                    -- Приоритет сопоставления: barcode_norm (если не NULL), затем sku
-                    -- barcode_norm вычисляется на лету: нормализация barcode (удаление пробелов)
                     SELECT
                         NULLIF(TRIM(sku), '') AS sku,
                         {barcode_norm_sql('barcode')} AS barcode_norm,
@@ -828,22 +883,20 @@ def kpi_summary(
                     FROM {qname("fact_sales")}
                     WHERE user_id = CAST(:user_id AS uuid)
                         AND ({completed_condition})
-                        AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
+                        {f'AND {sales_shop_filter}' if sales_shop_filter else ''}
                         AND date_created >= CAST(:price_window_from AS date)
                         AND date_created < CAST(:date_to AS date) + INTERVAL '1 day'
                     GROUP BY NULLIF(TRIM(sku), ''), {barcode_norm_sql('barcode')}
                 ),
                 snap AS (
-                    -- Текущий snapshot склада из fact_leftout_snapshot
-                    -- Остатки FBO = in_sale + sdh_stock (всего в продаже и на СДХ)
-                    -- barcode_norm вычисляется на лету: нормализация barcode (удаление пробелов)
+                    -- Текущий snapshot склада из fact_leftout_snapshot; фильтр shop = leftout_max_filter
                     SELECT
                         NULLIF(TRIM(sku), '') AS sku,
                         {barcode_norm_sql('barcode')} AS barcode_norm,
                         COALESCE(in_sale, 0) + COALESCE(sdh_stock, 0) AS stock_fbo
                     FROM {qname("fact_leftout_snapshot")}
                     WHERE user_id = CAST(:user_id AS uuid)
-                        AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))
+                        {leftout_max_filter}
                         AND loaded_at = CAST(:snap_loaded_at AS timestamp)
                 )
                 SELECT
@@ -972,6 +1025,13 @@ def kpi_summary(
     except HTTPException:
         raise
     except Exception as e:
+        err_msg = str(e).lower()
+        if "barcode_norm" in err_msg or "does not exist" in err_msg:
+            logger.warning(f"kpi_summary: missing column barcode_norm (migration not applied): {e}")
+            raise HTTPException(
+                status_code=500,
+                detail="Run alembic upgrade head. Column app.fact_storage_snapshot.barcode_norm or app.fact_leftout_snapshot.barcode_norm may be missing."
+            )
         logger.error(f"Error in kpi_summary: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,

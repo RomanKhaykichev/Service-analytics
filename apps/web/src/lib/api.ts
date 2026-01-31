@@ -54,6 +54,7 @@ export function getDevUserId(): string {
 export function buildQueryParams(params?: {
   period?: string;
   shopId?: string | null;
+  shop?: string | null;  // Shop name (string) for seller-storage filtering
   q?: string;
   limit?: number;
   [key: string]: any;
@@ -63,7 +64,8 @@ export function buildQueryParams(params?: {
   
   for (const [key, value] of Object.entries(params)) {
     if (value !== null && value !== undefined && value !== "") {
-      // Map shopId to shop_id for API
+      // Map shopId to shop_id for API (UUID-based filtering)
+      // shop parameter is passed as-is (string-based filtering for seller-storage)
       const apiKey = key === "shopId" ? "shop_id" : key;
       result[apiKey] = String(value);
     }

@@ -7,6 +7,8 @@ interface UzumServicesPoint {
   storage: number;
   ads: number;
   fines: number;
+  commission?: number;
+  logistics?: number;
 }
 
 interface UzumServicesResponse {
@@ -18,19 +20,22 @@ interface UzumServicesResponse {
   };
   filters: {
     shop_id: string | null;
+    shop: string | null;
   };
 }
 
 interface UseUzumServicesDailyParams {
   periodCode: PeriodCode;
-  shopId?: string | null; // Игнорируется на бэкенде, но передаётся для консистентности API
+  shopId?: string | null;
+  /** Shop name (string) from seller-storage for filtering by barcode */
+  shop?: string | null;
 }
 
-export function useUzumServicesDaily({ periodCode, shopId }: UseUzumServicesDailyParams) {
+export function useUzumServicesDaily({ periodCode, shopId, shop }: UseUzumServicesDailyParams) {
   const { data, isLoading: loading, error } = useQuery({
-    queryKey: ['uzumServicesDaily', periodCode], // shopId не включаем, т.к. игнорируется
+    queryKey: ['uzumServicesDaily', periodCode, shop ?? 'all', shopId ?? 'all'],
     queryFn: async () => {
-      const params = buildQueryParams({ period: periodCode }); // shopId не передаём
+      const params = buildQueryParams({ period: periodCode, shopId, shop });
       return await apiGet<UzumServicesResponse>("/api/charts/uzum-services-daily", params);
     },
   });

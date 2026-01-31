@@ -13,6 +13,7 @@ class RevenuePoint(BaseModel):
 
 class RevenueFilters(BaseModel):
     shop_id: Optional[str] = None
+    shop: Optional[str] = None  # Seller-storage shop name (string) when filtering by barcode
 
 
 class RevenueDailyResponse(BaseModel):
@@ -81,13 +82,16 @@ class StockDailyResponse(BaseModel):
 # UZUM Services daily chart
 class UzumServicesPoint(BaseModel):
     date: str  # YYYY-MM-DD format
-    storage: float  # Хранение UZUM
-    ads: float  # Реклама UZUM
-    fines: float  # Штрафы UZUM
+    storage: float  # Хранение UZUM (fact_expenses)
+    ads: float  # Реклама UZUM (fact_expenses)
+    fines: float  # Штрафы UZUM (fact_expenses)
+    commission: float = 0.0  # Комиссия UZUM (fact_sales, filterable by shop)
+    logistics: float = 0.0  # Логистика UZUM (fact_sales, filterable by shop)
 
 
 class UzumServicesFilters(BaseModel):
-    shop_id: Optional[str] = None  # Игнорируется для услуг (они общие)
+    shop_id: Optional[str] = None
+    shop: Optional[str] = None  # Seller-storage shop name when filtering by barcode (applies to data that has barcode)
 
 
 class UzumServicesDailyResponse(BaseModel):
@@ -110,6 +114,7 @@ class OrdersSalesDailyPoint(BaseModel):
 
 class OrdersSalesDailyFilters(BaseModel):
     shop_id: Optional[str] = None
+    shop: Optional[str] = None  # Seller-storage shop name when filtering by barcode
 
 
 class OrdersSalesDailyResponse(BaseModel):

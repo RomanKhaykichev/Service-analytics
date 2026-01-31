@@ -21,20 +21,23 @@ interface OrdersSalesDailyResponse {
   };
   filters: {
     shop_id: string | null;
+    shop: string | null;
   };
 }
 
 interface UseOrdersSalesDailyParams {
   periodCode?: string;
   shopId?: string | null;
+  /** Shop name (string) from seller-storage for filtering by barcode */
+  shop?: string | null;
   groupBy?: "day" | "week" | "month";
 }
 
-export function useOrdersSalesDaily({ periodCode = "30d", shopId = null, groupBy = "day" }: UseOrdersSalesDailyParams) {
+export function useOrdersSalesDaily({ periodCode = "30d", shopId = null, shop = null, groupBy = "day" }: UseOrdersSalesDailyParams) {
   return useQuery({
-    queryKey: ['ordersSalesDaily', periodCode, shopId, groupBy],
+    queryKey: ['ordersSalesDaily', periodCode, shop ?? 'all', shopId ?? 'all', groupBy],
     queryFn: async () => {
-      const params = buildQueryParams({ period: periodCode, shopId, group_by: groupBy });
+      const params = buildQueryParams({ period: periodCode, shopId, shop, group_by: groupBy });
       return await apiGet<OrdersSalesDailyResponse>("/api/charts/orders-sales-daily", params);
     },
     retry: 1,

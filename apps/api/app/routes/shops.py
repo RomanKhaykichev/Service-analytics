@@ -85,3 +85,102 @@ async def get_shops(
         shops = []
     
     return ShopsResponse(shops=shops)
+
+
+@router.get("/storage/shops", response_model=ShopsResponse)
+async def get_storage_shops(
+    user_id: UUID = Depends(require_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get list of shops from seller-storage ONLY (source of truth for shop filter).
+    
+    Uses app.fact_storage_snapshot.shop_raw first (persistent); fallback to stg_storage.shop_raw.
+    Returns DISTINCT shop names — column "Магазин" from seller-storage file.
+    
+    Returns:
+    - shop_id: normalized value (UPPER, single spaces) — used as shop= query param for KPI
+    - shop_name: original label — for display in UI
+    """
+    shops = []
+    
+    logger.info(f"get_storage_shops: user_id={user_id}")
+    
+    try:
+        # 1) Prefer fact_storage_snapshot.shop_raw (persistent, survives staging clear)
+        query_fss = text(f"""
+            WITH src AS (
+                SELECT NULLIF(trim(fss.shop_raw), '') AS shop_raw
+                FROM {qname("fact_storage_snapshot")} fss
+                WHERE fss.user_id = CAST(:user_id AS uuid)
+                    AND NULLIF(trim(fss.shop_raw), '') IS NOT NULL
+                    AND lower(trim(fss.shop_raw)) NOT IN ('не определено', 'неопределено', 'undefined', 'null', '(не определено)', 'не определен')
+            ),
+            norm AS (
+                SELECT
+                    shop_raw,
+                    upper(regexp_replace(trim(shop_raw), '\\s+', ' ', 'g')) AS shop_norm
+                FROM src
+                WHERE shop_raw IS NOT NULL
+            )
+            SELECT DISTINCT
+                shop_norm AS value,
+                MIN(shop_raw) AS label
+            FROM norm
+            GROUP BY shop_norm
+            ORDER BY value
+        """)
+        result = db.execute(query_fss, {"user_id": str(user_id)})
+        rows = result.fetchall()
+        
+        if rows:
+            logger.info(f"get_storage_shops: found {len(rows)} shops from fact_storage_snapshot.shop_raw")
+            shops = [
+                Shop(
+                    shop_id=row[0] or "",
+                    shop_name=row[1] or row[0] or ""
+                )
+                for row in rows
+            ]
+            return ShopsResponse(shops=shops)
+        
+        # 2) Fallback: stg_storage.shop_raw (when fact_storage_snapshot is empty)
+        logger.info(f"get_storage_shops: no shops in fact_storage_snapshot, trying stg_storage")
+        query_stg = text(f"""
+            WITH src AS (
+                SELECT NULLIF(trim(ss.shop_raw), '') AS shop_raw
+                FROM {qname("stg_storage")} ss
+                WHERE ss.user_id = CAST(:user_id AS uuid)
+                    AND NULLIF(trim(ss.shop_raw), '') IS NOT NULL
+                    AND lower(trim(ss.shop_raw)) NOT IN ('не определено', 'неопределено', 'undefined', 'null', '(не определено)', 'не определен')
+            ),
+            norm AS (
+                SELECT
+                    shop_raw,
+                    upper(regexp_replace(trim(shop_raw), '\\s+', ' ', 'g')) AS shop_norm
+                FROM src
+                WHERE shop_raw IS NOT NULL
+            )
+            SELECT DISTINCT
+                shop_norm AS value,
+                MIN(shop_raw) AS label
+            FROM norm
+            GROUP BY shop_norm
+            ORDER BY value
+        """)
+        result = db.execute(query_stg, {"user_id": str(user_id)})
+        rows = result.fetchall()
+        
+        if rows:
+            logger.info(f"get_storage_shops: found {len(rows)} shops from stg_storage.shop_raw")
+            shops = [
+                Shop(shop_id=row[0] or "", shop_name=row[1] or row[0] or "")
+                for row in rows
+            ]
+        else:
+            logger.info(f"get_storage_shops: no shops found")
+    except Exception as e:
+        logger.error(f"Failed to query storage shops: {e}", exc_info=True)
+        shops = []
+    
+    return ShopsResponse(shops=shops)

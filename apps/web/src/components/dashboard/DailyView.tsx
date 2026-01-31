@@ -34,6 +34,8 @@ interface DailyViewProps {
   viewMode?: string;
   periodCode?: string;
   shopId?: string | null;
+  /** Shop name (string) from seller-storage for filtering by barcode */
+  shop?: string | null;
 }
 
 const tableData = [
@@ -76,12 +78,12 @@ type SortColumn = string | null;
 
 type GroupByType = "day" | "week" | "month";
 
-export function DailyView({ viewMode = "day", periodCode = "30d", shopId = null }: DailyViewProps) {
+export function DailyView({ viewMode = "day", periodCode = "30d", shopId = null, shop = null }: DailyViewProps) {
   // State for time grouping filter
   const [groupBy, setGroupBy] = useState<GroupByType>("day");
   
-  // Load data from backend
-  const { data: ordersSalesData, isLoading: loading, error } = useOrdersSalesDaily({ periodCode, shopId, groupBy });
+  // Load data from backend (filtered by shop when set)
+  const { data: ordersSalesData, isLoading: loading, error } = useOrdersSalesDaily({ periodCode, shopId, shop, groupBy });
   
   // Format date label based on grouping
   const formatDateLabel = (dateStr: string, grouping: GroupByType): string => {

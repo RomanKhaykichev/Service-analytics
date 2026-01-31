@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
 from typing import Generator
 from app.settings import get_settings
@@ -58,9 +58,16 @@ def get_db() -> Generator[Session, None, None]:
     """
     Database dependency for FastAPI.
     Yields a database session and ensures it's closed after use.
+    On any exception, rolls back the transaction before closing.
+    Sets search_path to app, public so unqualified table names resolve to the app schema.
     """
     db = SessionLocal()
     try:
+        # Ensure unqualified names resolve to app schema first (insurance for any raw SQL)
+        db.execute(text(f"SET search_path TO {settings.DB_SCHEMA}, public"))
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
