@@ -166,26 +166,29 @@ async def get_stock_current(
     shop_id: Optional[str] = Query(default=None, description="Shop UUID"),
     shop: Optional[str] = Query(default=None, description="Shop name (string) for seller-storage filtering by barcode"),
     q: Optional[str] = Query(default=None, description="Search in sku, product_name, barcode"),
+    limit: int = Query(default=200, le=500, description="Max number of items to return"),
     db: Session = Depends(get_db)
 ):
-    """Get current stock snapshot from v_product_current_stock. Filter by shop (seller-storage) via barcode set."""
+    """Get current stock snapshot from v_product_current_stock. Filter by shop (seller-storage) via barcode set.
+    Shop is string (shop_raw from fact_storage_snapshot); no CAST(shop AS uuid). View has no barcode_norm — use computed expr."""
     shop_norm = normalize_shop(shop)
-    logger.info(f"get_stock_current: user_id={user_id}, shop_id={shop_id}, shop={shop}, shop_norm={shop_norm}, q={q}")
-    
+    logger.info(f"get_stock_current: user_id={user_id}, shop_id={shop_id}, shop={shop!r}, shop_norm={shop_norm!r}, q={q}, limit={limit}")
     try:
         conditions = ["v.user_id = CAST(:user_id AS uuid)"]
-        params = {"user_id": str(user_id)}
-        
-        # Shop filter: единый helper (storage barcode или shop_id)
-        shop_cond, shop_params = shop_filter_condition(shop, shop_id, outer_table_alias="v")
+        params = {"user_id": str(user_id), "limit": limit}
+        # Shop filter: shop is string (seller-storage shop_raw). View v_product_current_stock has no barcode_norm — use computed only
+        shop_cond, shop_params = shop_filter_condition(
+            shop,
+            shop_id,
+            outer_table_alias="v",
+            outer_barcode_norm_expr=barcode_norm_sql("v.barcode"),
+        )
         params.update(shop_params)
         if shop_cond:
             conditions.append(shop_cond)
-        
         if q:
             conditions.append("(v.sku ILIKE :q OR v.product_name ILIKE :q OR v.barcode ILIKE :q)")
             params["q"] = f"%{q}%"
-        
         where_clause = " AND ".join(conditions)
         query = text(f"""
             SELECT 
@@ -201,17 +204,14 @@ async def get_stock_current(
             FROM {qname("v_product_current_stock")} v
             WHERE {where_clause}
             ORDER BY v.stock_qty DESC NULLS LAST, v.fee_total_30d DESC NULLS LAST
-            LIMIT 200
+            LIMIT :limit
         """)
-        
         result = db.execute(query, params)
         rows = result.fetchall()
-        logger.info(f"get_stock_current: found {len(rows)} rows")
-        
+        logger.info(f"get_stock_current: shop_norm={shop_norm!r}, row_count={len(rows)}")
         items = []
         for row in rows:
             try:
-                # Handle variable number of columns gracefully
                 barcode = str(row[0]) if len(row) > 0 and row[0] else ""
                 sku = str(row[1]) if len(row) > 1 and row[1] else ""
                 product_name = str(row[2]) if len(row) > 2 and row[2] else None
@@ -221,7 +221,6 @@ async def get_stock_current(
                 fee_total_30d = float(row[6]) if len(row) > 6 and row[6] is not None else None
                 storage_type = str(row[7]) if len(row) > 7 and row[7] else None
                 size_group = str(row[8]) if len(row) > 8 and row[8] else None
-                
                 items.append(StockItem(
                     barcode=barcode,
                     sku=sku,
@@ -236,10 +235,43 @@ async def get_stock_current(
             except (IndexError, ValueError, TypeError) as e:
                 logger.warning(f"Error parsing row in stock-current: {e}, row: {row}")
                 continue
-        
         if not items:
-            logger.warning("No data found in v_product_current_stock for stock-current chart")
-        
+            logger.warning("get_stock_current: no data for v_product_current_stock (returning empty list)")
+            try:
+                user_rows = db.execute(
+                    text(f"SELECT COUNT(*) FROM {qname('fact_storage_snapshot')} WHERE user_id = CAST(:user_id AS uuid)"),
+                    {"user_id": str(user_id)},
+                ).scalar() or 0
+                selected_snapshot = db.execute(
+                    text(f"""
+                        SELECT upload_batch_id, loaded_at
+                        FROM (
+                            SELECT user_id, upload_batch_id, loaded_at,
+                                   ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY loaded_at DESC NULLS LAST) AS rn
+                            FROM {qname('fact_storage_snapshot')}
+                            WHERE user_id = CAST(:user_id AS uuid)
+                        ) t WHERE rn = 1
+                    """),
+                    {"user_id": str(user_id)},
+                ).fetchone()
+                shop_rows = None
+                if shop_norm:
+                    shop_rows = db.execute(
+                        text(f"""
+                            SELECT COUNT(*) FROM {qname('fact_storage_snapshot')}
+                            WHERE user_id = CAST(:user_id AS uuid)
+                              AND upper(regexp_replace(trim(COALESCE(shop_raw, '')), '\\s+', ' ', 'g')) = :shop_norm
+                        """),
+                        {"user_id": str(user_id), "shop_norm": shop_norm},
+                    ).scalar() or 0
+                logger.info(
+                    "get_stock_current: self-check when empty: user_rows_count=%s, shop_rows_count=%s, selected_snapshot=%s",
+                    user_rows,
+                    shop_rows,
+                    (str(selected_snapshot[0]), str(selected_snapshot[1])) if selected_snapshot else None,
+                )
+            except Exception as diag_err:
+                logger.warning("get_stock_current: self-check failed: %s", diag_err)
         return StockCurrentResponse(
             items=items,
             filters=StockFilters(shop_id=shop_id, shop=shop, q=q or "")

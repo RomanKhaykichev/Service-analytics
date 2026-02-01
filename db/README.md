@@ -16,6 +16,7 @@
 
 **Текущие миграции:**
 - **005_fix_product_current_stock_view.sql** - Исправляет view `v_product_current_stock`: убирает regex, использует прямые CAST для стабильных типов колонок
+- **006_v_product_current_stock_from_storage.sql** - Источник данных для `v_product_current_stock`: `v_current_storage` = последний снапшот storage (MAX(loaded_at) по user), view собирается из storage (LEFT JOIN leftout), чтобы после загрузки seller-storage были строки
 
 ## Применение миграций
 
@@ -80,3 +81,17 @@ WHERE user_id = '<your-user-uuid>';
 - `non_null_turnover_days` должен быть > 0, если данные есть в `app.fact_storage_snapshot`
 
 Подробные SQL-запросы для диагностики см. в `docs/debug.md`.
+
+## Бэкфилл fact_leftout_old_snapshot из staging (Остатки старый формат)
+
+Если данные импорта «Остатки (старый формат)» попали в `app.stg_leftout_old`, но в `app.fact_leftout_old_snapshot` их нет (populate не выполнился), можно заполнить fact из staging по `upload_batch_id`:
+
+```bash
+python db/populate_leftout_old_from_staging.py 733fa35d-cddd-45b4-8fb7-f64f3591a630
+```
+
+Проверка после бэкфилла:
+```sql
+SELECT COUNT(*) FROM app.fact_leftout_old_snapshot WHERE upload_batch_id = '733fa35d-cddd-45b4-8fb7-f64f3591a630'::uuid;
+```
+Ожидается 72+ строк (по числу строк в staging для этого batch).

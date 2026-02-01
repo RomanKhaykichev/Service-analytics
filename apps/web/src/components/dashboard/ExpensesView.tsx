@@ -91,10 +91,10 @@ interface ExtraExpensesResponse {
 
 interface ExpensesViewProps {
   periodCode?: string;
-  shopId?: string | null;
+  shop?: string | null;
 }
 
-export function ExpensesView({ periodCode = "30d", shopId = null }: ExpensesViewProps) {
+export function ExpensesView({ periodCode = "30d", shop = null }: ExpensesViewProps) {
   const { shops, loading: shopsLoading } = useShops();
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -114,12 +114,12 @@ export function ExpensesView({ periodCode = "30d", shopId = null }: ExpensesView
     comment: "",
   });
 
-  // Load expenses from API
+  // Load expenses from API (filter by shop name when selected)
   const { data: expensesData, isLoading: expensesLoading, error: expensesError } = useQuery({
-    queryKey: ['extraExpenses', periodCode, shopId],
+    queryKey: ['extraExpenses', periodCode, shop],
     queryFn: async () => {
       try {
-        const params = buildQueryParams({ period: periodCode, shopId });
+        const params = buildQueryParams({ period: periodCode, shop });
         return await apiGet<ExtraExpensesResponse>("/api/extra-expenses", params);
       } catch (error) {
         console.error("Failed to load expenses:", error);
@@ -146,7 +146,7 @@ export function ExpensesView({ periodCode = "30d", shopId = null }: ExpensesView
     onSuccess: () => {
       // Invalidate and refetch expenses list to show new row immediately
       queryClient.invalidateQueries({ queryKey: ['extraExpenses'] });
-      queryClient.refetchQueries({ queryKey: ['extraExpenses', periodCode, shopId] });
+      queryClient.refetchQueries({ queryKey: ['extraExpenses', periodCode, shop] });
       toast.success("Расход успешно добавлен");
       setIsDialogOpen(false);
       setEditingExpense(null);
@@ -181,7 +181,7 @@ export function ExpensesView({ periodCode = "30d", shopId = null }: ExpensesView
     onSuccess: () => {
       // Invalidate and refetch expenses list
       queryClient.invalidateQueries({ queryKey: ['extraExpenses'] });
-      queryClient.refetchQueries({ queryKey: ['extraExpenses', periodCode, shopId] });
+      queryClient.refetchQueries({ queryKey: ['extraExpenses', periodCode, shop] });
       toast.success("Расход успешно обновлен");
       setIsDialogOpen(false);
       setEditingExpense(null);
@@ -206,7 +206,7 @@ export function ExpensesView({ periodCode = "30d", shopId = null }: ExpensesView
     onSuccess: () => {
       // Invalidate and refetch expenses list to remove deleted row immediately
       queryClient.invalidateQueries({ queryKey: ['extraExpenses'] });
-      queryClient.refetchQueries({ queryKey: ['extraExpenses', periodCode, shopId] });
+      queryClient.refetchQueries({ queryKey: ['extraExpenses', periodCode, shop] });
       toast.success("Расход успешно удален");
     },
     onError: (error) => {

@@ -158,14 +158,22 @@ def parse_period(period: str) -> tuple[Optional[date], date]:
         raise ValueError(f"Invalid period: {period}")
 
 
+def _shop_name_norm(s: Optional[str]) -> str:
+    """Normalize shop name for filtering: trim, collapse spaces, upper."""
+    if not s:
+        return ""
+    return " ".join((s or "").strip().split()).upper()
+
+
 @router.get("/extra-expenses", response_model=ExtraExpensesResponse)
 async def get_extra_expenses(
     user_id: UUID = Depends(require_user),
     period: str = Query(default="30d", description="Period: 7d, 30d, 90d, or all"),
-    shop_id: Optional[str] = Query(default=None, description="Shop UUID"),
+    shop: Optional[str] = Query(default=None, description="Shop name (string) — filter by Магазин, normalized"),
+    shop_id: Optional[str] = Query(default=None, description="Shop UUID (legacy)"),
     db: Session = Depends(get_db)
 ):
-    """Get list of extra expenses with optional period and shop filters."""
+    """Get list of extra expenses with optional period and shop filters. Filter by shop name (string) when shop is provided."""
     try:
         date_from, date_to = parse_period(period)
     except ValueError as e:
@@ -174,7 +182,6 @@ async def get_extra_expenses(
     params = {
         "user_id": str(user_id),
         "date_to": date_to.isoformat(),
-        "shop_id": shop_id
     }
     
     date_filter = ""
@@ -182,13 +189,15 @@ async def get_extra_expenses(
         params["date_from"] = date_from.isoformat()
         date_filter = "AND e.expense_date >= CAST(:date_from AS date)"
     
+    # Filter by shop name (string, normalized): trim, collapse spaces, upper — no UUID
     shop_filter = ""
-    if shop_id:
+    if shop:
+        shop_norm = _shop_name_norm(shop)
+        params["shop_norm"] = shop_norm
+        shop_filter = "AND upper(regexp_replace(trim(COALESCE(ds.shop_name, '')), '\\s+', ' ', 'g')) = :shop_norm"
+    elif shop_id:
+        params["shop_id"] = shop_id
         shop_filter = "AND e.shop_id = CAST(:shop_id AS uuid)"
-    else:
-        # If shop_id is not provided, show all expenses (including those with shop_id = NULL)
-        # No additional filter needed
-        pass
     
     query = text(f"""
         SELECT 

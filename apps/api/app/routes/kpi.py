@@ -10,7 +10,7 @@ from app.deps import require_user
 from app.utils.statuses import get_status_sql_condition
 from app.utils.barcode import barcode_norm_sql
 from app.utils.metrics import get_status_conditions
-from app.utils.shop_filter import normalize_shop, shop_filter_condition, storage_barcode_filter_sql
+from app.utils.shop_filter import normalize_shop, shop_filter_condition, storage_barcode_filter_sql, storage_barcode_filter_by_shop_id_sql
 from app.settings import get_settings
 from fastapi import Depends
 
@@ -341,121 +341,33 @@ def kpi_summary(
         # ТЗ: Налоги 1% = Выручка * 0.01, где Выручка = SUM(Выручка (сумы)) со статусом "Завершен"
         taxes_1pct = revenue * 0.01 if revenue else 0.0
         
-        # Доп. расходы: SUM(Доп. расходы[Сумма]) из manual_expenses
-        # Фильтры: период (expense_date), магазин (shop_id), user_id, is_deleted = false
-        # ТЗ: Доп. расходы = SUM(Доп. расходы[Сумма])
-        # Условия: учитывать выбранный период (по полю «Дата»), магазин (если выбран), удалённые записи не учитывать
-        
-        # DEBUG: Логируем параметры периода ПЕРЕД расчетом
-        logger.info(f"[DEBUG] extra_expenses BEFORE calculation: period={period_code}, date_from={date_from_iso or 'NULL'}, date_to={date_to_iso}, shop_id={shop_id}, user_id={user_id}")
-        
-        # Prepare params for manual expenses query - используем те же date_from/date_to, что и для остальных KPI
+        # Доп. расходы = COALESCE(SUM(amount_sum), 0) из manual_expenses (тот же источник, что и таблица "Доп. расходы")
+        # Фильтры: период (expense_date), магазин по названию (shop_norm) или shop_id (UUID), user_id, is_deleted = false
+        # Магазин: как в GET /api/extra-expenses — по колонке "Магазин" (dim_shop.shop_name), нормализованно (trim, пробелы, upper)
         manual_expenses_params = {**params_base}
-        
-        # Проверяем схему таблицы manual_expenses: наличие колонок shop_id и shop_name
-        check_schema_query = text(f"""
-            SELECT 
-                EXISTS (
-                    SELECT 1 
-                    FROM information_schema.columns 
-                    WHERE table_schema = :schema 
-                      AND table_name = 'manual_expenses' 
-                      AND column_name = 'shop_id'
-                ) AS has_shop_id,
-                EXISTS (
-                    SELECT 1 
-                    FROM information_schema.columns 
-                    WHERE table_schema = :schema 
-                      AND table_name = 'manual_expenses' 
-                      AND column_name = 'shop_name'
-                ) AS has_shop_name
-        """)
-        schema_result = db.execute(check_schema_query, {"schema": settings.DB_SCHEMA})
-        schema_row = schema_result.fetchone()
-        has_shop_id_column = schema_row[0] if schema_row else False
-        has_shop_name_column = schema_row[1] if schema_row else False
-        
-        logger.info(f"[DEBUG] manual_expenses schema check: has_shop_id={has_shop_id_column}, has_shop_name={has_shop_name_column}")
-        
-        # Формируем фильтр по магазину (безопасно, проверяя наличие колонок)
-        shop_filter = ""
-        if shop_id:
-            if has_shop_id_column:
-                # Если shop_id существует - фильтруем по shop_id
-                shop_filter = "AND e.shop_id = CAST(:shop_id AS uuid)"
-                logger.info(f"[DEBUG] Applying shop_id filter: shop_id={shop_id}")
-            elif has_shop_name_column:
-                # Если shop_name существует - фильтруем через JOIN с dim_shop
-                # Сначала получаем shop_name из dim_shop по shop_id
-                shop_name_query = text(f"""
-                    SELECT shop_name 
-                    FROM {qname("dim_shop")} 
-                    WHERE shop_id = CAST(:shop_id AS uuid) AND user_id = CAST(:user_id AS uuid)
-                """)
-                shop_name_result = db.execute(shop_name_query, {"shop_id": shop_id, "user_id": str(user_id)})
-                shop_name_row = shop_name_result.fetchone()
-                if shop_name_row and shop_name_row[0]:
-                    shop_name = shop_name_row[0]
-                    shop_filter = f"AND e.shop_name = '{shop_name}'"
-                    logger.info(f"[DEBUG] Applying shop_name filter: shop_name={shop_name}")
-                else:
-                    logger.warning(f"[DEBUG] shop_id={shop_id} not found in dim_shop, skipping shop filter")
-            else:
-                # Колонок shop_id и shop_name нет - не применяем фильтр
-                logger.info(f"[DEBUG] No shop_id or shop_name columns found, skipping shop filter")
-        else:
-            logger.info(f"[DEBUG] shop_id is NULL (all shops), skipping shop filter")
-        
-        # Формируем фильтр по дате - используем те же date_from/date_to, что и для остальных KPI
-        # Период применяется по expense_date: WHERE expense_date >= :date_from AND expense_date <= :date_to
         date_from_filter = ""
         if date_from:
             manual_expenses_params["date_from"] = date_from.isoformat()
             date_from_filter = "AND e.expense_date >= CAST(:date_from AS date)"
-            logger.info(f"[DEBUG] Applying date_from filter: date_from={date_from.isoformat()}")
-        else:
-            logger.info(f"[DEBUG] date_from is NULL (period=all), no date_from filter")
-        
-        logger.info(f"[DEBUG] Applying date_to filter: date_to={date_to_iso}")
-        
-        # SQL-запрос: период применяется по expense_date
+        manual_shop_filter = ""
+        if shop_norm:
+            manual_shop_filter = "AND upper(regexp_replace(trim(COALESCE(ds.shop_name, '')), '\\s+', ' ', 'g')) = :shop_norm"
+        elif shop_id:
+            manual_shop_filter = "AND e.shop_id = CAST(:shop_id AS uuid)"
         manual_expenses_query = text(f"""
-            SELECT 
-                COALESCE(SUM(e.amount_sum), 0) AS extra_sum
+            SELECT COALESCE(SUM(e.amount_sum), 0) AS extra_sum
             FROM {qname("manual_expenses")} e
+            LEFT JOIN {qname("dim_shop")} ds ON ds.shop_id = e.shop_id AND ds.user_id = e.user_id
             WHERE e.user_id = CAST(:user_id AS uuid)
               AND e.is_deleted = false
               {date_from_filter}
               AND e.expense_date <= CAST(:date_to AS date)
-              {shop_filter}
+              {manual_shop_filter}
         """)
-        
-        # Debug: считаем количество записей в периоде
-        count_query = text(f"""
-            SELECT COUNT(*) 
-            FROM {qname("manual_expenses")} e
-            WHERE e.user_id = CAST(:user_id AS uuid)
-              AND e.is_deleted = false
-              {date_from_filter}
-              AND e.expense_date <= CAST(:date_to AS date)
-              {shop_filter}
-        """)
-        
-        logger.info(f"[DEBUG] Executing manual_expenses query with params: {manual_expenses_params}")
-        # Логируем SQL-запрос для отладки (без f-string, так как это уже text объект)
-        logger.info(f"[DEBUG] Query filters: date_from_filter='{date_from_filter}', shop_filter='{shop_filter}'")
-        
         manual_expenses_result = db.execute(manual_expenses_query, manual_expenses_params)
         manual_expenses_row = manual_expenses_result.fetchone()
-        
-        count_result = db.execute(count_query, manual_expenses_params)
-        count_row = count_result.fetchone()
-        expenses_count = int(count_row[0] or 0) if count_row else 0
-        
         extra_expenses = float(manual_expenses_row[0] or 0) if manual_expenses_row else 0.0
-        
-        # DEBUG: Логируем результат ПОСЛЕ расчета
-        logger.info(f"[DEBUG] extra_expenses AFTER calculation: expenses_count={expenses_count}, extra_expenses={extra_expenses}, period_filter=[date_from={date_from_iso or 'NULL'}, date_to={date_to_iso}], shop_id={shop_id}")
+        logger.info(f"extra_expenses: period={period_code}, date_to={date_to_iso}, shop_norm={shop_norm}, shop_id={shop_id}, value={extra_expenses}")
         
         # C) Total expenses, profit, ratios
         # ТЗ: Расходы в блоке Финансы = сумма выбранных строк из блока Расходы:
@@ -571,33 +483,10 @@ def kpi_summary(
         
         logger.info(f"cumulativeRevenue: year={date_to_date.year}, year_start={year_start_iso}, date_to={date_to_iso}, value={cumulative_revenue}")
         
-        # F) STOCK aggregation (не зависит от period, только от user_id и shop_id/shop)
-        # Используем fact_leftout_snapshot.in_sale (В продаже, шт) для расчета остатков
-        # A) Получить текущий loaded_at (max по user_id и опционально shop_id или shop)
-        stock_params = {
-            "user_id": str(user_id),
-            "shop_id": shop_id,  # Can be None (UUID для leftout)
-            "shop_norm": shop_norm  # Can be None (string для seller-storage)
-        }
-        
-        # Фильтр для leftout: единый helper (seller-storage по barcode_norm или shop_id)
-        leftout_max_filter = ""
-        if shop_norm:
-            leftout_max_filter = "\n                " + storage_barcode_filter_sql("fact_leftout_snapshot", prefix_and=True)
-        elif shop_id:
-            leftout_max_filter = "AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))"
-        
-        max_loaded_query = text(f"""
-            SELECT MAX(loaded_at) AS snap_loaded_at
-            FROM {qname("fact_leftout_snapshot")}
-            WHERE user_id = CAST(:user_id AS uuid)
-                {leftout_max_filter}
-        """)
-        
-        max_loaded_result = db.execute(max_loaded_query, stock_params)
-        snap_loaded_at = max_loaded_result.scalar()
-        
-        # Инициализация значений по умолчанию
+        # F) STOCK aggregation — источник: left-out-report_old (fact_leftout_old_snapshot или stg_leftout_old fallback)
+        # Товаров на складе = SUM(in_sale_qty), Себест. тов. = SUM(in_sale_qty * cost_sum), Рознич. цена = SUM(in_sale_qty * price_sum)
+        # Последний батч: строго upload_batch_id для leftout_old (MAX(loaded_at) по fact → один batch_id).
+        # Фильтр магазина: баркоды выбранного магазина из fact_storage_snapshot (последний снапшот storage); по shop_norm (shop_raw) или по shop_id (dim_shop).
         stock_quantity = 0.0
         stock_cost = 0.0
         stock_retail_price = 0.0
@@ -606,177 +495,120 @@ def kpi_summary(
         stock_snapshot_at = None
         stock_is_zero = False
         stock_zero_reason = None
-        
-        if snap_loaded_at:
-            # B) По этому loaded_at посчитать агрегаты склада и цены по SKU/barcode
-            stock_params["snap_loaded_at"] = snap_loaded_at
-            
-            # ТЗ Блок Склад:
-            # 1) Товар на складе = left-out-report: SUM(В продаже, шт)
-            #    Реализовано: SUM(in_sale) из fact_leftout_snapshot
-            # 2) Себест. тов. на складе, сум = СУММА(left-out-report[В продаже, шт] * sells_report[Себестоимость (сумы) ДЛЯ ЭТОГО ШТРИХКОДА НА ПОСЛЕДНЮЮ ДАТУ])
-            #    JOIN по штрихкоду, построчное умножение, затем суммирование
-            #    Источники: left-out-report → fact_leftout_snapshot (in_sale), sells_report → fact_sales (cogs_sum)
-            #    Окно для fact_sales: только последняя дата (MAX(date_created)) в рамках текущих фильтров (period/shop)
-            #    NULL/пустые значения трактуются как 0 (COALESCE)
-            # 3) Рознич. цена тов., сум = СУММА(left-out-report[В продаже, шт] * sells_report[Цена (сумы) ДЛЯ ЭТОГО ШТРИХКОДА НА ПОСЛЕДНЮЮ ДАТУ])
-            #    JOIN по штрихкоду, построчное умножение, затем суммирование
-            #    Источники: left-out-report → fact_leftout_snapshot (in_sale), sells_report → fact_sales (price_sum)
-            #    Окно для fact_sales: только последняя дата (MAX(date_created)) в рамках текущих фильтров (period/shop)
-            #    NULL/пустые значения трактуются как 0 (COALESCE)
-            
-            # Для расчета используем те же фильтры, что и для основного запроса sales (period, shop_id)
-            stock_params.update(params_base)
-            if date_from:
-                stock_params["date_from"] = date_from.isoformat()
-            
-            # Фильтры для fact_sales (те же, что и для основного запроса: period + shop)
-            stock_sales_where = ["user_id = CAST(:user_id AS uuid)", f"({completed_condition})"]
-            if sales_shop_filter:
-                stock_sales_where.append(sales_shop_filter)
-            if date_from:
-                stock_sales_where.append("date_created >= CAST(:date_from AS date)")
-            stock_sales_where.append("date_created < CAST(:date_to AS date) + INTERVAL '1 day'")
-            
-            stock_sales_where_clause = " AND ".join(stock_sales_where)
-            
-            # Формируем фильтр для snap CTE (тот же, что и для max_loaded_query)
-            snap_filter = leftout_max_filter
-            
-            stock_query = text(f"""
-                WITH snap AS (
-                    -- Текущий snapshot склада из fact_leftout_snapshot
-                    -- ТЗ: Товар на складе = sum(В продаже, шт) из left-out-report
-                    -- barcode_norm вычисляется на лету: нормализация barcode (удаление пробелов)
-                    SELECT
-                        NULLIF(TRIM(sku), '') AS sku,
-                        {barcode_norm_sql('barcode')} AS barcode_norm,
-                        COALESCE(in_sale, 0) AS stock_qty,
-                        MAX(loaded_at) AS stock_snapshot_at
-                    FROM {qname("fact_leftout_snapshot")}
-                    WHERE user_id = CAST(:user_id AS uuid)
-                        {snap_filter}
-                        AND loaded_at = CAST(:snap_loaded_at AS timestamp)
-                    GROUP BY NULLIF(TRIM(sku), ''), {barcode_norm_sql('barcode')}, COALESCE(in_sale, 0)
-                ),
-                last_date AS (
-                    -- Определяем последнюю (максимальную) дату из sells_report в рамках текущих фильтров
-                    SELECT MAX(date_created)::date AS last_date
-                    FROM {qname("fact_sales")}
-                    WHERE {stock_sales_where_clause}
-                ),
-                sales_last AS (
-                    -- sells_report_last: sells_report, отфильтрованный до last_date и агрегированный до 1 строки на «Штрихкод»
-                    -- Статус: lower(trim(status)) IN ('завершен', 'завершён')
-                    -- Для каждого штрихкода берем ровно одну строку на last_date
-                    -- Если несколько строк на одну дату - агрегируем через MAX (берем максимальные значения)
-                    -- Если last_date NULL (нет данных) - возвращаем пустой результат (все цены/себестоимости = 0)
-                    -- barcode_norm вычисляется на лету: нормализация barcode (удаление пробелов)
-                    SELECT
-                        NULLIF(TRIM(sku), '') AS sku,
-                        {barcode_norm_sql('barcode')} AS barcode_norm,
-                        COALESCE(MAX(cogs_sum), 0) AS cogs_sum,
-                        COALESCE(MAX(price_sum), 0) AS price_sum
-                    FROM {qname("fact_sales")}
-                    CROSS JOIN last_date ld
-                    WHERE {stock_sales_where_clause}
-                        AND ld.last_date IS NOT NULL
-                        AND date_created::date = ld.last_date
-                    GROUP BY NULLIF(TRIM(sku), ''), {barcode_norm_sql('barcode')}
-                ),
-                stock_with_sales AS (
-                    -- Сопоставление товаров из snap с данными из sells_report на последнюю дату
-                    -- Приоритет сопоставления: сначала по barcode_norm (если не NULL), затем по sku
-                    SELECT
-                        s.sku,
-                        s.barcode_norm,
-                        s.stock_qty,
-                        s.stock_snapshot_at,
-                        COALESCE(
-                            -- Приоритет 1: сопоставление по barcode_norm
-                            sales_barcode.cogs_sum,
-                            -- Приоритет 2: сопоставление по SKU (fallback)
-                            sales_sku.cogs_sum,
-                            -- Если не найдено: 0
-                            0
-                        ) AS cogs_sum,
-                        COALESCE(
-                            -- Приоритет 1: сопоставление по barcode_norm
-                            sales_barcode.price_sum,
-                            -- Приоритет 2: сопоставление по SKU (fallback)
-                            sales_sku.price_sum,
-                            -- Если не найдено: 0
-                            0
-                        ) AS price_sum
-                    FROM snap s
-                    LEFT JOIN sales_last sales_barcode ON (
-                        sales_barcode.barcode_norm = s.barcode_norm 
-                        AND s.barcode_norm IS NOT NULL 
-                        AND sales_barcode.barcode_norm IS NOT NULL
-                    )
-                    LEFT JOIN sales_last sales_sku ON (
-                        sales_sku.sku = s.sku 
-                        AND s.sku IS NOT NULL 
-                        AND sales_sku.sku IS NOT NULL
-                        AND sales_barcode.cogs_sum IS NULL  -- Используем sku только если не нашли по barcode_norm
-                    )
-                )
-                SELECT
-                    COUNT(*) AS stock_sku_total,
-                    SUM(s.stock_qty) AS stock_quantity,
-                    SUM(CASE WHEN s.stock_qty > 0 THEN 1 ELSE 0 END) AS stock_sku_with_stock,
-                    MAX(s.stock_snapshot_at) AS stock_snapshot_at,
-                    -- ТЗ: Рознич. цена тов., сум = СУММА(left-out-report[В продаже, шт] * sells_report_last[Цена (сумы)])
-                    -- где sells_report_last — это sells_report, отфильтрованный до last_date и агрегированный до 1 строки на «Штрихкод»
-                    -- JOIN по штрихкоду, построчное умножение, затем суммирование
-                    -- NULL/пустые значения трактуются как 0 через COALESCE
-                    COALESCE(SUM(COALESCE(s.stock_qty, 0) * COALESCE(s.price_sum, 0)), 0) AS stock_retail_price,
-                    -- ТЗ: Себест. тов. на складе, сум = СУММА(left-out-report[В продаже, шт] * sells_report_last[Себестоимость (сумы)])
-                    -- где sells_report_last — это sells_report, отфильтрованный до last_date и агрегированный до 1 строки на «Штрихкод»
-                    -- JOIN по штрихкоду, построчное умножение, затем суммирование
-                    -- NULL/пустые значения трактуются как 0 через COALESCE
-                    COALESCE(SUM(COALESCE(s.stock_qty, 0) * COALESCE(s.cogs_sum, 0)), 0) AS stock_cost
-                FROM stock_with_sales s
+        stock_source = None  # "fact" when data from fact_leftout_old_snapshot
+        stock_batch_id = None
+        stock_loaded_at = None
+
+        stock_old_table = qname("fact_leftout_old_snapshot")
+        has_stock_old_table = db.execute(
+            text("SELECT to_regclass(:t) IS NOT NULL"), {"t": stock_old_table}
+        ).scalar()
+
+        stock_params_base = {"user_id": str(user_id)}
+        leftout_old_filter = ""
+        if shop_norm:
+            stock_params_base["shop_norm"] = shop_norm
+            leftout_old_filter = "\n                " + storage_barcode_filter_sql("lo", prefix_and=True, outer_barcode_norm_expr=barcode_norm_sql("lo.barcode"))
+        elif shop_id:
+            stock_params_base["shop_id"] = shop_id
+            leftout_old_filter = "\n                " + storage_barcode_filter_by_shop_id_sql("lo", prefix_and=True, outer_barcode_norm_expr=barcode_norm_sql("lo.barcode"))
+
+        if has_stock_old_table:
+            # 1) Последний батч строго для leftout_old: batch с MAX(loaded_at)
+            batch_select = text(f"""
+                SELECT upload_batch_id, loaded_at
+                FROM (
+                    SELECT upload_batch_id, MAX(loaded_at) AS loaded_at
+                    FROM {stock_old_table} lo
+                    WHERE lo.user_id = CAST(:user_id AS uuid)
+                    {leftout_old_filter}
+                    GROUP BY upload_batch_id
+                ) sub
+                ORDER BY loaded_at DESC
+                LIMIT 1
             """)
-            
-            stock_result = db.execute(stock_query, stock_params)
-            stock_row = stock_result.fetchone()
-            
-            if stock_row:
-                stock_sku_total = int(stock_row[0] or 0)
-                stock_quantity = float(stock_row[1] or 0)
-                stock_sku_with_stock = int(stock_row[2] or 0)
-                stock_snapshot_at = stock_row[3]
-                stock_retail_price = float(stock_row[4] or 0)
-                stock_cost = float(stock_row[5] or 0)
-                
-                # Smoke test: проверка что stock_retail_price не NULL (должно быть число, даже если 0)
-                if stock_retail_price is None:
-                    logger.warning(f"stock_retail_price is NULL for user_id={user_id}, shop_id={shop_id}, snap_loaded_at={snap_loaded_at}")
-                    stock_retail_price = 0.0
-                
-                # D) stockIsZero / stockZeroReason
-                if stock_sku_total == 0:
-                    stock_is_zero = True
-                    stock_zero_reason = "no_snapshot_data"
-                elif stock_sku_with_stock == 0:
-                    stock_is_zero = True
-                    stock_zero_reason = "all_zero_in_snapshot"
-                else:
-                    stock_is_zero = False
-                    stock_zero_reason = None
-        else:
-            # Нет snapshot данных
-            stock_is_zero = True
+            try:
+                batch_row = db.execute(batch_select, stock_params_base).fetchone()
+            except Exception as e:
+                logger.warning(f"stock (leftout_old): batch select failed: {e}")
+                batch_row = None
+            if batch_row:
+                stock_batch_id, stock_loaded_at = batch_row[0], batch_row[1]
+                stock_params = {**stock_params_base, "stock_batch_id": str(stock_batch_id)}
+                stock_query = text(f"""
+                    SELECT
+                        COUNT(*) AS stock_sku_total,
+                        COALESCE(SUM(COALESCE(lo.in_sale_qty, 0)), 0) AS stock_quantity,
+                        SUM(CASE WHEN COALESCE(lo.in_sale_qty, 0) > 0 THEN 1 ELSE 0 END) AS stock_sku_with_stock,
+                        MAX(lo.loaded_at) AS stock_snapshot_at,
+                        COALESCE(SUM(COALESCE(lo.in_sale_qty, 0) * COALESCE(lo.price_sum, 0)), 0) AS stock_retail_price,
+                        COALESCE(SUM(COALESCE(lo.in_sale_qty, 0) * COALESCE(lo.cost_sum, 0)), 0) AS stock_cost
+                    FROM {stock_old_table} lo
+                    WHERE lo.user_id = CAST(:user_id AS uuid)
+                        AND lo.upload_batch_id = CAST(:stock_batch_id AS uuid)
+                        {leftout_old_filter}
+                """)
+                try:
+                    stock_result = db.execute(stock_query, stock_params)
+                    stock_row = stock_result.fetchone()
+                    if stock_row:
+                        stock_sku_total = int(stock_row[0] or 0)
+                        stock_quantity = float(stock_row[1] or 0)
+                        stock_sku_with_stock = int(stock_row[2] or 0)
+                        stock_snapshot_at = stock_row[3]
+                        stock_retail_price = float(stock_row[4] or 0)
+                        stock_cost = float(stock_row[5] or 0)
+                        stock_source = "fact"
+                        logger.info(
+                            f"stock (leftout_old): source=fact, batch_id={stock_batch_id}, loaded_at={stock_loaded_at}, "
+                            f"row_count={stock_sku_total}, sum_in_sale={stock_quantity}, shop_norm={shop_norm}, shop_id={shop_id}"
+                        )
+                        # stock_is_zero / stock_has_data финально выставляются ниже
+                except Exception as e:
+                    logger.warning(f"stock (leftout_old): fact aggregation query failed: {e}")
+
+        # Явные флаги: не путать "нет данных" и "0"
+        # stock_has_data = есть строки в последнем batch leftout_old (после фильтра магазина)
+        # stock_is_zero = только когда есть данные и SUM(В продаже)=0
+        stock_has_data = (stock_source is not None and stock_sku_total > 0)
+        stock_is_zero = (stock_has_data and stock_quantity == 0)
+        if stock_source is None:
             stock_zero_reason = "no_snapshot_data"
-        
-        # Smoke test: проверка что stock_retail_price корректно рассчитан (не NULL)
+        elif stock_has_data and stock_quantity == 0:
+            stock_zero_reason = "all_zero_in_snapshot"
+        elif not stock_has_data:
+            stock_zero_reason = "no_snapshot_data"
+        else:
+            stock_zero_reason = None
+        # Для API: единый идентификатор источника
+        stock_source_api = "leftout_old" if stock_source == "fact" else None
+
         if stock_retail_price is None:
-            logger.error(f"CRITICAL: stock_retail_price is NULL after calculation for user_id={user_id}, shop_id={shop_id}")
             stock_retail_price = 0.0
-        
-        logger.info(f"stock: quantity={stock_quantity}, cost={stock_cost} (SUM(stock_qty * unit_cogs) по товарам), retail_price={stock_retail_price}, sku_total={stock_sku_total}, sku_with_stock={stock_sku_with_stock}, is_zero={stock_is_zero}, reason={stock_zero_reason}, snapshot_at={stock_snapshot_at}, shop_id={shop_id}, period={period_code}")
-        
+        if stock_cost is None:
+            stock_cost = 0.0
+        # Склад: если данных нет — возвращать "нет данных", а не 0
+        if not stock_has_data:
+            stock_quantity_out = "нет данных"
+            stock_cost_out = "нет данных"
+            stock_retail_price_out = "нет данных"
+        else:
+            stock_quantity_out = stock_quantity
+            stock_cost_out = stock_cost
+            stock_retail_price_out = stock_retail_price
+        logger.info(
+            f"stock (leftout_old): source={stock_source}, source_api={stock_source_api}, batch_id={stock_batch_id}, loaded_at={stock_loaded_at}, "
+            f"quantity={stock_quantity}, cost={stock_cost}, retail_price={stock_retail_price}, "
+            f"sku_total={stock_sku_total}, sku_with_stock={stock_sku_with_stock}, has_data={stock_has_data}, is_zero={stock_is_zero}, reason={stock_zero_reason}, shop_norm={shop_norm}"
+        )
+
+        # Для lost_revenue оставляем источник fact_leftout_snapshot (новый формат); фильтр по магазину тот же
+        leftout_max_filter = ""
+        if shop_norm:
+            leftout_max_filter = "\n                " + storage_barcode_filter_sql("fact_leftout_snapshot", prefix_and=True)
+        elif shop_id:
+            leftout_max_filter = "AND (:shop_id IS NULL OR shop_id = CAST(:shop_id AS uuid))"
+
         # B) Lost revenue: потенциальная выручка от товаров без остатков
         # Формула: (avg_daily_sales * 15) * price (для товаров где stock=0 и avg_daily_sales>0)
         # Prepare params for lost revenue query
@@ -987,14 +819,17 @@ def kpi_summary(
             "productCost": product_cost_total,
             "productCostCompleted": product_cost_completed,
             "extraExpenses": extra_expenses,
-            "stockQuantity": stock_quantity,
-            "stockCost": stock_cost,
-            "stockRetailPrice": stock_retail_price,
+            "stockQuantity": stock_quantity_out,
+            "stockCost": stock_cost_out,
+            "stockRetailPrice": stock_retail_price_out,
             "stockSkuTotal": stock_sku_total,
             "stockSkuWithStock": stock_sku_with_stock,
             "stockSnapshotAt": stock_snapshot_at.isoformat() if stock_snapshot_at and hasattr(stock_snapshot_at, 'isoformat') else (str(stock_snapshot_at) if stock_snapshot_at else None),
+            "stockHasData": stock_has_data,
             "stockIsZero": stock_is_zero,
             "stockZeroReason": stock_zero_reason,
+            "stockSource": stock_source_api,
+            "stockBatchId": str(stock_batch_id) if stock_batch_id else None,
             "period_range": period_range_dict
         }
         

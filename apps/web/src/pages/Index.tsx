@@ -217,30 +217,34 @@ const Index = () => {
   const stockQty = metrics?.stockQuantity ?? 0;
   const stockCost = metrics?.stockCost ?? 0;
   const stockRetail = metrics?.stockRetailPrice ?? 0;
+  const stockHasData = metrics?.stockHasData ?? false;
   const stockIsZero = metrics?.stockIsZero ?? false;
   const stockZeroReason = metrics?.stockZeroReason ?? null;
+  const stockSource = metrics?.stockSource ?? null;
   const stockSkuTotal = metrics?.stockSkuTotal ?? 0;
   const stockSkuWithStock = metrics?.stockSkuWithStock ?? 0;
   const stockSnapshotAt = metrics?.stockSnapshotAt ?? null;
+  // Предупреждение "Склад = 0" только при источнике leftout_old и явном нуле (не "нет данных")
+  const showStockZeroWarning = stockSource === 'leftout_old' && stockIsZero;
 
   const warehouseMetrics = metrics ? [
     {
       icon: <Warehouse className="w-4 h-4" />,
-      label: "Товаров на складе, шт",
+      label: "Товаров на складе",
       value: formatQuantity(stockQty),
-      tooltip: "Общее количество на стороне маркетплейса"
+      tooltip: "SUM(В продаже) из left-out-report_old"
     },
     {
       icon: <Tag className="w-4 h-4" />,
-      label: <><span>Себест. тов.</span><br/><span className="whitespace-nowrap">на складе, сум</span></>,
+      label: "Себест. тов.",
       value: formatCurrency(stockCost),
-      tooltip: "Себестоимость товара на складе (из завершённых заказов)"
+      tooltip: "SUM(В продаже × Себест. (сумы)) из left-out-report_old"
     },
     {
       icon: <ShoppingBag className="w-4 h-4" />,
-      label: <><span>Рознич. цена</span><br/><span className="whitespace-nowrap">тов., сум</span></>,
+      label: "Рознич. цена",
       value: formatCurrency(stockRetail),
-      tooltip: "Потенциальная сумма к получению за все остатки"
+      tooltip: "SUM(В продаже × Стоимость продажи (сумы)) из left-out-report_old"
     }
   ] : [];
 
@@ -312,7 +316,7 @@ const Index = () => {
         </div>
       ) : activeTab === "expenses" ? (
         <div className="mt-6">
-          <ExpensesView periodCode={periodCode} shopId={shopId} />
+          <ExpensesView periodCode={periodCode} shop={selectedShop} />
         </div>
       ) : activeTab === "shipment" ? (
         <div className="mt-6">
@@ -352,19 +356,17 @@ const Index = () => {
                     customPadding="px-4 pb-4"
                     customSpacing="space-y-1"
                     emptyState={
-                      !loading && (stockIsZero || stockQty === 0) ? (
+                      !loading && showStockZeroWarning ? (
                         <Alert variant="destructive" className="m-0">
                           <AlertTriangle className="h-4 w-4" />
                           <AlertTitle>Склад = 0</AlertTitle>
                           <AlertDescription>
                             <p className="mb-2">
                               {stockZeroReason === "all_zero_in_snapshot"
-                                ? "По последней выгрузке склада все позиции имеют остаток 0. Проверь файл склада/остатков."
-                                : stockZeroReason === "no_snapshot_data"
-                                ? "Нет данных по складу. Загрузите файл склада/остатков."
-                                : "Склад = 0. Проверь выгрузку 'Склад' или фильтр магазина."}
+                                ? "По последней выгрузке склада (left-out-report_old) сумма «В продаже» = 0. Проверь файл склада/остатков."
+                                : "По данным left-out-report_old на складе 0. Проверь выгрузку «Склад» или фильтр магазина."}
                             </p>
-                            {(stockSkuTotal > 0 || stockSkuWithStock > 0 || stockSnapshotAt) && (
+                            {(stockSkuTotal > 0 || stockSkuWithStock >= 0 || stockSnapshotAt) && (
                               <div className="text-xs text-muted-foreground space-y-1">
                                 {stockSkuTotal > 0 && (
                                   <p>SKU: {stockSkuTotal}, с остатком: {stockSkuWithStock}</p>
@@ -376,6 +378,8 @@ const Index = () => {
                             )}
                           </AlertDescription>
                         </Alert>
+                      ) : !loading && !stockHasData && stockSource === null ? (
+                        <p className="text-sm text-muted-foreground m-0">Нет данных по складу. Загрузите файл left-out-report_old.</p>
                       ) : undefined
                     }
                   />

@@ -45,8 +45,10 @@ interface DashboardMetrics {
   stockSkuTotal: number;
   stockSkuWithStock: number;
   stockSnapshotAt: string | null;
+  stockHasData: boolean;
   stockIsZero: boolean;
   stockZeroReason: string | null;
+  stockSource: 'leftout_old' | null;
 }
 
 export function useDashboardMetrics(periodCode: PeriodCode = "30d", shopId?: string, shop?: string) {
