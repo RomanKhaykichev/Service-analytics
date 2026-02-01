@@ -14,6 +14,7 @@ import { ShipmentView } from "@/components/dashboard/ShipmentView";
 import { HeaderActions } from "@/components/dashboard/HeaderActions";
 import { ProductsView } from "@/components/dashboard/ProductsView";
 import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
+import { useCumulativeRevenueGlobal } from "@/hooks/useCumulativeRevenueGlobal";
 import { useStorageShops } from "@/hooks/useStorageShops";
 import { useRevenueDaily } from "@/hooks/useRevenueDaily";
 import { useStockCurrent } from "@/hooks/useStockCurrent";
@@ -35,6 +36,7 @@ const Index = () => {
   // Для seller-storage фильтрация по строке магазина (shop), а не по UUID (shop_id)
   const selectedShop = store === "all" ? undefined : store;  // строка магазина из seller-storage
   const { metrics, loading, error } = useDashboardMetrics(periodCode, undefined, selectedShop);
+  const { cumulativeRevenue: cumulativeRevenueGlobal } = useCumulativeRevenueGlobal();
   const shopId = null;  // Не используем shop_id для seller-storage метрик
 
   // Load revenue and UZUM services data (filtered by selectedShop via barcode_norm)
@@ -261,7 +263,7 @@ const Index = () => {
           {/* Center - Compact Revenue Progress Bar (all tabs) */}
           <div className="hidden lg:flex flex-1 justify-center">
             <RevenueProgressBar 
-              current={metrics?.cumulativeRevenue ?? 0} 
+              current={cumulativeRevenueGlobal} 
               target={1000000000} 
               compact 
             />
@@ -275,7 +277,7 @@ const Index = () => {
         {/* Mobile Revenue Progress Bar (all tabs) */}
         <div className="lg:hidden">
           <RevenueProgressBar 
-            current={metrics?.cumulativeRevenue ?? 0} 
+            current={cumulativeRevenueGlobal} 
             target={1000000000} 
             compact 
           />

@@ -122,3 +122,31 @@ class OrdersSalesDailyResponse(BaseModel):
     points: list[OrdersSalesDailyPoint]
     period: PeriodInfo
     filters: OrdersSalesDailyFilters
+
+
+# Daily summary table (По дням — Данные по дням): same formulas as Сводка, GROUP BY day
+class DailySummaryPoint(BaseModel):
+    date: str  # YYYY-MM-DD
+    orders: float  # Заказы = SUM(qty)
+    buys: float  # Выкупы = SUM(qty) WHERE status completed
+    returns: float  # Возвраты = SUM(returns_qty)
+    revenue: float  # Выручка
+    commission: float  # Комиссия
+    logistics: float  # Логистика
+    storage: float  # Хранение (MVP: 0 or daily fee)
+    ads: float  # Реклама (manual_expenses category)
+    penalties: float  # Штрафы (manual_expenses category)
+    cogs: float  # Себест. прод. тов.
+    taxes: float  # Налоги (manual_expenses category)
+    profit: float  # Прибыль дневная
+
+
+class DailySummaryFilters(BaseModel):
+    shop_id: Optional[str] = None
+    shop: Optional[str] = None  # Seller-storage shop name for barcode filter
+
+
+class DailySummaryResponse(BaseModel):
+    points: list[DailySummaryPoint]
+    period: PeriodInfo
+    filters: DailySummaryFilters

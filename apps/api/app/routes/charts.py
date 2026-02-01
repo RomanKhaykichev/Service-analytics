@@ -32,6 +32,9 @@ from app.schemas import (
     OrdersSalesDailyResponse,
     OrdersSalesDailyPoint,
     OrdersSalesDailyFilters,
+    DailySummaryResponse,
+    DailySummaryPoint,
+    DailySummaryFilters,
 )
 
 logger = logging.getLogger(__name__)
@@ -799,3 +802,177 @@ async def get_orders_sales_daily(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
         )
+
+
+@router.get("/charts/daily-summary", response_model=DailySummaryResponse)
+async def get_daily_summary(
+    user_id: UUID = Depends(require_user),
+    period: str = Query(default="30d", description="Period: 7d, 30d, 90d, or all"),
+    shop_id: Optional[str] = Query(default=None, description="Shop UUID"),
+    shop: Optional[str] = Query(default=None, description="Shop name (string) for seller-storage filtering by barcode"),
+    db: Session = Depends(get_db)
+):
+    """Get daily summary table (По дням — Данные по дням). Same formulas as Сводка, GROUP BY day.
+    Filters: period (date_from/date_to inclusive), shop (seller-storage Магазин → barcode filter).
+    Sources: fact_sales (orders, buys, returns, revenue, commission, logistics, cogs),
+    fact_expenses (Хранение/Реклама/Штрафы — УСЛУГИ UZUM, same logic as Сводка, GROUP BY date_written_off::date).
+    Налоги = 0.01 * Выручка (per day). Прибыль = revenue - commission - logistics - storage - ads - penalties - cogs - taxes.
+    """
+    period_code = normalize_period(period)
+    data_end_date = get_data_end_date(db, user_id)
+    period_range_dict = period_range(period_code, data_end_date)
+    date_to_iso = period_range_dict["date_to"]
+    date_to_date = datetime.fromisoformat(date_to_iso).date()
+    date_from_iso = period_range_dict["date_from"]
+    date_from = datetime.fromisoformat(date_from_iso).date() if date_from_iso else None
+
+    if period_code == "all" and date_from is None:
+        min_date_result = db.execute(
+            text(f"SELECT MIN(date_created)::date FROM {qname('fact_sales')} WHERE user_id = CAST(:user_id AS uuid)"),
+            {"user_id": str(user_id)},
+        )
+        min_date = min_date_result.scalar()
+        if min_date:
+            date_from = min_date
+        else:
+            date_from = date_to_date - timedelta(days=364)
+        date_from_iso = date_from.isoformat()
+
+    if not date_from:
+        date_from = date_to_date - timedelta(days=29)
+        date_from_iso = date_from.isoformat()
+
+    if shop_id == "":
+        shop_id = None
+    if shop_id and not shop:
+        try:
+            UUID(shop_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid shop_id. For seller-storage use 'shop' parameter.")
+
+    shop_norm = normalize_shop(shop)
+    shop_condition_frag, shop_params = shop_filter_condition(shop, shop_id, outer_table_alias="fs")
+    params = {
+        "user_id": str(user_id),
+        "date_from": date_from_iso,
+        "date_to": date_to_iso,
+    }
+    params.update(shop_params)
+    shop_condition = f"AND {shop_condition_frag}" if shop_condition_frag else ""
+
+    metrics_sql = get_sales_metrics_sql(table_alias="fs")
+
+    # УСЛУГИ UZUM: Хранение/Реклама/Штрафы из fact_expenses (тот же источник и формулы, что в Сводке), GROUP BY date_written_off::date
+    try:
+        query = text(f"""
+            WITH
+            days AS (
+                SELECT generate_series(
+                    CAST(:date_from AS date),
+                    CAST(:date_to AS date),
+                    INTERVAL '1 day'
+                )::date AS day
+            ),
+            sales_by_day AS (
+                SELECT
+                    fs.date_created::date AS day,
+                    {metrics_sql['orders_qty']} AS orders_qty,
+                    {metrics_sql['buyouts_qty']} AS buyouts_qty,
+                    {metrics_sql['returns_qty']} AS returns_qty,
+                    {metrics_sql['revenue_sum']} AS revenue_sum,
+                    {metrics_sql['commission_sum']} AS commission_sum,
+                    {metrics_sql['logistics_sum']} AS logistics_sum,
+                    {metrics_sql['cogs_sum']} AS cogs_sum
+                FROM {qname('fact_sales')} fs
+                WHERE fs.user_id = CAST(:user_id AS uuid)
+                    {shop_condition}
+                    AND fs.date_created >= CAST(:date_from AS date)
+                    AND fs.date_created < CAST(:date_to AS date) + INTERVAL '1 day'
+                GROUP BY fs.date_created::date
+            ),
+            services_by_day AS (
+                SELECT
+                    fe.date_written_off::date AS day,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN lower(trim(COALESCE(fe.operation_type, ''))) = 'оплата' THEN COALESCE(fe.cost_sum, 0)
+                            WHEN lower(trim(COALESCE(fe.operation_type, ''))) = 'возврат' THEN -COALESCE(fe.cost_sum, 0)
+                            ELSE 0
+                        END
+                    ), 0) AS storage,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN (COALESCE(fe.source, '') ILIKE '%маркетинг%' OR COALESCE(fe.source, '') ILIKE '%marketing%')
+                                 AND (COALESCE(fe.operation_type, '') ILIKE '%оплат%' OR COALESCE(fe.operation_type, '') ILIKE '%payment%')
+                            THEN COALESCE(fe.cost_sum, 0)
+                            ELSE 0
+                        END
+                    ), 0) AS ads,
+                    COALESCE(SUM(
+                        CASE WHEN COALESCE(fe.service, '') ILIKE '%штраф%' THEN COALESCE(fe.amount_sum, 0) ELSE 0 END
+                    ), 0) AS penalties
+                FROM {qname('fact_expenses')} fe
+                WHERE fe.user_id = CAST(:user_id AS uuid)
+                    AND fe.date_written_off >= CAST(:date_from AS date)
+                    AND fe.date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'
+                GROUP BY fe.date_written_off::date
+            )
+            SELECT
+                d.day AS date,
+                COALESCE(s.orders_qty, 0) AS orders,
+                COALESCE(s.buyouts_qty, 0) AS buys,
+                COALESCE(s.returns_qty, 0) AS returns,
+                COALESCE(s.revenue_sum, 0) AS revenue,
+                COALESCE(s.commission_sum, 0) AS commission,
+                COALESCE(s.logistics_sum, 0) AS logistics,
+                COALESCE(sv.storage, 0) AS storage,
+                COALESCE(sv.ads, 0) AS ads,
+                COALESCE(sv.penalties, 0) AS penalties,
+                COALESCE(s.cogs_sum, 0) AS cogs,
+                ROUND(COALESCE(s.revenue_sum, 0) * 0.01, 2) AS taxes,
+                (COALESCE(s.revenue_sum, 0) - COALESCE(s.commission_sum, 0) - COALESCE(s.logistics_sum, 0)
+                 - COALESCE(sv.storage, 0) - COALESCE(sv.ads, 0) - COALESCE(sv.penalties, 0)
+                 - COALESCE(s.cogs_sum, 0) - ROUND(COALESCE(s.revenue_sum, 0) * 0.01, 2)) AS profit
+            FROM days d
+            LEFT JOIN sales_by_day s ON d.day = s.day
+            LEFT JOIN services_by_day sv ON d.day = sv.day
+            ORDER BY d.day ASC
+        """)
+        result = db.execute(query, params)
+        rows = result.fetchall()
+        logger.info(f"get_daily_summary: found {len(rows)} days, period={period_code}, shop_norm={shop_norm}")
+
+        points = []
+        for row in rows:
+            try:
+                day = row[0]
+                date_str = day.isoformat() if hasattr(day, "isoformat") else str(day)
+                points.append(DailySummaryPoint(
+                    date=date_str,
+                    orders=float(row[1] or 0),
+                    buys=float(row[2] or 0),
+                    returns=float(row[3] or 0),
+                    revenue=float(row[4] or 0),
+                    commission=float(row[5] or 0),
+                    logistics=float(row[6] or 0),
+                    storage=float(row[7] or 0),
+                    ads=float(row[8] or 0),
+                    penalties=float(row[9] or 0),
+                    cogs=float(row[10] or 0),
+                    taxes=float(row[11] or 0),
+                    profit=float(row[12] or 0),
+                ))
+            except (IndexError, ValueError, TypeError) as e:
+                logger.warning(f"daily-summary parse row: {e}, row={row}")
+                continue
+
+        return DailySummaryResponse(
+            points=points,
+            period=PeriodInfo(code=period_code, date_from=date_from_iso or "", date_to=date_to_iso),
+            filters=DailySummaryFilters(shop_id=shop_id, shop=shop),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_daily_summary: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

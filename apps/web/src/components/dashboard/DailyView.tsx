@@ -18,16 +18,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { ChevronUp, ChevronDown, Filter } from "lucide-react";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Input } from "@/components/ui/input";
+import { ChevronUp, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useOrdersSalesDaily } from "@/hooks/useOrdersSalesDaily";
-import { format, startOfWeek, endOfWeek, addDays } from "date-fns";
+import { useDailySummary } from "@/hooks/useDailySummary";
+import { format, startOfWeek, endOfWeek } from "date-fns";
 import { ru } from "date-fns/locale";
 
 interface DailyViewProps {
@@ -37,22 +32,6 @@ interface DailyViewProps {
   /** Shop name (string) from seller-storage for filtering by barcode */
   shop?: string | null;
 }
-
-const tableData = [
-  { date: "13.12.2024", orderedQty: 295, purchasedQty: 268, canceledQty: 12, revenue: 5430000, commission: 543000, costPrice: 271500, logistics: 108600, advertising: 81450, taxes: 162900, additionalExpenses: 54300, netProfit: 4207750 },
-  { date: "12.12.2024", orderedQty: 278, purchasedQty: 250, canceledQty: 15, revenue: 5060000, commission: 506000, costPrice: 253000, logistics: 101200, advertising: 75900, taxes: 151800, additionalExpenses: 50600, netProfit: 3921500 },
-  { date: "11.12.2024", orderedQty: 256, purchasedQty: 228, canceledQty: 18, revenue: 4620000, commission: 462000, costPrice: 231000, logistics: 92400, advertising: 69300, taxes: 138600, additionalExpenses: 46200, netProfit: 3580500 },
-  { date: "10.12.2024", orderedQty: 234, purchasedQty: 208, canceledQty: 16, revenue: 4210000, commission: 421000, costPrice: 210500, logistics: 84200, advertising: 63150, taxes: 126300, additionalExpenses: 42100, netProfit: 3262750 },
-  { date: "09.12.2024", orderedQty: 210, purchasedQty: 185, canceledQty: 14, revenue: 3750000, commission: 375000, costPrice: 187500, logistics: 75000, advertising: 56250, taxes: 112500, additionalExpenses: 37500, netProfit: 2906250 },
-  { date: "08.12.2024", orderedQty: 189, purchasedQty: 165, canceledQty: 11, revenue: 3340000, commission: 334000, costPrice: 167000, logistics: 66800, advertising: 50100, taxes: 100200, additionalExpenses: 33400, netProfit: 2588500 },
-  { date: "07.12.2024", orderedQty: 156, purchasedQty: 134, canceledQty: 9, revenue: 2710000, commission: 271000, costPrice: 135500, logistics: 54200, advertising: 40650, taxes: 81300, additionalExpenses: 27100, netProfit: 2100250 },
-  { date: "06.12.2024", orderedQty: 112, purchasedQty: 95, canceledQty: 7, revenue: 1920000, commission: 192000, costPrice: 96000, logistics: 38400, advertising: 28800, taxes: 57600, additionalExpenses: 19200, netProfit: 1488000 },
-  { date: "05.12.2024", orderedQty: 76, purchasedQty: 62, canceledQty: 3, revenue: 1250000, commission: 125000, costPrice: 62500, logistics: 25000, advertising: 18750, taxes: 37500, additionalExpenses: 12500, netProfit: 968750 },
-  { date: "04.12.2024", orderedQty: 98, purchasedQty: 85, canceledQty: 4, revenue: 1720000, commission: 172000, costPrice: 86000, logistics: 34400, advertising: 25800, taxes: 51600, additionalExpenses: 17200, netProfit: 1333000 },
-  { date: "03.12.2024", orderedQty: 132, purchasedQty: 108, canceledQty: 6, revenue: 2180000, commission: 218000, costPrice: 109000, logistics: 43600, advertising: 32700, taxes: 65400, additionalExpenses: 21800, netProfit: 1689500 },
-  { date: "02.12.2024", orderedQty: 168, purchasedQty: 142, canceledQty: 12, revenue: 2890000, commission: 289000, costPrice: 144500, logistics: 57800, advertising: 43350, taxes: 86700, additionalExpenses: 28900, netProfit: 2239750 },
-  { date: "01.12.2024", orderedQty: 145, purchasedQty: 120, canceledQty: 8, revenue: 2450000, commission: 245000, costPrice: 122500, logistics: 49000, advertising: 36750, taxes: 73500, additionalExpenses: 24500, netProfit: 1898750 },
-];
 
 // Конфигурация цветов серий графика (привязана к ключам метрик для стабильности)
 const SERIES_COLORS: Record<string, string> = {
@@ -84,6 +63,7 @@ export function DailyView({ viewMode = "day", periodCode = "30d", shopId = null,
   
   // Load data from backend (filtered by shop when set)
   const { data: ordersSalesData, isLoading: loading, error } = useOrdersSalesDaily({ periodCode, shopId, shop, groupBy });
+  const { data: dailySummaryData, isLoading: loadingTable, error: errorTable } = useDailySummary({ periodCode, shopId, shop });
   
   // Format date label based on grouping
   const formatDateLabel = (dateStr: string, grouping: GroupByType): string => {
@@ -124,7 +104,6 @@ export function DailyView({ viewMode = "day", periodCode = "30d", shopId = null,
   const [activeFilters, setActiveFilters] = useState<string[]>(["orders", "revenue"]);
   const [sortColumn, setSortColumn] = useState<SortColumn>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
-  const [columnFilters, setColumnFilters] = useState<Record<string, { min: string; max: string }>>({});
 
   const toggleFilter = (key: string) => {
     setActiveFilters((prev) =>
@@ -142,33 +121,36 @@ export function DailyView({ viewMode = "day", periodCode = "30d", shopId = null,
     }
   };
 
-  const handleColumnFilter = (column: string, type: "min" | "max", value: string) => {
-    setColumnFilters((prev) => ({
-      ...prev,
-      [column]: { ...prev[column], [type]: value },
+  // Table data from API: map DailySummaryPoint to table row (date formatted for display)
+  const tableRows = useMemo(() => {
+    if (!dailySummaryData?.points?.length) return [];
+    return dailySummaryData.points.map((p) => ({
+      date: p.date,
+      dateFormatted: format(new Date(p.date), "dd.MM.yyyy"),
+      orders: p.orders,
+      buys: p.buys,
+      returns: p.returns,
+      revenue: p.revenue,
+      commission: p.commission,
+      logistics: p.logistics,
+      storage: p.storage,
+      ads: p.ads,
+      penalties: p.penalties,
+      cogs: p.cogs,
+      taxes: p.taxes,
+      profit: p.profit,
     }));
-  };
+  }, [dailySummaryData?.points]);
 
-  const filteredAndSortedData = [...tableData]
-    .filter((row) => {
-      return Object.entries(columnFilters).every(([column, filter]) => {
-        if (!filter.min && !filter.max) return true;
-        const value = row[column as keyof typeof row];
-        if (typeof value !== "number") return true;
-        if (filter.min && value < Number(filter.min)) return false;
-        if (filter.max && value > Number(filter.max)) return false;
-        return true;
-      });
-    })
-    .sort((a, b) => {
+  const filteredAndSortedData = [...tableRows].sort((a, b) => {
       if (!sortColumn || !sortDirection) return 0;
-      const aVal = a[sortColumn];
-      const bVal = b[sortColumn];
+      const aVal = sortColumn === "dateFormatted" ? a.date : a[sortColumn as keyof typeof a];
+      const bVal = sortColumn === "dateFormatted" ? b.date : b[sortColumn as keyof typeof b];
       if (typeof aVal === "string" && typeof bVal === "string") {
         return sortDirection === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
       }
       if (typeof aVal === "number" && typeof bVal === "number") {
-        return sortDirection === "asc" ? aVal - bVal : bVal - aVal;
+        return sortDirection === "asc" ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
       }
       return 0;
     });
@@ -176,18 +158,19 @@ export function DailyView({ viewMode = "day", periodCode = "30d", shopId = null,
   const formatNumber = (num: number) => num.toLocaleString("ru-RU");
 
   const columns = [
-    { key: "date", label: "Дата" },
-    { key: "orderedQty", label: "Заказали, шт" },
-    { key: "purchasedQty", label: "Выкупы, шт" },
-    { key: "canceledQty", label: "Отмена, шт" },
+    { key: "dateFormatted", label: "Дата" },
+    { key: "orders", label: "Заказы" },
+    { key: "buys", label: "Выкупы" },
+    { key: "returns", label: "Возвраты" },
     { key: "revenue", label: "Выручка" },
     { key: "commission", label: "Комиссия" },
-    { key: "costPrice", label: "Себестоимость" },
     { key: "logistics", label: "Логистика" },
-    { key: "advertising", label: "Реклама" },
+    { key: "storage", label: "Хранение" },
+    { key: "ads", label: "Реклама" },
+    { key: "penalties", label: "Штрафы" },
+    { key: "cogs", label: "Себестоимость" },
     { key: "taxes", label: "Налоги" },
-    { key: "additionalExpenses", label: "Доп. расходы" },
-    { key: "netProfit", label: "Чистая прибыль" },
+    { key: "profit", label: "Прибыль" },
   ];
 
   return (
@@ -319,19 +302,32 @@ export function DailyView({ viewMode = "day", periodCode = "30d", shopId = null,
         </div>
       </div>
 
-      {/* Table Section */}
+      {/* Table Section — Данные по дням from GET /api/charts/daily-summary */}
       <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
         <h3 className="font-semibold text-foreground mb-4">Данные по дням</h3>
         <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="border-border hover:bg-muted/50">
-                {columns.map((col) => (
-                  <TableHead key={col.key} className="text-muted-foreground">
-                    <div className="flex items-center gap-1">
+          {loadingTable ? (
+            <div className="py-8 text-center text-muted-foreground">Загрузка...</div>
+          ) : errorTable ? (
+            <div className="py-8 text-center text-destructive">Ошибка загрузки данных</div>
+          ) : (
+            <Table className="table-fixed w-full min-w-[800px]">
+              <TableHeader>
+                <TableRow className="border-border hover:bg-muted/50">
+                  {columns.map((col) => (
+                    <TableHead
+                      key={col.key}
+                      className={cn(
+                        "text-muted-foreground px-2 py-1 whitespace-nowrap",
+                        col.key === "dateFormatted" ? "text-left" : "text-center"
+                      )}
+                    >
                       <button
                         onClick={() => handleSort(col.key as SortColumn)}
-                        className="flex items-center gap-1 hover:text-foreground transition-colors"
+                        className={cn(
+                          "flex items-center gap-0.5 hover:text-foreground transition-colors w-full",
+                          col.key === "dateFormatted" ? "justify-start" : "justify-center"
+                        )}
                       >
                         {col.label}
                         <span className="flex flex-col">
@@ -353,56 +349,41 @@ export function DailyView({ viewMode = "day", periodCode = "30d", shopId = null,
                           />
                         </span>
                       </button>
-                      {col.key !== "date" && (
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                              <Filter className="h-3 w-3 text-muted-foreground" />
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-48 bg-card border-border" align="start">
-                            <div className="space-y-2">
-                              <p className="text-sm font-medium text-foreground">Фильтр по диапазону</p>
-                              <Input
-                                type="number"
-                                placeholder="Мин"
-                                value={columnFilters[col.key]?.min || ""}
-                                onChange={(e) => handleColumnFilter(col.key, "min", e.target.value)}
-                                className="h-8 bg-background border-border"
-                              />
-                              <Input
-                                type="number"
-                                placeholder="Макс"
-                                value={columnFilters[col.key]?.max || ""}
-                                onChange={(e) => handleColumnFilter(col.key, "max", e.target.value)}
-                                className="h-8 bg-background border-border"
-                              />
-                            </div>
-                          </PopoverContent>
-                        </Popover>
-                      )}
-                    </div>
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredAndSortedData.map((row, idx) => (
-                <TableRow key={idx} className="border-border hover:bg-muted/50">
-                  <TableCell className="font-medium text-foreground">{row.date}</TableCell>
-                  <TableCell className="text-foreground">{formatNumber(row.orderedQty)}</TableCell>
-                  <TableCell className="text-foreground">{formatNumber(row.purchasedQty)}</TableCell>
-                  <TableCell className="text-foreground">{formatNumber(row.canceledQty)}</TableCell>
-                  <TableCell className="text-foreground">{formatNumber(row.revenue)}</TableCell>
-                  <TableCell className="text-foreground">{formatNumber(row.commission)}</TableCell>
-                  <TableCell className="text-foreground">{formatNumber(row.costPrice)}</TableCell>
-                  <TableCell className="text-foreground">{formatNumber(row.taxes)}</TableCell>
-                  <TableCell className="text-foreground">{formatNumber(row.additionalExpenses)}</TableCell>
-                  <TableCell className="text-foreground font-bold">{formatNumber(row.netProfit)}</TableCell>
+                    </TableHead>
+                  ))}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredAndSortedData.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={columns.length} className="text-center text-muted-foreground py-8">
+                      Нет данных за выбранный период
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredAndSortedData.map((row, idx) => (
+                    <TableRow key={row.date ?? idx} className="border-border hover:bg-muted/50">
+                      <TableCell className="font-medium text-foreground px-2 py-1 whitespace-nowrap text-left min-w-0">
+                        {row.dateFormatted}
+                      </TableCell>
+                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.orders)}</TableCell>
+                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.buys)}</TableCell>
+                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.returns)}</TableCell>
+                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.revenue)}</TableCell>
+                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.commission)}</TableCell>
+                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.logistics)}</TableCell>
+                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.storage)}</TableCell>
+                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.ads)}</TableCell>
+                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.penalties)}</TableCell>
+                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.cogs)}</TableCell>
+                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.taxes)}</TableCell>
+                      <TableCell className="text-foreground font-bold px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.profit)}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          )}
         </div>
       </div>
     </div>

@@ -12,6 +12,7 @@ from app.utils.barcode import barcode_norm_sql
 from app.utils.metrics import get_status_conditions
 from app.utils.shop_filter import normalize_shop, shop_filter_condition, storage_barcode_filter_sql, storage_barcode_filter_by_shop_id_sql
 from app.settings import get_settings
+from app.schemas import CumulativeRevenueResponse
 from fastapi import Depends
 
 logger = logging.getLogger(__name__)
@@ -848,3 +849,25 @@ def kpi_summary(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
         )
+
+
+@router.get("/kpi/cumulative-revenue", response_model=CumulativeRevenueResponse)
+def get_cumulative_revenue_global(
+    user_id: UUID = Depends(require_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Общая накопительная выручка пользователя за всё время.
+    Не зависит от фильтров магазина и периода: SUM(revenue_sum) по всем данным пользователя (status завершен).
+    """
+    completed_condition = get_status_sql_condition("completed")
+    query = text(f"""
+        SELECT COALESCE(SUM(revenue_sum), 0)
+        FROM {qname("fact_sales")}
+        WHERE user_id = CAST(:user_id AS uuid)
+          AND ({completed_condition})
+    """)
+    result = db.execute(query, {"user_id": str(user_id)})
+    cumulative_revenue = float(result.scalar() or 0)
+    logger.info(f"cumulative-revenue (global): user_id={user_id}, value={cumulative_revenue}")
+    return CumulativeRevenueResponse(cumulativeRevenue=cumulative_revenue)

@@ -21,9 +21,12 @@ from .charts import (
     OrdersSalesDailyPoint,
     OrdersSalesDailyFilters,
     OrdersSalesDailyResponse,
+    DailySummaryPoint,
+    DailySummaryFilters,
+    DailySummaryResponse,
 )
 from .products import ProductItem, ProductsResponse
-from .kpi import KPISummaryResponse
+from .kpi import KPISummaryResponse, CumulativeRevenueResponse
 
 __all__ = [
     "auth",
@@ -50,7 +53,11 @@ __all__ = [
     "OrdersSalesDailyPoint",
     "OrdersSalesDailyFilters",
     "OrdersSalesDailyResponse",
+    "DailySummaryPoint",
+    "DailySummaryFilters",
+    "DailySummaryResponse",
     "ProductItem",
     "ProductsResponse",
     "KPISummaryResponse",
+    "CumulativeRevenueResponse",
 ]

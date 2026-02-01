@@ -1,6 +1,11 @@
 from pydantic import BaseModel
 
 
+class CumulativeRevenueResponse(BaseModel):
+    """Общая накопительная выручка пользователя за всё время, без фильтров по магазину и периоду."""
+    cumulativeRevenue: float
+
+
 class KPISummaryResponse(BaseModel):
     """KPI Summary response matching frontend DashboardMetrics interface."""
     cumulativeRevenue: float
