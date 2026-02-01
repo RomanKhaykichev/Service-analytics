@@ -25,7 +25,8 @@ import { format, addDays } from "date-fns";
 
 interface DailyViewProps {
   viewMode?: string;
-  periodCode?: string;
+  dateFrom: string;
+  dateTo: string;
   shopId?: string | null;
   /** Shop name (string) from seller-storage for filtering by barcode */
   shop?: string | null;
@@ -73,17 +74,18 @@ function formatChartDateLabel(dateISO: string, granularity: DailySummaryGranular
   return format(d, "MM.yyyy");
 }
 
-export function DailyView({ viewMode = "day", periodCode = "30d", shopId = null, shop = null }: DailyViewProps) {
+export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, shop = null }: DailyViewProps) {
   const [chartGranularity, setChartGranularity] = useState<DailySummaryGranularity>("day");
-  // График: период + гранулярность (без фильтра магазина)
+  // График: date_from/date_to + гранулярность (без фильтра магазина)
   const { data: chartSummaryData, isLoading: loadingChart, error: errorChart } = useDailySummary({
-    periodCode,
+    dateFrom,
+    dateTo,
     shopId: null,
     shop: null,
     granularity: chartGranularity,
   });
-  // Таблица: период + магазин, всегда по дням
-  const { data: dailySummaryData, isLoading: loadingTable, error: errorTable } = useDailySummary({ periodCode, shopId, shop });
+  // Таблица: date_from/date_to + магазин, всегда по дням
+  const { data: dailySummaryData, isLoading: loadingTable, error: errorTable } = useDailySummary({ dateFrom, dateTo, shopId, shop });
 
   // Данные графика: поля для 8 серий + подпись оси X по гранулярности
   const chartData = useMemo(() => {

@@ -30,12 +30,17 @@ interface UseRevenueDailyParams {
 }
 
 export function useRevenueDaily({ dateFrom, dateTo, shopId, shop }: UseRevenueDailyParams) {
+  const queryKey = ['revenueDaily', dateFrom, dateTo, shop ?? 'all', shopId ?? 'all'];
+  console.log("queryKey revenueDaily", { date_from: dateFrom, date_to: dateTo, queryKey });
   const { data, isLoading: loading, error } = useQuery({
-    queryKey: ['revenueDaily', dateFrom, dateTo, shop ?? 'all', shopId ?? 'all'],
+    queryKey,
     queryFn: async () => {
       const params = buildQueryParams({ date_from: dateFrom, date_to: dateTo, shopId, shop });
+      const url = `/api/charts/revenue-daily?${new URLSearchParams(params as Record<string, string>).toString()}`;
+      console.log("fetch useRevenueDaily", url);
       return await apiGet<RevenueDailyResponse>("/api/charts/revenue-daily", params);
     },
+    enabled: !!dateFrom && !!dateTo,
   });
 
   return { 

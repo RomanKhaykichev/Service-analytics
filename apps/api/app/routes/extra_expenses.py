@@ -169,24 +169,39 @@ def _shop_name_norm(s: Optional[str]) -> str:
 async def get_extra_expenses(
     user_id: UUID = Depends(require_user),
     period: str = Query(default="30d", description="Period: 7d, 30d, 90d, or all"),
+    date_from: Optional[str] = Query(default=None, description="Start date YYYY-MM-DD (overrides period when date_to also set)"),
+    date_to: Optional[str] = Query(default=None, description="End date YYYY-MM-DD"),
     shop: Optional[str] = Query(default=None, description="Shop name (string) — filter by Магазин, normalized"),
     shop_id: Optional[str] = Query(default=None, description="Shop UUID (legacy)"),
     db: Session = Depends(get_db)
 ):
-    """Get list of extra expenses with optional period and shop filters. Filter by shop name (string) when shop is provided."""
-    try:
-        date_from, date_to = parse_period(period)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    
+    """Get list of extra expenses with optional period/date range and shop filters.
+    When date_from and date_to are both set, they override period.
+    """
+    if date_from and date_to:
+        try:
+            date_from_dt = datetime.fromisoformat(date_from.strip()).date()
+            date_to_dt = datetime.fromisoformat(date_to.strip()).date()
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Invalid date_from or date_to format (use YYYY-MM-DD).")
+        if date_from_dt > date_to_dt:
+            raise HTTPException(status_code=400, detail="date_from must be less than or equal to date_to.")
+        date_from_res = date_from_dt
+        date_to_res = date_to_dt
+    else:
+        try:
+            date_from_res, date_to_res = parse_period(period)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
     params = {
         "user_id": str(user_id),
-        "date_to": date_to.isoformat(),
+        "date_to": date_to_res.isoformat(),
     }
-    
+
     date_filter = ""
-    if date_from:
-        params["date_from"] = date_from.isoformat()
+    if date_from_res:
+        params["date_from"] = date_from_res.isoformat()
         date_filter = "AND e.expense_date >= CAST(:date_from AS date)"
     
     # Filter by shop name (string, normalized): trim, collapse spaces, upper — no UUID

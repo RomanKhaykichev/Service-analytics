@@ -93,6 +93,7 @@ export function SummaryFilters({
 
   const handleApply = () => {
     if (!canApply) return;
+    console.log("[SummaryFilters] date range applied:", draftFrom, draftTo);
     onDateRangeChange({ dateFrom: draftFrom, dateTo: draftTo });
     setOpen(false);
   };

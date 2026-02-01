@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ShoppingCart, Truck, Package, RotateCcw, Percent, CreditCard, DollarSign, TrendingDown, Wallet, Target, BarChart3, TrendingUp, ArrowDown, AlertTriangle, Boxes, Warehouse, Tag, ShoppingBag, Receipt, Info } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
@@ -17,95 +17,30 @@ import { ProductsView } from "@/components/dashboard/ProductsView";
 import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
 import { useCumulativeRevenueGlobal } from "@/hooks/useCumulativeRevenueGlobal";
 import { useStorageShops } from "@/hooks/useStorageShops";
-import { useSalesDateRange } from "@/hooks/useSalesDateRange";
 import { useRevenueDaily } from "@/hooks/useRevenueDaily";
 import { useStockCurrent } from "@/hooks/useStockCurrent";
 import { useUzumServicesDaily } from "@/hooks/useUzumServicesDaily";
 import { formatCurrency, formatQuantity, formatPercent, formatTrend, formatMoneyNoDecimals } from "@/lib/formatters";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
-import { getDefaultDateRange, getDefaultDateRangeInBounds, isValidRange, clampRange } from "@/lib/dateRange";
+import { DateRangeProvider, useDateRange } from "@/contexts/DateRangeContext";
 
-const Index = () => {
+function Dashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("summary");
   const [store, setStore] = useState(() => searchParams.get("shop") ?? "all");
   const [viewMode, setViewMode] = useState("day");
 
-  // Границы дат из fact_sales (sells-report)
-  const { minDate, maxDate, loading: boundsLoading } = useSalesDateRange();
-  const hasBounds = !!minDate && !!maxDate;
-
-  // Дефолт внутри границ: to = maxDate, from = max(maxDate - 30 дней, minDate)
-  const defaultRangeInBounds = useMemo(
-    () => (hasBounds ? getDefaultDateRangeInBounds(minDate!, maxDate!) : null),
-    [hasBounds, minDate, maxDate]
-  );
-
-  // Диапазон дат: из URL (если в границах), иначе дефолт в границах; без границ — старый дефолт
-  const dateFrom = useMemo(() => {
-    const from = searchParams.get("date_from");
-    const to = searchParams.get("date_to");
-    if (hasBounds) {
-      if (from && to && isValidRange(from, to) && from >= minDate! && to <= maxDate!) return from;
-      return defaultRangeInBounds?.dateFrom ?? minDate!;
-    }
-    if (from && to && isValidRange(from, to)) return from;
-    return getDefaultDateRange().dateFrom;
-  }, [searchParams, hasBounds, minDate, maxDate, defaultRangeInBounds]);
-  const dateTo = useMemo(() => {
-    const from = searchParams.get("date_from");
-    const to = searchParams.get("date_to");
-    if (hasBounds) {
-      if (from && to && isValidRange(from, to) && from >= minDate! && to <= maxDate!) return to;
-      return defaultRangeInBounds?.dateTo ?? maxDate!;
-    }
-    if (from && to && isValidRange(from, to)) return to;
-    return getDefaultDateRange().dateTo;
-  }, [searchParams, hasBounds, minDate, maxDate, defaultRangeInBounds]);
-
-  // После загрузки границ: если в URL даты вне границ или пусто — выставить дефолт в границах
-  useEffect(() => {
-    if (!hasBounds) return;
-    const from = searchParams.get("date_from");
-    const to = searchParams.get("date_to");
-    const valid = from && to && isValidRange(from, to) && from >= minDate! && to <= maxDate!;
-    if (!valid && defaultRangeInBounds) {
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev);
-        next.set("date_from", defaultRangeInBounds.dateFrom);
-        next.set("date_to", defaultRangeInBounds.dateTo);
-        return next;
-      });
-    }
-  }, [hasBounds, minDate, maxDate, defaultRangeInBounds]);
-
-  // Синхронизация URL с фактическим диапазоном (когда в URL даты вне границ — подставляем dateFrom/dateTo)
-  useEffect(() => {
-    if (!hasBounds) return;
-    const from = searchParams.get("date_from");
-    const to = searchParams.get("date_to");
-    if (from === dateFrom && to === dateTo) return;
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.set("date_from", dateFrom);
-      next.set("date_to", dateTo);
-      return next;
-    });
-  }, [hasBounds, dateFrom, dateTo]);
-
-  const setDateRange = (range: { dateFrom: string; dateTo: string }) => {
-    const clamped = hasBounds
-      ? clampRange(range.dateFrom, range.dateTo, minDate!, maxDate!)
-      : range;
-    if (!isValidRange(clamped.dateFrom, clamped.dateTo)) return;
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.set("date_from", clamped.dateFrom);
-      next.set("date_to", clamped.dateTo);
-      return next;
-    });
-  };
+  const {
+    dateFrom,
+    dateTo,
+    setDateRange,
+    minDate,
+    maxDate,
+    boundsLoading,
+    defaultDateFrom,
+    defaultDateTo,
+  } = useDateRange();
 
   // Фильтр магазинов: используем ТОЛЬКО магазины из seller-storage (колонка "Магазин")
   const { shops } = useStorageShops();
@@ -379,8 +314,8 @@ const Index = () => {
             minDate={minDate ?? undefined}
             maxDate={maxDate ?? undefined}
             boundsLoading={boundsLoading}
-            defaultDateFrom={defaultRangeInBounds?.dateFrom}
-            defaultDateTo={defaultRangeInBounds?.dateTo}
+            defaultDateFrom={defaultDateFrom ?? undefined}
+            defaultDateTo={defaultDateTo ?? undefined}
           />
         </div>
       </div>
@@ -495,6 +430,12 @@ const Index = () => {
       )}
     </MainLayout>
   );
-};
+}
+
+const Index = () => (
+  <DateRangeProvider>
+    <Dashboard />
+  </DateRangeProvider>
+);
 
 export default Index;

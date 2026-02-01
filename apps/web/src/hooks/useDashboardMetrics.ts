@@ -50,15 +50,24 @@ interface DashboardMetrics {
   stockSource: 'leftout_old' | null;
 }
 
+/**
+ * KPI summary for Продажи, Финансы, Расходы, Услуги UZUM (и Склад/Накопительная выручка — без фильтра дат).
+ * Обязательно передаём date_from и date_to (не period), чтобы блоки пересчитывались по выбранному диапазону.
+ */
 export function useDashboardMetrics(dateFrom: string, dateTo: string, shopId?: string, shop?: string) {
   const { user } = useAuth();
+  const queryKey = ['kpiSummary', dateFrom, dateTo, shopId ?? 'all', shop ?? 'all'];
+  // Временный лог: при смене дат должен меняться queryKey и уходить новый запрос
+  console.log("queryKey kpiSummary", { date_from: dateFrom, date_to: dateTo, queryKey });
 
   const { data: metrics, isLoading: loading, error } = useQuery({
-    queryKey: ['kpiSummary', dateFrom, dateTo, shopId, shop],
+    queryKey,
     queryFn: async () => {
       const params = shop
         ? buildQueryParams({ date_from: dateFrom, date_to: dateTo, shop })
         : buildQueryParams({ date_from: dateFrom, date_to: dateTo, shopId });
+      const url = `/api/kpi/summary?${new URLSearchParams(params as Record<string, string>).toString()}`;
+      console.log("fetch useDashboardMetrics", url);
       return await apiGet<DashboardMetrics>("/api/kpi/summary", params);
     },
     enabled: !!user && !!dateFrom && !!dateTo,

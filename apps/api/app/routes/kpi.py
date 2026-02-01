@@ -87,9 +87,67 @@ def period_range(period_code: str, data_end_date: datetime.date) -> dict:
     }
 
 
+def resolve_date_range(
+    date_from_param: Optional[str],
+    date_to_param: Optional[str],
+    period_param: str,
+    db: Session,
+    user_id: UUID,
+):
+    """
+    Resolve date range from request: explicit date_from/date_to (priority) or period.
+    Returns: (date_from_iso, date_to_iso, date_from_dt, date_to_dt, period_code, period_range_dict).
+    Raises HTTPException 400 on invalid date_from/date_to.
+    """
+    date_from_iso = None
+    date_to_iso = None
+    date_from_dt = None
+    date_to_dt = None
+    period_code = "30d"
+    period_range_dict = {"mode": "period", "date_from": None, "date_to": None, "period": period_code}
+
+    if date_from_param and date_to_param:
+        try:
+            from_dt = datetime.fromisoformat(date_from_param.strip()).date()
+            to_dt = datetime.fromisoformat(date_to_param.strip()).date()
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid date_from or date_to format (use YYYY-MM-DD).",
+            )
+        if from_dt > to_dt:
+            raise HTTPException(
+                status_code=400,
+                detail="date_from must be less than or equal to date_to.",
+            )
+        date_from_iso = from_dt.isoformat()
+        date_to_iso = to_dt.isoformat()
+        date_from_dt = from_dt
+        date_to_dt = to_dt
+        period_code = "custom"
+        period_range_dict = {"mode": "custom", "date_from": date_from_iso, "date_to": date_to_iso, "period": period_code}
+    else:
+        period_code = normalize_period(period_param)
+        data_end_date = get_data_end_date(db, user_id)
+        pr = period_range(period_code, data_end_date)
+        date_to_iso = pr["date_to"]
+        date_from_iso = pr["date_from"]
+        if date_to_iso is None:
+            date_to_dt = datetime.now().date()
+            date_to_iso = date_to_dt.isoformat()
+        else:
+            date_to_dt = datetime.fromisoformat(date_to_iso).date()
+        date_from_dt = datetime.fromisoformat(date_from_iso).date() if date_from_iso else None
+        period_range_dict = {"mode": "period", "date_from": date_from_iso, "date_to": date_to_iso, "period": period_code}
+
+    return (date_from_iso, date_to_iso, date_from_dt, date_to_dt, period_code, period_range_dict)
+
+
 @router.get("/kpi/summary")
 def kpi_summary(
     period: str = "30d",
+    date_from: Optional[str] = Query(default=None, description="Start date YYYY-MM-DD (overrides period when date_to also set)"),
+    date_to: Optional[str] = Query(default=None, description="End date YYYY-MM-DD"),
     shop_id: Optional[str] = None,
     shop: Optional[str] = Query(default=None, description="Shop name (string) for seller-storage filtering"),
     user_id: UUID = Depends(require_user),
@@ -97,31 +155,32 @@ def kpi_summary(
 ):
     """
     Get KPI summary metrics.
-    
+
     Filtering:
-    - shop_id (UUID): for sales/expenses/warehouse metrics (from dim_shop)
+    - date_from, date_to: explicit range (from fact_sales.date_created). When both set, period is ignored.
+    - shop_id (UUID): for sales/expenses (from dim_shop)
     - shop (string): for seller-storage metrics (from stg_storage.shop_raw)
+
+    Exceptions (never filtered by dates):
+    - Stock block: always latest snapshot.
+    - cumulativeRevenue: always all-time, no shop (same as GET /kpi/cumulative-revenue).
+
+    Test examples:
+    - GET /api/kpi/summary?period=30d
+    - GET /api/kpi/summary?date_from=2025-11-01&date_to=2025-11-30
+    - GET /api/kpi/summary?period=30d&date_from=2025-11-01&date_to=2025-11-30  (dates take priority)
     """
-    # Normalize period
-    period_code = normalize_period(period)
-    
-    # Get data_end_date (maximum date from all data tables)
-    data_end_date = get_data_end_date(db, user_id)
-    
-    # Calculate period range based on data_end_date
-    period_range_dict = period_range(period_code, data_end_date)
-    date_to_iso = period_range_dict["date_to"]
-    
-    # Protection: if date_to is None, use today
-    if date_to_iso is None:
-        date_to_date = datetime.now().date()
-        date_to_iso = date_to_date.isoformat()
-    else:
-        date_to_date = datetime.fromisoformat(date_to_iso).date()
-    
-    date_from_iso = period_range_dict["date_from"]
-    date_from = datetime.fromisoformat(date_from_iso).date() if date_from_iso else None
-    
+    # 1) Единый расчёт диапазона дат: date_from/date_to (приоритет) или period. period_range_dict задаётся всегда.
+    date_from_iso, date_to_iso, date_from_dt, date_to_dt, period_code, period_range_dict = resolve_date_range(
+        date_from_param=date_from,
+        date_to_param=date_to,
+        period_param=period,
+        db=db,
+        user_id=user_id,
+    )
+    date_from = date_from_dt  # date object or None (used in SQL)
+    date_to_date = date_to_dt
+
     # Validate shop_id if provided (only if shop is NOT provided)
     # Если передан shop (строка) - это для seller-storage, shop_id не валидируем как UUID
     if shop_id and not shop:
@@ -135,7 +194,14 @@ def kpi_summary(
     
     # Нормализуем shop для seller-storage фильтрации (единый helper)
     shop_norm = normalize_shop(shop)
-    
+
+    # Диагностика: убедиться, что KPI считаются по выбранным датам (не по period)
+    logger.info(
+        "kpi_summary dates: date_from=%s date_to=%s period_param=%s (all blocks use this range)",
+        date_from_iso,
+        date_to_iso,
+        period,
+    )
     logger.info(f"kpi_summary: user_id={user_id}, shop_id={shop_id}, shop={shop}, shop_norm={shop_norm}, period={period_code}, period_range={period_range_dict}")
     
     try:
@@ -451,36 +517,17 @@ def kpi_summary(
                 revenue_trend = 0.0
                 revenue_trend_detail["delta_pct"] = 0.0
         
-        # E) Cumulative revenue (YTD - Year To Date, from start of year relative to date_to)
-        # Does NOT depend on period, only on date_to (data_end_date)
-        # year_start = date_trunc('year', date_to::timestamp)::date
-        year_start = datetime(date_to_date.year, 1, 1).date()
-        year_start_iso = year_start.isoformat()
-        
-        cumulative_where = [
-            "user_id = CAST(:user_id AS uuid)",
-            f"({completed_condition})",
-            "date_created >= CAST(:year_start AS date)",
-            "date_created < CAST(:date_to AS date) + INTERVAL '1 day'",
-        ]
-        if sales_shop_filter:
-            cumulative_where.append(sales_shop_filter)
-        
-        cumulative_where_clause = " AND ".join(cumulative_where)
-        
-        # Prepare params for cumulative query - MUST include date_to
-        cumulative_params = {**params_base, "year_start": year_start_iso}
-        
+        # E) Cumulative revenue — ИСКЛЮЧЕНИЕ: всегда вся выручка пользователя (без дат и без магазина)
+        # То же, что GET /api/kpi/cumulative-revenue: SUM(revenue_sum) WHERE user_id AND completed
         cumulative_query = text(f"""
             SELECT COALESCE(SUM(revenue_sum), 0)
             FROM {qname("fact_sales")}
-            WHERE {cumulative_where_clause}
+            WHERE user_id = CAST(:user_id AS uuid)
+              AND ({completed_condition})
         """)
-        
-        cumulative_result = db.execute(cumulative_query, cumulative_params)
+        cumulative_result = db.execute(cumulative_query, {"user_id": str(user_id)})
         cumulative_revenue = float(cumulative_result.scalar() or 0)
-        
-        logger.info(f"cumulativeRevenue: year={date_to_date.year}, year_start={year_start_iso}, date_to={date_to_iso}, value={cumulative_revenue}")
+        logger.info(f"cumulativeRevenue (global, unfiltered): user_id={user_id}, value={cumulative_revenue}")
         
         # F) STOCK aggregation — источник: left-out-report_old (fact_leftout_old_snapshot или stg_leftout_old fallback)
         # Товаров на складе = SUM(in_sale_qty), Себест. тов. = SUM(in_sale_qty * cost_sum), Рознич. цена = SUM(in_sale_qty * price_sum)

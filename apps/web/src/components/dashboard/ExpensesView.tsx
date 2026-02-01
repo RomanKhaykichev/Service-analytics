@@ -90,11 +90,12 @@ interface ExtraExpensesResponse {
 }
 
 interface ExpensesViewProps {
-  periodCode?: string;
+  dateFrom: string;
+  dateTo: string;
   shop?: string | null;
 }
 
-export function ExpensesView({ periodCode = "30d", shop = null }: ExpensesViewProps) {
+export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProps) {
   const { shops, loading: shopsLoading } = useShops();
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -114,18 +115,23 @@ export function ExpensesView({ periodCode = "30d", shop = null }: ExpensesViewPr
     comment: "",
   });
 
-  // Load expenses from API (filter by shop name when selected)
+  // Load expenses from API (filter by date range and shop)
+  const extraExpensesQueryKey = ['extraExpenses', dateFrom, dateTo, shop];
+  console.log("queryKey extraExpenses", { date_from: dateFrom, date_to: dateTo, queryKey: extraExpensesQueryKey });
   const { data: expensesData, isLoading: expensesLoading, error: expensesError } = useQuery({
-    queryKey: ['extraExpenses', periodCode, shop],
+    queryKey: extraExpensesQueryKey,
     queryFn: async () => {
       try {
-        const params = buildQueryParams({ period: periodCode, shop });
+        const params = buildQueryParams({ date_from: dateFrom, date_to: dateTo, shop });
+        const url = `/api/extra-expenses?${new URLSearchParams(params as Record<string, string>).toString()}`;
+        console.log("fetch extraExpenses", url);
         return await apiGet<ExtraExpensesResponse>("/api/extra-expenses", params);
       } catch (error) {
         console.error("Failed to load expenses:", error);
         throw error;
       }
     },
+    enabled: !!dateFrom && !!dateTo,
     retry: 1, // Retry once on failure
     refetchOnWindowFocus: false, // Don't refetch on window focus
   });

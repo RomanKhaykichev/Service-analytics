@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
-from app.routes import shops, products, charts, auth, debug, kpi, imports, extra_expenses, sales
+from app.routes import shops, products, charts, auth, debug, kpi, imports, extra_expenses, sales, filters
 from app.settings import get_settings
 from app.db import engine
 import logging
@@ -150,6 +150,7 @@ app.include_router(debug.router, prefix="/api", tags=["debug"])
 app.include_router(imports.router, prefix="/api", tags=["imports"])
 app.include_router(extra_expenses.router, prefix="/api", tags=["extra-expenses"])
 app.include_router(sales.router, prefix="/api", tags=["sales"])
+app.include_router(filters.router, prefix="/api", tags=["filters"])
 
 
 @app.get("/health")

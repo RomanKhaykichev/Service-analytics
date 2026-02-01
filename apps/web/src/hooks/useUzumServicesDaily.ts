@@ -32,12 +32,17 @@ interface UseUzumServicesDailyParams {
 }
 
 export function useUzumServicesDaily({ dateFrom, dateTo, shopId, shop }: UseUzumServicesDailyParams) {
+  const queryKey = ['uzumServicesDaily', dateFrom, dateTo, shop ?? 'all', shopId ?? 'all'];
+  console.log("queryKey uzumServicesDaily", { date_from: dateFrom, date_to: dateTo, queryKey });
   const { data, isLoading: loading, error } = useQuery({
-    queryKey: ['uzumServicesDaily', dateFrom, dateTo, shop ?? 'all', shopId ?? 'all'],
+    queryKey,
     queryFn: async () => {
       const params = buildQueryParams({ date_from: dateFrom, date_to: dateTo, shopId, shop });
+      const url = `/api/charts/uzum-services-daily?${new URLSearchParams(params as Record<string, string>).toString()}`;
+      console.log("fetch useUzumServicesDaily", url);
       return await apiGet<UzumServicesResponse>("/api/charts/uzum-services-daily", params);
     },
+    enabled: !!dateFrom && !!dateTo,
   });
 
   return { 

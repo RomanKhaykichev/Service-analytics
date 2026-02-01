@@ -8,7 +8,7 @@ import logging
 import re
 from app.db import get_db, qname
 from app.deps import require_user
-from app.routes.kpi import get_data_end_date, period_range, normalize_period
+from app.routes.kpi import get_data_end_date, period_range, normalize_period, resolve_date_range
 from app.utils.statuses import get_status_sql_condition
 from app.utils.metrics import get_status_conditions, get_sales_metrics_sql, get_profit_sql, get_avg_check_sql
 from app.utils.barcode import barcode_norm_sql
@@ -45,27 +45,19 @@ router = APIRouter()
 async def get_revenue_daily(
     user_id: UUID = Depends(require_user),
     period: str = Query(default="30d", description="Period: 7d, 30d, 90d, or all"),
+    date_from: Optional[str] = Query(default=None, description="Start date YYYY-MM-DD (overrides period when date_to also set)"),
+    date_to: Optional[str] = Query(default=None, description="End date YYYY-MM-DD"),
     shop_id: Optional[str] = Query(default=None, description="Shop UUID (dim_shop)"),
     shop: Optional[str] = Query(default=None, description="Shop name (string) for seller-storage filtering by barcode"),
     db: Session = Depends(get_db)
 ):
     """Get daily revenue chart data from fact_sales with revenue, orders, and averageCheck.
     When shop (string) is set, filter by products present in fact_storage_snapshot for that shop (barcode_norm).
+    date_from/date_to (both set) override period; filter by fact_sales.date_created.
     """
-    # Normalize period
-    period_code = normalize_period(period)
-    
-    # Get data_end_date (maximum date from all data tables)
-    data_end_date = get_data_end_date(db, user_id)
-    
-    # Calculate period range based on data_end_date (same logic as kpi.py)
-    period_range_dict = period_range(period_code, data_end_date)
-    
-    date_to_iso = period_range_dict["date_to"]
-    date_to_date = datetime.fromisoformat(date_to_iso).date()
-    date_from_iso = period_range_dict["date_from"]
-    date_from = datetime.fromisoformat(date_from_iso).date() if date_from_iso else None
-    
+    date_from_iso, date_to_iso, date_from, date_to_date, period_code, period_range_dict = resolve_date_range(
+        date_from, date_to, period, db, user_id
+    )
     shop_norm = normalize_shop(shop)
     logger.info(f"get_revenue_daily: user_id={user_id}, period={period_code}, shop_id={shop_id}, shop={shop}, shop_norm={shop_norm}, period_range={period_range_dict}")
     
@@ -460,30 +452,23 @@ async def get_stock_daily(
 async def get_uzum_services_daily(
     user_id: UUID = Depends(require_user),
     period: str = Query(default="30d", description="Period: 7d, 30d, 90d, or all"),
+    date_from: Optional[str] = Query(default=None, description="Start date YYYY-MM-DD (overrides period when date_to also set)"),
+    date_to: Optional[str] = Query(default=None, description="End date YYYY-MM-DD"),
     shop_id: Optional[str] = Query(default=None, description="Shop UUID"),
     shop: Optional[str] = Query(default=None, description="Shop name (string) for seller-storage filtering by barcode"),
     db: Session = Depends(get_db)
 ):
     """Get daily UZUM services chart data: storage, ads, fines from fact_expenses;
-    commission, logistics from fact_sales (filterable by shop via barcode_norm)."""
-    # Normalize period
-    period_code = normalize_period(period)
-    
-    # Get data_end_date (maximum date from all data tables)
-    data_end_date = get_data_end_date(db, user_id)
-    
-    # Calculate period range based on data_end_date
-    period_range_dict = period_range(period_code, data_end_date)
-    
-    date_to_iso = period_range_dict["date_to"]
-    date_to_date = datetime.fromisoformat(date_to_iso).date()
-    date_from_iso = period_range_dict["date_from"]
-    date_from = datetime.fromisoformat(date_from_iso).date() if date_from_iso else None
-    
+    commission, logistics from fact_sales (filterable by shop via barcode_norm).
+    date_from/date_to (both set) override period; filter by date_written_off / date_created.
+    """
+    date_from_iso, date_to_iso, date_from, date_to_date, period_code, period_range_dict = resolve_date_range(
+        date_from, date_to, period, db, user_id
+    )
     shop_norm = normalize_shop(shop)
-    
-    # For period=all, if date_from is None, use MIN(date_written_off) or very early date
-    if period_code == "all" and date_from is None:
+
+    # For period=all (or custom with no date_from), use MIN(date_written_off) or fallback
+    if date_from is None:
         min_date_query = text(f"""
             SELECT MIN(date_written_off)::date
             FROM {qname("fact_expenses")}
@@ -496,12 +481,7 @@ async def get_uzum_services_daily(
         else:
             date_from = date_to_date - timedelta(days=364)
         date_from_iso = date_from.isoformat()
-    
-    # Ensure date_from is set
-    if not date_from:
-        date_from = date_to_date - timedelta(days=29)
-        date_from_iso = date_from.isoformat()
-    
+
     logger.info(f"get_uzum_services_daily: user_id={user_id}, period={period_code}, shop={shop}, shop_norm={shop_norm}, date_from={date_from_iso}, date_to={date_to_iso}")
     
     try:
@@ -635,34 +615,25 @@ async def get_uzum_services_daily(
 async def get_orders_sales_daily(
     user_id: UUID = Depends(require_user),
     period: str = Query(default="30d", description="Period: 7d, 30d, 90d, or all"),
+    date_from: Optional[str] = Query(default=None, description="Start date YYYY-MM-DD (overrides period when date_to also set)"),
+    date_to: Optional[str] = Query(default=None, description="End date YYYY-MM-DD"),
     shop_id: Optional[str] = Query(default=None, description="Shop UUID"),
     shop: Optional[str] = Query(default=None, description="Shop name (string) for seller-storage filtering by barcode"),
     group_by: str = Query(default="day", description="Grouping: day, week, or month"),
     db: Session = Depends(get_db)
 ):
     """Get orders and sales chart data grouped by time period (day/week/month).
-    
     When shop (string) is set, filter by products in fact_storage_snapshot for that shop (barcode_norm).
     All metrics use the SAME formulas as /api/kpi/summary.
+    date_from/date_to (both set) override period; filter by fact_sales.date_created.
     """
-    # Normalize period
-    period_code = normalize_period(period)
-    
-    # Get data_end_date (maximum date from all data tables)
-    data_end_date = get_data_end_date(db, user_id)
-    
-    # Calculate period range based on data_end_date
-    period_range_dict = period_range(period_code, data_end_date)
-    
-    date_to_iso = period_range_dict["date_to"]
-    date_to_date = datetime.fromisoformat(date_to_iso).date()
-    date_from_iso = period_range_dict["date_from"]
-    date_from = datetime.fromisoformat(date_from_iso).date() if date_from_iso else None
-    
+    date_from_iso, date_to_iso, date_from, date_to_date, period_code, period_range_dict = resolve_date_range(
+        date_from, date_to, period, db, user_id
+    )
     shop_norm = normalize_shop(shop)
-    
-    # For period=all, if date_from is None, use MIN(date_created) or very early date
-    if period_code == "all" and date_from is None:
+
+    # For period=all (or custom with no date_from), use MIN(date_created) or fallback
+    if date_from is None:
         min_date_query = text(f"""
             SELECT MIN(date_created)::date
             FROM {qname("fact_sales")}
@@ -675,12 +646,7 @@ async def get_orders_sales_daily(
         else:
             date_from = date_to_date - timedelta(days=364)
         date_from_iso = date_from.isoformat()
-    
-    # Ensure date_from is set
-    if not date_from:
-        date_from = date_to_date - timedelta(days=29)  # Default to 30d
-        date_from_iso = date_from.isoformat()
-    
+
     # Normalize shop_id: empty string -> None
     if shop_id == "":
         shop_id = None
@@ -808,6 +774,8 @@ async def get_orders_sales_daily(
 async def get_daily_summary(
     user_id: UUID = Depends(require_user),
     period: str = Query(default="30d", description="Period: 7d, 30d, 90d, or all"),
+    date_from: Optional[str] = Query(default=None, description="Start date YYYY-MM-DD (overrides period when date_to also set)"),
+    date_to: Optional[str] = Query(default=None, description="End date YYYY-MM-DD"),
     shop_id: Optional[str] = Query(default=None, description="Shop UUID"),
     shop: Optional[str] = Query(default=None, description="Shop name (string) for seller-storage filtering by barcode"),
     granularity: str = Query(default="day", description="Aggregation: day, week, or month (week = Monday-based)"),
@@ -815,21 +783,17 @@ async def get_daily_summary(
 ):
     """Get daily summary table (По дням — Данные по дням). Same formulas as Сводка.
     granularity=day|week|month: aggregate by date bucket (week = Monday start). Same metrics, SUM per bucket.
-    Filters: period (date_from/date_to inclusive), shop (seller-storage Магазин → barcode filter).
-    Sources: fact_sales, fact_expenses. Налоги = 0.01 * Выручка. Прибыль = revenue - commission - ... - taxes.
+    Filters: date_from/date_to (or period), shop (seller-storage Магазин → barcode filter).
+    date_from/date_to (both set) override period; filter by fact_sales.date_created / fact_expenses.date_written_off.
     """
-    period_code = normalize_period(period)
+    date_from_iso, date_to_iso, date_from, date_to_date, period_code, period_range_dict = resolve_date_range(
+        date_from, date_to, period, db, user_id
+    )
     gran = (granularity or "day").strip().lower()
     if gran not in ("day", "week", "month"):
         gran = "day"
-    data_end_date = get_data_end_date(db, user_id)
-    period_range_dict = period_range(period_code, data_end_date)
-    date_to_iso = period_range_dict["date_to"]
-    date_to_date = datetime.fromisoformat(date_to_iso).date()
-    date_from_iso = period_range_dict["date_from"]
-    date_from = datetime.fromisoformat(date_from_iso).date() if date_from_iso else None
 
-    if period_code == "all" and date_from is None:
+    if date_from is None:
         min_date_result = db.execute(
             text(f"SELECT MIN(date_created)::date FROM {qname('fact_sales')} WHERE user_id = CAST(:user_id AS uuid)"),
             {"user_id": str(user_id)},
@@ -839,10 +803,6 @@ async def get_daily_summary(
             date_from = min_date
         else:
             date_from = date_to_date - timedelta(days=364)
-        date_from_iso = date_from.isoformat()
-
-    if not date_from:
-        date_from = date_to_date - timedelta(days=29)
         date_from_iso = date_from.isoformat()
 
     if shop_id == "":
