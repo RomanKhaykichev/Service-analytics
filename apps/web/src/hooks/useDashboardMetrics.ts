@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "./useAuth";
 import { apiGet, buildQueryParams } from "@/lib/api";
-import type { PeriodCode } from "@/lib/types";
 
 interface DashboardMetrics {
   // Накопительная выручка (не фильтруется по периоду)
@@ -51,18 +50,18 @@ interface DashboardMetrics {
   stockSource: 'leftout_old' | null;
 }
 
-export function useDashboardMetrics(periodCode: PeriodCode = "30d", shopId?: string, shop?: string) {
+export function useDashboardMetrics(dateFrom: string, dateTo: string, shopId?: string, shop?: string) {
   const { user } = useAuth();
 
   const { data: metrics, isLoading: loading, error } = useQuery({
-    queryKey: ['kpiSummary', periodCode, shopId, shop],
+    queryKey: ['kpiSummary', dateFrom, dateTo, shopId, shop],
     queryFn: async () => {
-      const params = shop 
-        ? buildQueryParams({ period: periodCode, shop })
-        : buildQueryParams({ period: periodCode, shopId });
+      const params = shop
+        ? buildQueryParams({ date_from: dateFrom, date_to: dateTo, shop })
+        : buildQueryParams({ date_from: dateFrom, date_to: dateTo, shopId });
       return await apiGet<DashboardMetrics>("/api/kpi/summary", params);
     },
-    enabled: !!user,
+    enabled: !!user && !!dateFrom && !!dateTo,
   });
 
   return { 

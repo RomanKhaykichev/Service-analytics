@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, buildQueryParams } from "@/lib/api";
-import type { PeriodCode } from "@/lib/types";
 
 interface UzumServicesPoint {
   date: string;
@@ -25,17 +24,18 @@ interface UzumServicesResponse {
 }
 
 interface UseUzumServicesDailyParams {
-  periodCode: PeriodCode;
+  dateFrom: string;
+  dateTo: string;
   shopId?: string | null;
   /** Shop name (string) from seller-storage for filtering by barcode */
   shop?: string | null;
 }
 
-export function useUzumServicesDaily({ periodCode, shopId, shop }: UseUzumServicesDailyParams) {
+export function useUzumServicesDaily({ dateFrom, dateTo, shopId, shop }: UseUzumServicesDailyParams) {
   const { data, isLoading: loading, error } = useQuery({
-    queryKey: ['uzumServicesDaily', periodCode, shop ?? 'all', shopId ?? 'all'],
+    queryKey: ['uzumServicesDaily', dateFrom, dateTo, shop ?? 'all', shopId ?? 'all'],
     queryFn: async () => {
-      const params = buildQueryParams({ period: periodCode, shopId, shop });
+      const params = buildQueryParams({ date_from: dateFrom, date_to: dateTo, shopId, shop });
       return await apiGet<UzumServicesResponse>("/api/charts/uzum-services-daily", params);
     },
   });
