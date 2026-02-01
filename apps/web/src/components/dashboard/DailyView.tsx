@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import {
-  LineChart,
+  ComposedChart,
   Line,
   XAxis,
   YAxis,
@@ -20,10 +20,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useOrdersSalesDaily } from "@/hooks/useOrdersSalesDaily";
-import { useDailySummary } from "@/hooks/useDailySummary";
-import { format, startOfWeek, endOfWeek } from "date-fns";
-import { ru } from "date-fns/locale";
+import { useDailySummary, type DailySummaryGranularity } from "@/hooks/useDailySummary";
+import { format, addDays } from "date-fns";
 
 interface DailyViewProps {
   viewMode?: string;
@@ -33,83 +31,94 @@ interface DailyViewProps {
   shop?: string | null;
 }
 
-// Конфигурация цветов серий графика (привязана к ключам метрик для стабильности)
+// 8 метрик на графике: левая ось (шт) — Заказы, Возвраты; правая (сум) — остальные. Все серии — Line.
 const SERIES_COLORS: Record<string, string> = {
-  orders: "#2563EB",    // Заказы - синий
-  buyouts: "#16A34A",   // Выкупы - зелёный
-  returns: "#DC2626",    // Возвраты - красный
-  revenue: "#F59E0B",   // Выручка - оранжевый
-  profit: "#7C3AED",    // Прибыль - фиолетовый
-  avgCheck: "#06B6D4",  // Средний чек - голубой
+  orders: "#2563EB",
+  returns: "#DC2626",
+  revenue: "#F59E0B",
+  logistics: "#06B6D4",
+  ads: "#EC4899",
+  storage: "#64748B",
+  taxes: "#A855F7",
+  profit: "#7C3AED",
 };
 
-const chartFilters = [
-  { key: "orders", label: "Заказы", color: SERIES_COLORS.orders },
-  { key: "buyouts", label: "Выкупы", color: SERIES_COLORS.buyouts },
-  { key: "returns", label: "Возвраты", color: SERIES_COLORS.returns },
-  { key: "revenue", label: "Выручка", color: SERIES_COLORS.revenue },
-  { key: "profit", label: "Прибыль", color: SERIES_COLORS.profit },
-  { key: "avgCheck", label: "Средний чек", color: SERIES_COLORS.avgCheck },
+const CHART_SERIES = [
+  { key: "orders", label: "Заказы", color: SERIES_COLORS.orders, axis: "count" as const },
+  { key: "returns", label: "Возвраты", color: SERIES_COLORS.returns, axis: "count" as const },
+  { key: "revenue", label: "Выручка", color: SERIES_COLORS.revenue, axis: "money" as const },
+  { key: "logistics", label: "Логистика", color: SERIES_COLORS.logistics, axis: "money" as const },
+  { key: "ads", label: "Реклама", color: SERIES_COLORS.ads, axis: "money" as const },
+  { key: "storage", label: "Хранение", color: SERIES_COLORS.storage, axis: "money" as const },
+  { key: "taxes", label: "Налоги", color: SERIES_COLORS.taxes, axis: "money" as const },
+  { key: "profit", label: "Прибыль", color: SERIES_COLORS.profit, axis: "money" as const },
 ];
 
 type SortDirection = "asc" | "desc" | null;
 type SortColumn = string | null;
 
-type GroupByType = "day" | "week" | "month";
+const GRANULARITY_OPTIONS: { value: DailySummaryGranularity; label: string }[] = [
+  { value: "day", label: "День" },
+  { value: "week", label: "Неделя" },
+  { value: "month", label: "Месяц" },
+];
+
+function formatChartDateLabel(dateISO: string, granularity: DailySummaryGranularity): string {
+  const d = new Date(dateISO);
+  if (granularity === "day") return format(d, "dd.MM");
+  if (granularity === "week") {
+    const end = addDays(d, 6);
+    return `${format(d, "dd.MM")}–${format(end, "dd.MM")}`;
+  }
+  return format(d, "MM.yyyy");
+}
 
 export function DailyView({ viewMode = "day", periodCode = "30d", shopId = null, shop = null }: DailyViewProps) {
-  // State for time grouping filter
-  const [groupBy, setGroupBy] = useState<GroupByType>("day");
-  
-  // Load data from backend (filtered by shop when set)
-  const { data: ordersSalesData, isLoading: loading, error } = useOrdersSalesDaily({ periodCode, shopId, shop, groupBy });
+  const [chartGranularity, setChartGranularity] = useState<DailySummaryGranularity>("day");
+  // График: период + гранулярность (без фильтра магазина)
+  const { data: chartSummaryData, isLoading: loadingChart, error: errorChart } = useDailySummary({
+    periodCode,
+    shopId: null,
+    shop: null,
+    granularity: chartGranularity,
+  });
+  // Таблица: период + магазин, всегда по дням
   const { data: dailySummaryData, isLoading: loadingTable, error: errorTable } = useDailySummary({ periodCode, shopId, shop });
-  
-  // Format date label based on grouping
-  const formatDateLabel = (dateStr: string, grouping: GroupByType): string => {
-    const date = new Date(dateStr);
-    switch (grouping) {
-      case "week": {
-        // ISO week starts on Monday
-        const weekStart = startOfWeek(date, { weekStartsOn: 1 });
-        const weekEnd = endOfWeek(date, { weekStartsOn: 1 });
-        return `${format(weekStart, "dd.MM")}–${format(weekEnd, "dd.MM")}`;
-      }
-      case "month":
-        // Format as "MMM yyyy" (e.g., "Янв 2026")
-        return format(date, "MMM yyyy", { locale: ru });
-      case "day":
-      default:
-        return format(date, "dd.MM");
-    }
-  };
-  
-  // Transform data for chart: format dates based on grouping and map field names
+
+  // Данные графика: поля для 8 серий + подпись оси X по гранулярности
   const chartData = useMemo(() => {
-    if (!ordersSalesData?.points || ordersSalesData.points.length === 0) {
-      return [];
-    }
-    return ordersSalesData.points.map((point) => {
-      return {
-        date: formatDateLabel(point.date, groupBy),
-        orders: point.orders_qty,      // Заказы - метрика orders_qty
-        buyouts: point.buyouts_qty,    // Выкупы - метрика buyouts_qty
-        returns: point.returns_qty,
-        revenue: point.revenue_sum,
-        profit: point.profit_sum,
-        avgCheck: point.avg_check,
-      };
-    });
-  }, [ordersSalesData, groupBy]);
-  const [activeFilters, setActiveFilters] = useState<string[]>(["orders", "revenue"]);
+    if (!chartSummaryData?.points?.length) return [];
+    return chartSummaryData.points.map((p) => ({
+      date: formatChartDateLabel(p.date, chartGranularity),
+      dateISO: p.date,
+      orders: p.orders,
+      returns: p.returns,
+      revenue: p.revenue,
+      logistics: p.logistics,
+      ads: p.ads,
+      storage: p.storage,
+      taxes: p.taxes,
+      profit: p.profit,
+    }));
+  }, [chartSummaryData?.points, chartGranularity]);
+
+  // По умолчанию видны: Заказы, Выручка, Прибыль
+  const [visibleSeries, setVisibleSeries] = useState<Record<string, boolean>>({
+    orders: true,
+    returns: false,
+    revenue: true,
+    logistics: false,
+    ads: false,
+    storage: false,
+    taxes: false,
+    profit: true,
+  });
+  const toggleSeries = (key: string) => {
+    setVisibleSeries((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
   const [sortColumn, setSortColumn] = useState<SortColumn>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
-
-  const toggleFilter = (key: string) => {
-    setActiveFilters((prev) =>
-      prev.includes(key) ? prev.filter((f) => f !== key) : [...prev, key]
-    );
-  };
 
   const handleSort = (column: SortColumn) => {
     if (sortColumn === column) {
@@ -175,68 +184,36 @@ export function DailyView({ viewMode = "day", periodCode = "30d", shopId = null,
 
   return (
     <div className="space-y-6">
-      {/* Chart Section */}
+      {/* График заказов и продаж: 8 метрик (все Line), кнопки выбора метрик, переключатель гранулярности — overlay слева снизу */}
       <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
-        {/* Header: title + grouping filter + metric buttons */}
         <div className="flex items-center gap-3 flex-wrap mb-4">
-          {/* Left group: title + grouping filter */}
-          <div className="flex items-center gap-2 flex-1 min-w-[320px]">
-            <h3 className="font-semibold text-foreground">График заказов и продаж</h3>
-            {/* Time grouping filter */}
-            <div className="flex gap-1 border border-border rounded-md p-1 flex-shrink-0 whitespace-nowrap">
+          <h3 className="font-semibold text-foreground">График заказов и продаж</h3>
+          <div className="flex items-center gap-2 ml-auto flex-wrap justify-end">
+            {CHART_SERIES.map((s) => (
               <Button
-                variant={groupBy === "day" ? "default" : "ghost"}
+                key={s.key}
+                variant={visibleSeries[s.key] ? "default" : "outline"}
                 size="sm"
-                onClick={() => setGroupBy("day")}
-                className="text-xs h-7"
-              >
-                Дни
-              </Button>
-              <Button
-                variant={groupBy === "week" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setGroupBy("week")}
-                className="text-xs h-7"
-              >
-                Недели
-              </Button>
-              <Button
-                variant={groupBy === "month" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setGroupBy("month")}
-                className="text-xs h-7"
-              >
-                Месяцы
-              </Button>
-            </div>
-          </div>
-          {/* Right group: metric filters */}
-          <div className="flex items-center gap-2 ml-auto flex-wrap justify-end flex-shrink-0">
-            {chartFilters.map((filter) => (
-              <Button
-                key={filter.key}
-                variant={activeFilters.includes(filter.key) ? "default" : "outline"}
-                size="sm"
-                onClick={() => toggleFilter(filter.key)}
+                onClick={() => toggleSeries(s.key)}
                 className="text-xs"
                 style={{
-                  backgroundColor: activeFilters.includes(filter.key) ? filter.color : undefined,
-                  borderColor: filter.color,
-                  color: activeFilters.includes(filter.key) ? "white" : filter.color,
+                  backgroundColor: visibleSeries[s.key] ? s.color : undefined,
+                  borderColor: s.color,
+                  color: visibleSeries[s.key] ? "white" : s.color,
                 }}
               >
-                {filter.label}
+                {s.label}
               </Button>
             ))}
           </div>
         </div>
 
-        <div className="h-80">
-          {loading ? (
+        <div className="relative h-80">
+          {loadingChart ? (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               Загрузка...
             </div>
-          ) : error ? (
+          ) : errorChart ? (
             <div className="flex items-center justify-center h-full text-destructive">
               Ошибка загрузки данных
             </div>
@@ -245,59 +222,78 @@ export function DailyView({ viewMode = "day", periodCode = "30d", shopId = null,
               Нет данных за выбранный период
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-                  axisLine={{ stroke: "hsl(var(--border))" }}
-                />
-                <YAxis
-                  yAxisId="left"
-                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-                  axisLine={{ stroke: "hsl(var(--border))" }}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
-                  axisLine={{ stroke: "hsl(var(--border))" }}
-                  tickFormatter={(value) => value >= 1000000 ? `${(value / 1000000).toFixed(1)}M` : value >= 1000 ? `${(value / 1000).toFixed(0)}k` : value}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
-                    borderRadius: "8px",
-                  }}
-                  formatter={(value: number, name: string) => {
-                    const filter = chartFilters.find((f) => f.key === name);
-                    return [formatNumber(value), filter?.label || name];
-                  }}
-                />
-                <Legend
-                  formatter={(value) => {
-                    const filter = chartFilters.find((f) => f.key === value);
-                    return filter?.label || value;
-                  }}
-                />
-                {chartFilters.map((filter) =>
-                  activeFilters.includes(filter.key) ? (
+            <>
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart
+                  data={chartData}
+                  margin={{ top: 8, right: 8, left: 4, bottom: 48 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                    axisLine={{ stroke: "hsl(var(--border))" }}
+                  />
+                  <YAxis
+                    yAxisId="count"
+                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                    axisLine={{ stroke: "hsl(var(--border))" }}
+                    tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
+                  />
+                  <YAxis
+                    yAxisId="money"
+                    orientation="right"
+                    tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                    axisLine={{ stroke: "hsl(var(--border))" }}
+                    tickFormatter={(v) => (v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "8px",
+                    }}
+                    formatter={(value: number, name: string) => {
+                      const series = CHART_SERIES.find((s) => s.key === name);
+                      const formatted = formatNumber(Number(value));
+                      const suffix = series?.axis === "money" ? " сум" : "";
+                      return [formatted + suffix, series?.label ?? name];
+                    }}
+                  />
+                  <Legend
+                    wrapperStyle={{ paddingTop: "4px" }}
+                    formatter={(value) => CHART_SERIES.find((s) => s.key === value)?.label ?? value}
+                  />
+                  {CHART_SERIES.filter((s) => visibleSeries[s.key]).map((s) => (
                     <Line
-                      key={filter.key}
-                      yAxisId={["revenue", "avgCheck"].includes(filter.key) ? "right" : ["profit"].includes(filter.key) ? "right" : "left"}
+                      key={s.key}
                       type="monotone"
-                      dataKey={filter.key}
-                      stroke={filter.color}
+                      dataKey={s.key}
+                      name={s.key}
+                      stroke={s.color}
                       strokeWidth={2}
                       dot={false}
                       activeDot={{ r: 4 }}
+                      yAxisId={s.axis === "count" ? "count" : "money"}
                     />
-                  ) : null
-                )}
-              </LineChart>
-            </ResponsiveContainer>
+                  ))}
+                </ComposedChart>
+              </ResponsiveContainer>
+              {/* Переключатель гранулярности — overlay слева снизу внутри области графика */}
+              <div className="absolute left-3 bottom-3 z-[10] flex rounded-lg border border-border bg-card/95 backdrop-blur shadow-sm p-0.5" style={{ bottom: 12, left: 12 }}>
+                {GRANULARITY_OPTIONS.map((opt) => (
+                  <Button
+                    key={opt.value}
+                    variant={chartGranularity === opt.value ? "default" : "ghost"}
+                    size="sm"
+                    className="text-xs h-7 px-2"
+                    onClick={() => setChartGranularity(opt.value)}
+                  >
+                    {opt.label}
+                  </Button>
+                ))}
+              </div>
+            </>
           )}
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { Calendar, Store, BarChart3 } from "lucide-react";
+import { Store, BarChart3 } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -12,13 +12,6 @@ interface Shop {
   shop_id: string;
   shop_name?: string | null;
 }
-
-const PERIOD_OPTIONS = [
-  { value: "7d", label: "Неделя" },
-  { value: "30d", label: "30 дней" },
-  { value: "90d", label: "90 дней" },
-  { value: "all", label: "Все данные" },
-] as const;
 
 interface SummaryFiltersProps {
   period: PeriodCode;
@@ -53,20 +46,6 @@ export function SummaryFilters({
           {shops.map((shop) => (
             <SelectItem key={shop.shop_id} value={shop.shop_id}>
               {shop.shop_name ?? shop.shop_id}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      <Select value={period} onValueChange={onPeriodChange}>
-        <SelectTrigger className="w-[180px] bg-accent text-accent-foreground border-0 hover:bg-accent/90">
-          <Calendar className="w-4 h-4 mr-2" />
-          <SelectValue placeholder="30 дней" />
-        </SelectTrigger>
-        <SelectContent>
-          {PERIOD_OPTIONS.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
             </SelectItem>
           ))}
         </SelectContent>

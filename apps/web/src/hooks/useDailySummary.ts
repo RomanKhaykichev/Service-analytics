@@ -23,21 +23,26 @@ export interface DailySummaryResponse {
   filters: { shop_id: string | null; shop: string | null };
 }
 
+export type DailySummaryGranularity = "day" | "week" | "month";
+
 interface UseDailySummaryParams {
   periodCode?: string;
   shopId?: string | null;
   shop?: string | null;
+  /** Chart aggregation: day | week | month. Omit or "day" for table (daily). */
+  granularity?: DailySummaryGranularity;
 }
 
 export function useDailySummary({
   periodCode = "30d",
   shopId = null,
   shop = null,
+  granularity = "day",
 }: UseDailySummaryParams) {
   return useQuery({
-    queryKey: ["dailySummary", periodCode, shop ?? "all", shopId ?? "all"],
+    queryKey: ["dailySummary", periodCode, shop ?? "all", shopId ?? "all", granularity],
     queryFn: async () => {
-      const params = buildQueryParams({ period: periodCode, shopId, shop });
+      const params = buildQueryParams({ period: periodCode, shopId, shop, granularity });
       return await apiGet<DailySummaryResponse>("/api/charts/daily-summary", params);
     },
     retry: 1,

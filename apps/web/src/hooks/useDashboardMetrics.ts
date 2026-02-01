@@ -57,7 +57,6 @@ export function useDashboardMetrics(periodCode: PeriodCode = "30d", shopId?: str
   const { data: metrics, isLoading: loading, error } = useQuery({
     queryKey: ['kpiSummary', periodCode, shopId, shop],
     queryFn: async () => {
-      // Если передан shop (строка магазина из seller-storage) - отправляем shop, иначе shop_id (UUID)
       const params = shop 
         ? buildQueryParams({ period: periodCode, shop })
         : buildQueryParams({ period: periodCode, shopId });

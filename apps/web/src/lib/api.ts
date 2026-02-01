@@ -53,10 +53,13 @@ export function getDevUserId(): string {
  */
 export function buildQueryParams(params?: {
   period?: string;
+  date_from?: string;
+  date_to?: string;
   shopId?: string | null;
   shop?: string | null;  // Shop name (string) for seller-storage filtering
   q?: string;
   limit?: number;
+  granularity?: string;
   [key: string]: any;
 }): Record<string, string> {
   const result: Record<string, string> = {};

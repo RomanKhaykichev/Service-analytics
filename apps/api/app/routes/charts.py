@@ -810,15 +810,18 @@ async def get_daily_summary(
     period: str = Query(default="30d", description="Period: 7d, 30d, 90d, or all"),
     shop_id: Optional[str] = Query(default=None, description="Shop UUID"),
     shop: Optional[str] = Query(default=None, description="Shop name (string) for seller-storage filtering by barcode"),
+    granularity: str = Query(default="day", description="Aggregation: day, week, or month (week = Monday-based)"),
     db: Session = Depends(get_db)
 ):
-    """Get daily summary table (По дням — Данные по дням). Same formulas as Сводка, GROUP BY day.
+    """Get daily summary table (По дням — Данные по дням). Same formulas as Сводка.
+    granularity=day|week|month: aggregate by date bucket (week = Monday start). Same metrics, SUM per bucket.
     Filters: period (date_from/date_to inclusive), shop (seller-storage Магазин → barcode filter).
-    Sources: fact_sales (orders, buys, returns, revenue, commission, logistics, cogs),
-    fact_expenses (Хранение/Реклама/Штрафы — УСЛУГИ UZUM, same logic as Сводка, GROUP BY date_written_off::date).
-    Налоги = 0.01 * Выручка (per day). Прибыль = revenue - commission - logistics - storage - ads - penalties - cogs - taxes.
+    Sources: fact_sales, fact_expenses. Налоги = 0.01 * Выручка. Прибыль = revenue - commission - ... - taxes.
     """
     period_code = normalize_period(period)
+    gran = (granularity or "day").strip().lower()
+    if gran not in ("day", "week", "month"):
+        gran = "day"
     data_end_date = get_data_end_date(db, user_id)
     period_range_dict = period_range(period_code, data_end_date)
     date_to_iso = period_range_dict["date_to"]
@@ -862,85 +865,207 @@ async def get_daily_summary(
 
     metrics_sql = get_sales_metrics_sql(table_alias="fs")
 
-    # УСЛУГИ UZUM: Хранение/Реклама/Штрафы из fact_expenses (тот же источник и формулы, что в Сводке), GROUP BY date_written_off::date
+    # УСЛУГИ UZUM: Хранение/Реклама/Штрафы из fact_expenses (тот же источник и формулы, что в Сводке)
     try:
-        query = text(f"""
-            WITH
-            days AS (
-                SELECT generate_series(
-                    CAST(:date_from AS date),
-                    CAST(:date_to AS date),
-                    INTERVAL '1 day'
-                )::date AS day
-            ),
-            sales_by_day AS (
+        if gran == "day":
+            query = text(f"""
+                WITH
+                days AS (
+                    SELECT generate_series(
+                        CAST(:date_from AS date),
+                        CAST(:date_to AS date),
+                        INTERVAL '1 day'
+                    )::date AS day
+                ),
+                sales_by_day AS (
+                    SELECT
+                        fs.date_created::date AS day,
+                        {metrics_sql['orders_qty']} AS orders_qty,
+                        {metrics_sql['buyouts_qty']} AS buyouts_qty,
+                        {metrics_sql['returns_qty']} AS returns_qty,
+                        {metrics_sql['revenue_sum']} AS revenue_sum,
+                        {metrics_sql['commission_sum']} AS commission_sum,
+                        {metrics_sql['logistics_sum']} AS logistics_sum,
+                        {metrics_sql['cogs_sum']} AS cogs_sum
+                    FROM {qname('fact_sales')} fs
+                    WHERE fs.user_id = CAST(:user_id AS uuid)
+                        {shop_condition}
+                        AND fs.date_created >= CAST(:date_from AS date)
+                        AND fs.date_created < CAST(:date_to AS date) + INTERVAL '1 day'
+                    GROUP BY fs.date_created::date
+                ),
+                services_by_day AS (
+                    SELECT
+                        fe.date_written_off::date AS day,
+                        COALESCE(SUM(
+                            CASE
+                                WHEN lower(trim(COALESCE(fe.operation_type, ''))) = 'оплата' THEN COALESCE(fe.cost_sum, 0)
+                                WHEN lower(trim(COALESCE(fe.operation_type, ''))) = 'возврат' THEN -COALESCE(fe.cost_sum, 0)
+                                ELSE 0
+                            END
+                        ), 0) AS storage,
+                        COALESCE(SUM(
+                            CASE
+                                WHEN (COALESCE(fe.source, '') ILIKE '%маркетинг%' OR COALESCE(fe.source, '') ILIKE '%marketing%')
+                                     AND (COALESCE(fe.operation_type, '') ILIKE '%оплат%' OR COALESCE(fe.operation_type, '') ILIKE '%payment%')
+                                THEN COALESCE(fe.cost_sum, 0)
+                                ELSE 0
+                            END
+                        ), 0) AS ads,
+                        COALESCE(SUM(
+                            CASE WHEN COALESCE(fe.service, '') ILIKE '%штраф%' THEN COALESCE(fe.amount_sum, 0) ELSE 0 END
+                        ), 0) AS penalties
+                    FROM {qname('fact_expenses')} fe
+                    WHERE fe.user_id = CAST(:user_id AS uuid)
+                        AND fe.date_written_off >= CAST(:date_from AS date)
+                        AND fe.date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'
+                    GROUP BY fe.date_written_off::date
+                )
                 SELECT
-                    fs.date_created::date AS day,
-                    {metrics_sql['orders_qty']} AS orders_qty,
-                    {metrics_sql['buyouts_qty']} AS buyouts_qty,
-                    {metrics_sql['returns_qty']} AS returns_qty,
-                    {metrics_sql['revenue_sum']} AS revenue_sum,
-                    {metrics_sql['commission_sum']} AS commission_sum,
-                    {metrics_sql['logistics_sum']} AS logistics_sum,
-                    {metrics_sql['cogs_sum']} AS cogs_sum
-                FROM {qname('fact_sales')} fs
-                WHERE fs.user_id = CAST(:user_id AS uuid)
-                    {shop_condition}
-                    AND fs.date_created >= CAST(:date_from AS date)
-                    AND fs.date_created < CAST(:date_to AS date) + INTERVAL '1 day'
-                GROUP BY fs.date_created::date
-            ),
-            services_by_day AS (
+                    d.day AS date,
+                    COALESCE(s.orders_qty, 0) AS orders,
+                    COALESCE(s.buyouts_qty, 0) AS buys,
+                    COALESCE(s.returns_qty, 0) AS returns,
+                    COALESCE(s.revenue_sum, 0) AS revenue,
+                    COALESCE(s.commission_sum, 0) AS commission,
+                    COALESCE(s.logistics_sum, 0) AS logistics,
+                    COALESCE(sv.storage, 0) AS storage,
+                    COALESCE(sv.ads, 0) AS ads,
+                    COALESCE(sv.penalties, 0) AS penalties,
+                    COALESCE(s.cogs_sum, 0) AS cogs,
+                    ROUND(COALESCE(s.revenue_sum, 0) * 0.01, 2) AS taxes,
+                    (COALESCE(s.revenue_sum, 0) - COALESCE(s.commission_sum, 0) - COALESCE(s.logistics_sum, 0)
+                     - COALESCE(sv.storage, 0) - COALESCE(sv.ads, 0) - COALESCE(sv.penalties, 0)
+                     - COALESCE(s.cogs_sum, 0) - ROUND(COALESCE(s.revenue_sum, 0) * 0.01, 2)) AS profit
+                FROM days d
+                LEFT JOIN sales_by_day s ON d.day = s.day
+                LEFT JOIN services_by_day sv ON d.day = sv.day
+                ORDER BY d.day ASC
+            """)
+        else:
+            # week or month: bucket = date_trunc(gran, date)::date (Postgres week = Monday)
+            trunc_part = "week" if gran == "week" else "month"
+            interval_step = "1 week" if gran == "week" else "1 month"
+            query = text(f"""
+                WITH
+                days AS (
+                    SELECT generate_series(
+                        CAST(:date_from AS date),
+                        CAST(:date_to AS date),
+                        INTERVAL '1 day'
+                    )::date AS day
+                ),
+                sales_by_day AS (
+                    SELECT
+                        fs.date_created::date AS day,
+                        {metrics_sql['orders_qty']} AS orders_qty,
+                        {metrics_sql['buyouts_qty']} AS buyouts_qty,
+                        {metrics_sql['returns_qty']} AS returns_qty,
+                        {metrics_sql['revenue_sum']} AS revenue_sum,
+                        {metrics_sql['commission_sum']} AS commission_sum,
+                        {metrics_sql['logistics_sum']} AS logistics_sum,
+                        {metrics_sql['cogs_sum']} AS cogs_sum
+                    FROM {qname('fact_sales')} fs
+                    WHERE fs.user_id = CAST(:user_id AS uuid)
+                        {shop_condition}
+                        AND fs.date_created >= CAST(:date_from AS date)
+                        AND fs.date_created < CAST(:date_to AS date) + INTERVAL '1 day'
+                    GROUP BY fs.date_created::date
+                ),
+                services_by_day AS (
+                    SELECT
+                        fe.date_written_off::date AS day,
+                        COALESCE(SUM(
+                            CASE
+                                WHEN lower(trim(COALESCE(fe.operation_type, ''))) = 'оплата' THEN COALESCE(fe.cost_sum, 0)
+                                WHEN lower(trim(COALESCE(fe.operation_type, ''))) = 'возврат' THEN -COALESCE(fe.cost_sum, 0)
+                                ELSE 0
+                            END
+                        ), 0) AS storage,
+                        COALESCE(SUM(
+                            CASE
+                                WHEN (COALESCE(fe.source, '') ILIKE '%маркетинг%' OR COALESCE(fe.source, '') ILIKE '%marketing%')
+                                     AND (COALESCE(fe.operation_type, '') ILIKE '%оплат%' OR COALESCE(fe.operation_type, '') ILIKE '%payment%')
+                                THEN COALESCE(fe.cost_sum, 0)
+                                ELSE 0
+                            END
+                        ), 0) AS ads,
+                        COALESCE(SUM(
+                            CASE WHEN COALESCE(fe.service, '') ILIKE '%штраф%' THEN COALESCE(fe.amount_sum, 0) ELSE 0 END
+                        ), 0) AS penalties
+                    FROM {qname('fact_expenses')} fe
+                    WHERE fe.user_id = CAST(:user_id AS uuid)
+                        AND fe.date_written_off >= CAST(:date_from AS date)
+                        AND fe.date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'
+                    GROUP BY fe.date_written_off::date
+                ),
+                daily_joined AS (
+                    SELECT
+                        d.day AS date,
+                        COALESCE(s.orders_qty, 0) AS orders,
+                        COALESCE(s.buyouts_qty, 0) AS buys,
+                        COALESCE(s.returns_qty, 0) AS returns,
+                        COALESCE(s.revenue_sum, 0) AS revenue,
+                        COALESCE(s.commission_sum, 0) AS commission,
+                        COALESCE(s.logistics_sum, 0) AS logistics,
+                        COALESCE(sv.storage, 0) AS storage,
+                        COALESCE(sv.ads, 0) AS ads,
+                        COALESCE(sv.penalties, 0) AS penalties,
+                        COALESCE(s.cogs_sum, 0) AS cogs,
+                        ROUND(COALESCE(s.revenue_sum, 0) * 0.01, 2) AS taxes,
+                        (COALESCE(s.revenue_sum, 0) - COALESCE(s.commission_sum, 0) - COALESCE(s.logistics_sum, 0)
+                         - COALESCE(sv.storage, 0) - COALESCE(sv.ads, 0) - COALESCE(sv.penalties, 0)
+                         - COALESCE(s.cogs_sum, 0) - ROUND(COALESCE(s.revenue_sum, 0) * 0.01, 2)) AS profit
+                    FROM days d
+                    LEFT JOIN sales_by_day s ON d.day = s.day
+                    LEFT JOIN services_by_day sv ON d.day = sv.day
+                ),
+                aggregated AS (
+                    SELECT
+                        date_trunc('{trunc_part}', daily_joined.date)::date AS bucket,
+                        SUM(orders) AS orders,
+                        SUM(buys) AS buys,
+                        SUM(returns) AS returns,
+                        SUM(revenue) AS revenue,
+                        SUM(commission) AS commission,
+                        SUM(logistics) AS logistics,
+                        SUM(storage) AS storage,
+                        SUM(ads) AS ads,
+                        SUM(penalties) AS penalties,
+                        SUM(cogs) AS cogs,
+                        SUM(taxes) AS taxes,
+                        SUM(profit) AS profit
+                    FROM daily_joined
+                    GROUP BY date_trunc('{trunc_part}', daily_joined.date)::date
+                ),
+                buckets AS (
+                    SELECT generate_series(
+                        date_trunc('{trunc_part}', CAST(:date_from AS date))::date,
+                        CAST(:date_to AS date),
+                        INTERVAL '{interval_step}'
+                    )::date AS bucket
+                )
                 SELECT
-                    fe.date_written_off::date AS day,
-                    COALESCE(SUM(
-                        CASE
-                            WHEN lower(trim(COALESCE(fe.operation_type, ''))) = 'оплата' THEN COALESCE(fe.cost_sum, 0)
-                            WHEN lower(trim(COALESCE(fe.operation_type, ''))) = 'возврат' THEN -COALESCE(fe.cost_sum, 0)
-                            ELSE 0
-                        END
-                    ), 0) AS storage,
-                    COALESCE(SUM(
-                        CASE
-                            WHEN (COALESCE(fe.source, '') ILIKE '%маркетинг%' OR COALESCE(fe.source, '') ILIKE '%marketing%')
-                                 AND (COALESCE(fe.operation_type, '') ILIKE '%оплат%' OR COALESCE(fe.operation_type, '') ILIKE '%payment%')
-                            THEN COALESCE(fe.cost_sum, 0)
-                            ELSE 0
-                        END
-                    ), 0) AS ads,
-                    COALESCE(SUM(
-                        CASE WHEN COALESCE(fe.service, '') ILIKE '%штраф%' THEN COALESCE(fe.amount_sum, 0) ELSE 0 END
-                    ), 0) AS penalties
-                FROM {qname('fact_expenses')} fe
-                WHERE fe.user_id = CAST(:user_id AS uuid)
-                    AND fe.date_written_off >= CAST(:date_from AS date)
-                    AND fe.date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'
-                GROUP BY fe.date_written_off::date
-            )
-            SELECT
-                d.day AS date,
-                COALESCE(s.orders_qty, 0) AS orders,
-                COALESCE(s.buyouts_qty, 0) AS buys,
-                COALESCE(s.returns_qty, 0) AS returns,
-                COALESCE(s.revenue_sum, 0) AS revenue,
-                COALESCE(s.commission_sum, 0) AS commission,
-                COALESCE(s.logistics_sum, 0) AS logistics,
-                COALESCE(sv.storage, 0) AS storage,
-                COALESCE(sv.ads, 0) AS ads,
-                COALESCE(sv.penalties, 0) AS penalties,
-                COALESCE(s.cogs_sum, 0) AS cogs,
-                ROUND(COALESCE(s.revenue_sum, 0) * 0.01, 2) AS taxes,
-                (COALESCE(s.revenue_sum, 0) - COALESCE(s.commission_sum, 0) - COALESCE(s.logistics_sum, 0)
-                 - COALESCE(sv.storage, 0) - COALESCE(sv.ads, 0) - COALESCE(sv.penalties, 0)
-                 - COALESCE(s.cogs_sum, 0) - ROUND(COALESCE(s.revenue_sum, 0) * 0.01, 2)) AS profit
-            FROM days d
-            LEFT JOIN sales_by_day s ON d.day = s.day
-            LEFT JOIN services_by_day sv ON d.day = sv.day
-            ORDER BY d.day ASC
-        """)
+                    b.bucket AS date,
+                    COALESCE(a.orders, 0) AS orders,
+                    COALESCE(a.buys, 0) AS buys,
+                    COALESCE(a.returns, 0) AS returns,
+                    COALESCE(a.revenue, 0) AS revenue,
+                    COALESCE(a.commission, 0) AS commission,
+                    COALESCE(a.logistics, 0) AS logistics,
+                    COALESCE(a.storage, 0) AS storage,
+                    COALESCE(a.ads, 0) AS ads,
+                    COALESCE(a.penalties, 0) AS penalties,
+                    COALESCE(a.cogs, 0) AS cogs,
+                    COALESCE(a.taxes, 0) AS taxes,
+                    COALESCE(a.profit, 0) AS profit
+                FROM buckets b
+                LEFT JOIN aggregated a ON b.bucket = a.bucket
+                ORDER BY b.bucket ASC
+            """)
         result = db.execute(query, params)
         rows = result.fetchall()
-        logger.info(f"get_daily_summary: found {len(rows)} days, period={period_code}, shop_norm={shop_norm}")
+        logger.info(f"get_daily_summary: found {len(rows)} points (granularity={gran}), period={period_code}, shop_norm={shop_norm}")
 
         points = []
         for row in rows:

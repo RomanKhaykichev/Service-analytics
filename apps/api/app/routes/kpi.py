@@ -101,8 +101,6 @@ def kpi_summary(
     Filtering:
     - shop_id (UUID): for sales/expenses/warehouse metrics (from dim_shop)
     - shop (string): for seller-storage metrics (from stg_storage.shop_raw)
-    
-    If both provided, shop_id is used for non-storage metrics, shop for storage metrics.
     """
     # Normalize period
     period_code = normalize_period(period)
