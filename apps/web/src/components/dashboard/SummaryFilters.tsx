@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/tooltip";
 import { isValidRange } from "@/lib/dateRange";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 interface Shop {
   shop_id: string;
@@ -40,6 +41,8 @@ interface SummaryFiltersProps {
   onStoreChange: (store: string) => void;
   viewMode?: string;
   onViewModeChange?: (mode: string) => void;
+  /** Показывать селект магазина (на вкладке "По дням" скрыт) */
+  showStoreFilter?: boolean;
   showViewMode?: boolean;
   shops?: Shop[];
   /** Границы дат из fact_sales (sells-report). Если нет — пикер отключён. */
@@ -59,6 +62,7 @@ export function SummaryFilters({
   onStoreChange,
   viewMode = "day",
   onViewModeChange,
+  showStoreFilter = true,
   showViewMode = false,
   shops = [],
   minDate,
@@ -120,20 +124,22 @@ export function SummaryFilters({
 
   return (
     <div className="flex items-center gap-3">
-      <Select value={store} onValueChange={onStoreChange}>
-        <SelectTrigger className="w-[180px] bg-accent text-accent-foreground border-0 hover:bg-accent/90">
-          <Store className="w-4 h-4 mr-2" />
-          <SelectValue placeholder="Все продажи" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Все продажи</SelectItem>
-          {shops.map((shop) => (
-            <SelectItem key={shop.shop_id} value={shop.shop_id}>
-              {shop.shop_name ?? shop.shop_id}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {showStoreFilter && (
+        <Select value={store} onValueChange={onStoreChange}>
+          <SelectTrigger className="w-[180px] bg-accent text-accent-foreground border-0 hover:bg-accent/90">
+            <Store className="w-4 h-4 mr-2" />
+            <SelectValue placeholder="Все продажи" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все продажи</SelectItem>
+            {shops.map((shop) => (
+              <SelectItem key={shop.shop_id} value={shop.shop_id}>
+                {shop.shop_name ?? shop.shop_id}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
 
       {boundsLoading ? (
         <Skeleton className="h-9 w-[240px]" />
@@ -201,14 +207,27 @@ export function SummaryFilters({
 
       {showViewMode && onViewModeChange && (
         <Select value={viewMode} onValueChange={onViewModeChange}>
-          <SelectTrigger className="w-[140px] bg-accent text-accent-foreground border-0 hover:bg-accent/90">
-            <BarChart3 className="w-4 h-4 mr-2" />
+          <SelectTrigger
+            className={cn(
+              "w-[160px] min-w-[160px] h-10 shrink-0 font-normal",
+              "bg-accent text-accent-foreground hover:bg-accent/90",
+              "border border-transparent focus:border-border focus:ring-0 focus:ring-offset-0",
+              "px-3 py-2 [&>span]:min-w-0 [&>span]:truncate"
+            )}
+          >
+            <BarChart3 className="w-4 h-4 mr-2 shrink-0" />
             <SelectValue placeholder="По дням" />
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="day">По дням</SelectItem>
-            <SelectItem value="week">По неделям</SelectItem>
-            <SelectItem value="month">По месяцам</SelectItem>
+          <SelectContent className="min-w-[160px]">
+            <SelectItem value="day" className="font-normal">
+              По дням
+            </SelectItem>
+            <SelectItem value="week" className="font-normal">
+              По неделям
+            </SelectItem>
+            <SelectItem value="month" className="font-normal">
+              По месяцам
+            </SelectItem>
           </SelectContent>
         </Select>
       )}

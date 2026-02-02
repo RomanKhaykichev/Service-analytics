@@ -309,6 +309,7 @@ function Dashboard() {
             onStoreChange={setStore}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
+            showStoreFilter={activeTab !== "daily"}
             showViewMode={activeTab === "daily"}
             shops={shops}
             minDate={minDate ?? undefined}
@@ -332,7 +333,7 @@ function Dashboard() {
         </div>
       ) : activeTab === "daily" ? (
         <div className="mt-6">
-          <DailyView viewMode={viewMode} dateFrom={dateFrom} dateTo={dateTo} shopId={shopId} shop={selectedShop} />
+          <DailyView viewMode={viewMode} dateFrom={dateFrom} dateTo={dateTo} shopId={null} shop={null} />
         </div>
       ) : activeTab === "products" ? (
         <div className="mt-6">
