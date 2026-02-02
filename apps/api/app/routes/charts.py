@@ -491,31 +491,31 @@ async def get_uzum_services_daily(
             "date_to": date_to_iso
         }
         
-        # 1) Expenses: storage, ads, fines (no barcode filter)
+        # 1) Expenses (expenses-report): storage, ads, fines — те же формулы, что в KPI Summary (по дням)
+        # Реклама: SUM(Стоимость) Маркетинг+Оплата минус Маркетинг+Возврат
+        # Хранение: SUM(Стоимость) Услуга='Оплата за услуги хранения' минус 'Возврат оплаты за услуги хранения'
+        # Штрафы: SUM(Сумма) Услуга LIKE '%Штраф%' и Оплата минус Возврат
         query_expenses = text(f"""
             SELECT 
                 date_written_off::date AS day,
                 COALESCE(SUM(
-                    CASE 
-                        WHEN lower(trim(COALESCE(operation_type, ''))) = 'оплата' 
-                        THEN COALESCE(cost_sum, 0)
-                        WHEN lower(trim(COALESCE(operation_type, ''))) = 'возврат' 
-                        THEN -COALESCE(cost_sum, 0)
+                    CASE
+                        WHEN upper(trim(COALESCE(service, ''))) = 'ОПЛАТА ЗА УСЛУГИ ХРАНЕНИЯ' THEN COALESCE(cost_sum, 0)
+                        WHEN upper(trim(COALESCE(service, ''))) = 'ВОЗВРАТ ОПЛАТЫ ЗА УСЛУГИ ХРАНЕНИЯ' THEN -COALESCE(cost_sum, 0)
                         ELSE 0
                     END
                 ), 0) AS storage,
                 COALESCE(SUM(
-                    CASE 
-                        WHEN (COALESCE(source, '') ILIKE '%маркетинг%' OR COALESCE(source, '') ILIKE '%marketing%')
-                             AND (COALESCE(operation_type, '') ILIKE '%оплат%' OR COALESCE(operation_type, '') ILIKE '%payment%')
-                        THEN COALESCE(cost_sum, 0)
+                    CASE
+                        WHEN upper(trim(COALESCE(source, ''))) = 'МАРКЕТИНГ' AND upper(trim(COALESCE(operation_type, ''))) = 'ОПЛАТА' THEN COALESCE(cost_sum, 0)
+                        WHEN upper(trim(COALESCE(source, ''))) = 'МАРКЕТИНГ' AND upper(trim(COALESCE(operation_type, ''))) = 'ВОЗВРАТ' THEN -COALESCE(cost_sum, 0)
                         ELSE 0
                     END
                 ), 0) AS ads,
                 COALESCE(SUM(
-                    CASE 
-                        WHEN COALESCE(service, '') ILIKE '%штраф%'
-                        THEN COALESCE(amount_sum, 0)
+                    CASE
+                        WHEN upper(COALESCE(service, '')) LIKE '%ШТРАФ%' AND upper(trim(COALESCE(operation_type, ''))) = 'ОПЛАТА' THEN COALESCE(amount_sum, 0)
+                        WHEN upper(COALESCE(service, '')) LIKE '%ШТРАФ%' AND upper(trim(COALESCE(operation_type, ''))) = 'ВОЗВРАТ' THEN -COALESCE(amount_sum, 0)
                         ELSE 0
                     END
                 ), 0) AS fines
@@ -859,21 +859,24 @@ async def get_daily_summary(
                         fe.date_written_off::date AS day,
                         COALESCE(SUM(
                             CASE
-                                WHEN lower(trim(COALESCE(fe.operation_type, ''))) = 'оплата' THEN COALESCE(fe.cost_sum, 0)
-                                WHEN lower(trim(COALESCE(fe.operation_type, ''))) = 'возврат' THEN -COALESCE(fe.cost_sum, 0)
+                                WHEN upper(trim(COALESCE(fe.service, ''))) = 'ОПЛАТА ЗА УСЛУГИ ХРАНЕНИЯ' THEN COALESCE(fe.cost_sum, 0)
+                                WHEN upper(trim(COALESCE(fe.service, ''))) = 'ВОЗВРАТ ОПЛАТЫ ЗА УСЛУГИ ХРАНЕНИЯ' THEN -COALESCE(fe.cost_sum, 0)
                                 ELSE 0
                             END
                         ), 0) AS storage,
                         COALESCE(SUM(
                             CASE
-                                WHEN (COALESCE(fe.source, '') ILIKE '%маркетинг%' OR COALESCE(fe.source, '') ILIKE '%marketing%')
-                                     AND (COALESCE(fe.operation_type, '') ILIKE '%оплат%' OR COALESCE(fe.operation_type, '') ILIKE '%payment%')
-                                THEN COALESCE(fe.cost_sum, 0)
+                                WHEN upper(trim(COALESCE(fe.source, ''))) = 'МАРКЕТИНГ' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ОПЛАТА' THEN COALESCE(fe.cost_sum, 0)
+                                WHEN upper(trim(COALESCE(fe.source, ''))) = 'МАРКЕТИНГ' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ВОЗВРАТ' THEN -COALESCE(fe.cost_sum, 0)
                                 ELSE 0
                             END
                         ), 0) AS ads,
                         COALESCE(SUM(
-                            CASE WHEN COALESCE(fe.service, '') ILIKE '%штраф%' THEN COALESCE(fe.amount_sum, 0) ELSE 0 END
+                            CASE
+                                WHEN upper(COALESCE(fe.service, '')) LIKE '%ШТРАФ%' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ОПЛАТА' THEN COALESCE(fe.amount_sum, 0)
+                                WHEN upper(COALESCE(fe.service, '')) LIKE '%ШТРАФ%' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ВОЗВРАТ' THEN -COALESCE(fe.amount_sum, 0)
+                                ELSE 0
+                            END
                         ), 0) AS penalties
                     FROM {qname('fact_expenses')} fe
                     WHERE fe.user_id = CAST(:user_id AS uuid)
@@ -937,21 +940,24 @@ async def get_daily_summary(
                         fe.date_written_off::date AS day,
                         COALESCE(SUM(
                             CASE
-                                WHEN lower(trim(COALESCE(fe.operation_type, ''))) = 'оплата' THEN COALESCE(fe.cost_sum, 0)
-                                WHEN lower(trim(COALESCE(fe.operation_type, ''))) = 'возврат' THEN -COALESCE(fe.cost_sum, 0)
+                                WHEN upper(trim(COALESCE(fe.service, ''))) = 'ОПЛАТА ЗА УСЛУГИ ХРАНЕНИЯ' THEN COALESCE(fe.cost_sum, 0)
+                                WHEN upper(trim(COALESCE(fe.service, ''))) = 'ВОЗВРАТ ОПЛАТЫ ЗА УСЛУГИ ХРАНЕНИЯ' THEN -COALESCE(fe.cost_sum, 0)
                                 ELSE 0
                             END
                         ), 0) AS storage,
                         COALESCE(SUM(
                             CASE
-                                WHEN (COALESCE(fe.source, '') ILIKE '%маркетинг%' OR COALESCE(fe.source, '') ILIKE '%marketing%')
-                                     AND (COALESCE(fe.operation_type, '') ILIKE '%оплат%' OR COALESCE(fe.operation_type, '') ILIKE '%payment%')
-                                THEN COALESCE(fe.cost_sum, 0)
+                                WHEN upper(trim(COALESCE(fe.source, ''))) = 'МАРКЕТИНГ' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ОПЛАТА' THEN COALESCE(fe.cost_sum, 0)
+                                WHEN upper(trim(COALESCE(fe.source, ''))) = 'МАРКЕТИНГ' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ВОЗВРАТ' THEN -COALESCE(fe.cost_sum, 0)
                                 ELSE 0
                             END
                         ), 0) AS ads,
                         COALESCE(SUM(
-                            CASE WHEN COALESCE(fe.service, '') ILIKE '%штраф%' THEN COALESCE(fe.amount_sum, 0) ELSE 0 END
+                            CASE
+                                WHEN upper(COALESCE(fe.service, '')) LIKE '%ШТРАФ%' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ОПЛАТА' THEN COALESCE(fe.amount_sum, 0)
+                                WHEN upper(COALESCE(fe.service, '')) LIKE '%ШТРАФ%' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ВОЗВРАТ' THEN -COALESCE(fe.amount_sum, 0)
+                                ELSE 0
+                            END
                         ), 0) AS penalties
                     FROM {qname('fact_expenses')} fe
                     WHERE fe.user_id = CAST(:user_id AS uuid)

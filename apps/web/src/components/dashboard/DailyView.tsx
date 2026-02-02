@@ -24,6 +24,7 @@ import { useDailySummary, type DailySummaryGranularity } from "@/hooks/useDailyS
 import { format, addDays } from "date-fns";
 
 interface DailyViewProps {
+  /** Группировка графика: day | week | month — только из селекта "По дням/По неделям/По месяцам" в шапке */
   viewMode?: string;
   dateFrom: string;
   dateTo: string;
@@ -75,23 +76,24 @@ function formatChartDateLabel(dateISO: string, granularity: DailySummaryGranular
 }
 
 export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, shop = null }: DailyViewProps) {
-  const [chartGranularity, setChartGranularity] = useState<DailySummaryGranularity>("day");
-  // График: date_from/date_to + гранулярность (без фильтра магазина)
+  // Гранулярность графика берётся из селекта "По дням/По неделям/По месяцам" (viewMode из SummaryFilters)
+  const timeGrouping: DailySummaryGranularity = (viewMode === "week" || viewMode === "month" ? viewMode : "day");
+  // График: date_from/date_to + granularity (group_by на бэкенде)
   const { data: chartSummaryData, isLoading: loadingChart, error: errorChart } = useDailySummary({
     dateFrom,
     dateTo,
     shopId: null,
     shop: null,
-    granularity: chartGranularity,
+    granularity: timeGrouping,
   });
-  // Таблица: date_from/date_to + магазин, всегда по дням
+  // Таблица: date_from/date_to + магазин, всегда по дням (без группировки)
   const { data: dailySummaryData, isLoading: loadingTable, error: errorTable } = useDailySummary({ dateFrom, dateTo, shopId, shop });
 
   // Данные графика: поля для 8 серий + подпись оси X по гранулярности
   const chartData = useMemo(() => {
     if (!chartSummaryData?.points?.length) return [];
     return chartSummaryData.points.map((p) => ({
-      date: formatChartDateLabel(p.date, chartGranularity),
+      date: formatChartDateLabel(p.date, timeGrouping),
       dateISO: p.date,
       orders: p.orders,
       returns: p.returns,
@@ -102,7 +104,7 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
       taxes: p.taxes,
       profit: p.profit,
     }));
-  }, [chartSummaryData?.points, chartGranularity]);
+  }, [chartSummaryData?.points, timeGrouping]);
 
   // По умолчанию видны: Заказы, Выручка, Прибыль
   const [visibleSeries, setVisibleSeries] = useState<Record<string, boolean>>({
@@ -228,7 +230,7 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart
                   data={chartData}
-                  margin={{ top: 8, right: 8, left: 4, bottom: 48 }}
+                  margin={{ top: 8, right: 8, left: 4, bottom: 16 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis
@@ -263,7 +265,7 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
                     }}
                   />
                   <Legend
-                    wrapperStyle={{ paddingTop: "4px" }}
+                    wrapperStyle={{ paddingTop: "2px", paddingBottom: 0, marginBottom: 0 }}
                     formatter={(value) => CHART_SERIES.find((s) => s.key === value)?.label ?? value}
                   />
                   {CHART_SERIES.filter((s) => visibleSeries[s.key]).map((s) => (
@@ -281,20 +283,6 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
                   ))}
                 </ComposedChart>
               </ResponsiveContainer>
-              {/* Переключатель гранулярности — overlay слева снизу внутри области графика */}
-              <div className="absolute left-3 bottom-3 z-[10] flex rounded-lg border border-border bg-card/95 backdrop-blur shadow-sm p-0.5" style={{ bottom: 12, left: 12 }}>
-                {GRANULARITY_OPTIONS.map((opt) => (
-                  <Button
-                    key={opt.value}
-                    variant={chartGranularity === opt.value ? "default" : "ghost"}
-                    size="sm"
-                    className="text-xs h-7 px-2"
-                    onClick={() => setChartGranularity(opt.value)}
-                  >
-                    {opt.label}
-                  </Button>
-                ))}
-              </div>
             </>
           )}
         </div>

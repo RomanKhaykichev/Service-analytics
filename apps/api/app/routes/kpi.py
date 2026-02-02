@@ -345,62 +345,71 @@ def kpi_summary(
             f"period={period_code}, shop_id={shop_id}"
         )
         
-        # B) EXPENSES aggregation (filtered by periodRange)
+        # B) UZUM services from expenses-report (fact_expenses): uzumAds, uzumStorage, uzumFines
+        # Фильтр: user_id и date_written_off в диапазоне date_from/date_to. По shop эти метрики НЕ фильтруются.
         expenses_where = ["user_id = CAST(:user_id AS uuid)"]
         if date_from:
             expenses_where.append("date_written_off >= CAST(:date_from AS date)")
         expenses_where.append("date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'")
-        
         expenses_where_clause = " AND ".join(expenses_where)
-        
-        # Prepare params for expenses query
         expenses_params = {**params_base}
         if date_from:
             expenses_params["date_from"] = date_from.isoformat()
-        
+
+        expenses_table = qname("fact_expenses")
+        # Формулы ТЗ: строго из fact_expenses; нормализация upper(trim(COALESCE(col,'')))
+        # Реклама: SUM(Стоимость) Маркетинг+Оплата минус SUM(Стоимость) Маркетинг+Возврат
+        # Хранение: SUM(Стоимость) Услуга='Оплата за услуги хранения' минус 'Возврат оплаты за услуги хранения'
+        # Штрафы: SUM(Сумма) Услуга LIKE '%Штраф%' и Оплата минус Возврат
         expenses_query = text(f"""
-            SELECT 
-                -- uzumAds: Источник="Маркетинг" AND Тип операции="Оплата"
-                -- ТЗ: expenses-report: sum(Стоимость (сумы)) where Источник="Маркетинг" AND Тип операции="Оплата"
+            SELECT
                 COALESCE(SUM(
-                    CASE 
-                        WHEN (COALESCE(source, '') ILIKE '%маркетинг%' OR COALESCE(source, '') ILIKE '%marketing%')
-                             AND (COALESCE(operation_type, '') ILIKE '%оплат%' OR COALESCE(operation_type, '') ILIKE '%payment%')
+                    CASE
+                        WHEN upper(trim(COALESCE(source, ''))) = 'МАРКЕТИНГ' AND upper(trim(COALESCE(operation_type, ''))) = 'ОПЛАТА'
                         THEN COALESCE(cost_sum, 0)
-                        ELSE 0
-                    END
-                ), 0) as uzum_ads,
-                -- uzumStorage: определяется только по Тип операции
-                -- ТЗ: sum(Стоимость) где Тип операции='Оплата' → прибавляется, 'Возврат' → вычитается
-                -- Фильтр по Услуга убран согласно обновлённому ТЗ
-                COALESCE(SUM(
-                    CASE 
-                        WHEN lower(trim(COALESCE(operation_type, ''))) = 'оплата' 
-                        THEN COALESCE(cost_sum, 0)
-                        WHEN lower(trim(COALESCE(operation_type, ''))) = 'возврат' 
+                        WHEN upper(trim(COALESCE(source, ''))) = 'МАРКЕТИНГ' AND upper(trim(COALESCE(operation_type, ''))) = 'ВОЗВРАТ'
                         THEN -COALESCE(cost_sum, 0)
                         ELSE 0
                     END
-                ), 0) as uzum_storage,
-                -- uzumFines: Услуга ILIKE '%Штраф%'
-                -- ТЗ: expenses-report: sum(Сумма (сумы)) where Услуга ILIKE '%Штраф%'
+                ), 0) AS uzum_ads,
                 COALESCE(SUM(
-                    CASE 
-                        WHEN COALESCE(service, '') ILIKE '%штраф%'
-                        THEN COALESCE(amount_sum, 0)
+                    CASE
+                        WHEN upper(trim(COALESCE(service, ''))) = 'ОПЛАТА ЗА УСЛУГИ ХРАНЕНИЯ'
+                        THEN COALESCE(cost_sum, 0)
+                        WHEN upper(trim(COALESCE(service, ''))) = 'ВОЗВРАТ ОПЛАТЫ ЗА УСЛУГИ ХРАНЕНИЯ'
+                        THEN -COALESCE(cost_sum, 0)
                         ELSE 0
                     END
-                ), 0) as uzum_fines
-            FROM {qname("fact_expenses")}
+                ), 0) AS uzum_storage,
+                COALESCE(SUM(
+                    CASE
+                        WHEN upper(COALESCE(service, '')) LIKE '%ШТРАФ%' AND upper(trim(COALESCE(operation_type, ''))) = 'ОПЛАТА'
+                        THEN COALESCE(amount_sum, 0)
+                        WHEN upper(COALESCE(service, '')) LIKE '%ШТРАФ%' AND upper(trim(COALESCE(operation_type, ''))) = 'ВОЗВРАТ'
+                        THEN -COALESCE(amount_sum, 0)
+                        ELSE 0
+                    END
+                ), 0) AS uzum_fines
+            FROM {expenses_table}
             WHERE {expenses_where_clause}
         """)
-        
-        expenses_result = db.execute(expenses_query, expenses_params)
-        expenses_row = expenses_result.fetchone()
-        
-        uzum_ads = float(expenses_row[0] or 0)
-        uzum_storage = float(expenses_row[1] or 0)
-        uzum_fines = float(expenses_row[2] or 0)
+        try:
+            expenses_result = db.execute(expenses_query, expenses_params)
+            expenses_row = expenses_result.fetchone()
+            uzum_ads = float(expenses_row[0] or 0)
+            uzum_storage = float(expenses_row[1] or 0)
+            uzum_fines = float(expenses_row[2] or 0)
+            logger.info(
+                f"uzum_services (expenses-report): table={expenses_table}, date_from={date_from_iso}, date_to={date_to_iso}, "
+                f"uzumAds={uzum_ads}, uzumStorage={uzum_storage}, uzumFines={uzum_fines}"
+            )
+        except Exception as ex:
+            logger.warning(
+                f"uzum_services from fact_expenses failed (returning 0): table={expenses_table}, reason={ex}"
+            )
+            uzum_ads = 0.0
+            uzum_storage = 0.0
+            uzum_fines = 0.0
         
         # Налоги 1% от выручки (завершённые заказы)
         # ТЗ: Налоги 1% = Выручка * 0.01, где Выручка = SUM(Выручка (сумы)) со статусом "Завершен"
