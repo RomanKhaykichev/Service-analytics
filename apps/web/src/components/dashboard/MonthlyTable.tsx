@@ -6,105 +6,128 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useMonthlyKpi, type MonthlyKpiItem } from "@/hooks/useMonthlyKpi";
+import { formatCurrency, formatNumber } from "@/lib/formatters";
 
-const months = [
+const MONTH_LABELS = [
   "Янв", "Фев", "Мар", "Апр", "Май", "Июн",
-  "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"
+  "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек",
 ];
 
-const rows = [
-  { id: "soldItems", label: "Всего продано товара, шт", isHighlighted: false },
-  { id: "revenue", label: "Выручка", isHighlighted: false },
-  { id: "cost", label: "Себестоимость", isHighlighted: false },
-  { id: "commission", label: "Комиссия UZUM", isHighlighted: false },
-  { id: "logistics", label: "Логистика", isHighlighted: false },
-  { id: "storage", label: "Хранение", isHighlighted: false },
-  { id: "advertising", label: "Реклама", isHighlighted: false },
-  { id: "tax", label: "Налог", isHighlighted: false },
-  { id: "other", label: "Прочее", isHighlighted: false },
-  { id: "netProfit", label: "ЧИСТАЯ ПРИБЫЛЬ", isHighlighted: true },
+type RowFormat = "quantityNoUnit" | "currency";
+
+/** Строки таблицы: метрика и способ форматирования (как на Сводке). */
+const ROWS: {
+  id: keyof MonthlyKpiItem;
+  label: string;
+  labelLine2?: string;
+  isHighlighted: boolean;
+  format: RowFormat;
+}[] = [
+  { id: "ordersCount", label: "Всего продано", isHighlighted: false, format: "quantityNoUnit" },
+  { id: "revenue", label: "Выручка", isHighlighted: false, format: "currency" },
+  { id: "productCost", label: "Себестоимость", isHighlighted: false, format: "currency" },
+  { id: "uzumCommission", label: "Комиссия", isHighlighted: false, format: "currency" },
+  { id: "uzumLogistics", label: "Логистика", isHighlighted: false, format: "currency" },
+  { id: "uzumStorage", label: "Хранение", isHighlighted: false, format: "currency" },
+  { id: "uzumAds", label: "Реклама", isHighlighted: false, format: "currency" },
+  { id: "uzumFines", label: "Штрафы", isHighlighted: false, format: "currency" },
+  { id: "taxes1pct", label: "Налог 1%", isHighlighted: false, format: "currency" },
+  { id: "extraExpenses", label: "Доп. расходы", isHighlighted: false, format: "currency" },
+  { id: "profit", label: "ЧИСТАЯ ПРИБЫЛЬ", isHighlighted: true, format: "currency" },
 ];
 
-// Sample data - months with data (0-indexed)
-const sampleData: Record<string, Record<number, string>> = {
-  soldItems: { 0: "1 245", 1: "1 532", 2: "1 875", 3: "2 110", 4: "1 980" },
-  revenue: { 0: "12 450 000", 1: "15 320 000", 2: "18 750 000", 3: "21 100 000", 4: "19 800 000" },
-  cost: { 0: "4 980 000", 1: "6 128 000", 2: "7 500 000", 3: "8 440 000", 4: "7 920 000" },
-  commission: { 0: "1 868 000", 1: "2 298 000", 2: "2 813 000", 3: "3 165 000", 4: "2 970 000" },
-  logistics: { 0: "622 500", 1: "766 000", 2: "937 500", 3: "1 055 000", 4: "990 000" },
-  storage: { 0: "124 500", 1: "153 200", 2: "187 500", 3: "211 000", 4: "198 000" },
-  advertising: { 0: "500 000", 1: "750 000", 2: "1 000 000", 3: "1 200 000", 4: "800 000" },
-  tax: { 0: "498 000", 1: "612 800", 2: "750 000", 3: "844 000", 4: "792 000" },
-  other: { 0: "100 000", 1: "120 000", 2: "150 000", 3: "180 000", 4: "160 000" },
-  netProfit: { 0: "3 757 000", 1: "4 492 000", 2: "5 412 000", 3: "6 005 000", 4: "5 970 000" },
-};
+interface MonthlyTableProps {
+  /** Год для отображения (обычно год последней даты в выгрузке — fact_sales «Дата создания»). */
+  year: number;
+  /** Магазин (seller-storage), как на Сводке. */
+  shop?: string | null;
+}
 
-export function MonthlyTable() {
-  const formatValue = (rowId: string, monthIndex: number): string => {
-    return sampleData[rowId]?.[monthIndex] ?? "—";
+export function MonthlyTable({ year, shop = null }: MonthlyTableProps) {
+  const { monthly, loading, error } = useMonthlyKpi(year, shop ?? undefined);
+
+  const formatValue = (rowId: keyof MonthlyKpiItem, monthIndex: number, format: RowFormat): string => {
+    if (!monthly || monthIndex >= monthly.length) return "—";
+    const item = monthly[monthIndex];
+    const value = item[rowId];
+    if (value == null || value === undefined) return "—";
+    if (format === "quantityNoUnit") return formatNumber(value);
+    return formatCurrency(value);
   };
 
   return (
     <div className="bg-card rounded-xl border border-border overflow-hidden">
       <div className="p-4 border-b border-border">
         <h3 className="text-lg font-semibold text-foreground">Финансовые показатели по месяцам</h3>
-        <p className="text-sm text-muted-foreground mt-1">2025 год</p>
+        <p className="text-sm text-muted-foreground mt-1">{year} год</p>
       </div>
       <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-muted/30">
-              <TableHead className="min-w-[160px] font-semibold text-foreground sticky left-0 bg-muted/30 z-10">
-                Показатель
-              </TableHead>
-              {months.map((month, index) => (
-                <TableHead 
-                  key={index} 
-                  className="text-center min-w-[100px] font-medium text-foreground"
-                >
-                  {month}
+        {loading ? (
+          <div className="p-6">
+            <Skeleton className="h-8 w-full mb-2" />
+            <Skeleton className="h-8 w-full mb-2" />
+            <Skeleton className="h-8 w-full mb-2" />
+            <Skeleton className="h-8 w-full" />
+          </div>
+        ) : error ? (
+          <div className="p-6 text-destructive text-sm">{error}</div>
+        ) : (
+          <Table className="table-fixed border-collapse [&_th]:border-r [&_td]:border-r [&_th:last-child]:border-r-0 [&_td:last-child]:border-r-0 [&_th:first-child]:border-border [&_td:first-child]:border-border [&_th:not(:first-child)]:border-border/50 [&_td:not(:first-child)]:border-border/50">
+            <TableHeader>
+              <TableRow className="bg-violet-50/80 dark:bg-violet-950/30 border-border">
+                <TableHead className="w-[140px] min-w-[140px] max-w-[140px] font-semibold text-foreground sticky left-0 bg-violet-50/80 dark:bg-violet-950/30 z-10 border-r border-border">
+                  Показатель
                 </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow 
-                key={row.id}
-                className={row.isHighlighted ? "bg-primary/10 font-semibold" : ""}
-              >
-                <TableCell 
-                  className={`sticky left-0 z-10 ${
-                    row.isHighlighted 
-                      ? "bg-primary/10 text-primary font-bold" 
-                      : "bg-card font-medium text-foreground"
-                  }`}
-                >
-                  {row.label}
-                </TableCell>
-                {months.map((_, monthIndex) => {
-                  const value = formatValue(row.id, monthIndex);
-                  const hasData = value !== "—";
-                  
-                  return (
-                    <TableCell 
-                      key={monthIndex}
-                      className={`text-center whitespace-nowrap ${
-                        row.isHighlighted 
-                          ? "text-primary font-bold" 
-                          : hasData 
-                            ? "text-foreground" 
-                            : "text-muted-foreground"
-                      }`}
-                    >
-                      {value}
-                    </TableCell>
-                  );
-                })}
+                {MONTH_LABELS.map((month, index) => (
+                  <TableHead
+                    key={index}
+                    className="text-center min-w-[100px] font-medium text-foreground bg-violet-50/80 dark:bg-violet-950/30 border-r border-border/50"
+                  >
+                    {month}
+                  </TableHead>
+                ))}
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {ROWS.map((row) => (
+                <TableRow
+                  key={row.id}
+                  className={`group ${row.isHighlighted ? "bg-primary/10 font-semibold" : ""}`}
+                >
+                  <TableCell
+                    className={`sticky left-0 z-10 w-[140px] min-w-[140px] max-w-[140px] border-r border-border transition-colors ${
+                      row.isHighlighted
+                        ? "bg-primary/10 text-primary font-bold group-hover:bg-muted/50"
+                        : "bg-card font-medium text-foreground group-hover:bg-muted/50"
+                    }`}
+                  >
+                    {row.label}
+                  </TableCell>
+                  {MONTH_LABELS.map((_, monthIndex) => {
+                    const value = formatValue(row.id, monthIndex, row.format);
+                    const hasData = value !== "—";
+                    return (
+                      <TableCell
+                        key={monthIndex}
+                        className={`text-center whitespace-nowrap border-r border-border/50 ${
+                          row.isHighlighted
+                            ? "text-primary font-bold"
+                            : hasData
+                              ? "text-foreground"
+                              : "text-muted-foreground"
+                        }`}
+                      >
+                        {value}
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </div>
     </div>
   );

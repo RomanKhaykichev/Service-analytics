@@ -299,9 +299,9 @@ function Dashboard() {
           />
         </div>
 
-        {/* Filters moved to the right (скрыты на вкладке Доп. расходы, спейсер сохраняет положение вкладок) */}
+        {/* Filters moved to the right (скрыты на вкладках Доп. расходы и По месячно, спейсер сохраняет положение вкладок) */}
         <div className="flex items-center justify-end gap-4 min-h-10">
-          {activeTab === "expenses" ? (
+          {activeTab === "expenses" || activeTab === "monthly" ? (
             <div className="min-h-10" aria-hidden />
           ) : (
             <SummaryFilters 
@@ -333,7 +333,10 @@ function Dashboard() {
       {/* Content based on active tab */}
       {activeTab === "monthly" ? (
         <div className="mt-6">
-          <MonthlyTable />
+          <MonthlyTable
+            year={maxDate ? new Date(maxDate).getFullYear() : new Date().getFullYear()}
+            shop={null}
+          />
         </div>
       ) : activeTab === "daily" ? (
         <div className="mt-6">
