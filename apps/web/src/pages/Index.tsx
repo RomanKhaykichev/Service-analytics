@@ -299,25 +299,29 @@ function Dashboard() {
           />
         </div>
 
-        {/* Filters moved to the right */}
-        <div className="flex items-center justify-end gap-4">
-          <SummaryFilters 
-            dateFrom={dateFrom}
-            dateTo={dateTo}
-            onDateRangeChange={setDateRange}
-            store={store}
-            onStoreChange={setStore}
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
-            showStoreFilter={activeTab !== "daily"}
-            showViewMode={activeTab === "daily"}
-            shops={shops}
-            minDate={minDate ?? undefined}
-            maxDate={maxDate ?? undefined}
-            boundsLoading={boundsLoading}
-            defaultDateFrom={defaultDateFrom ?? undefined}
-            defaultDateTo={defaultDateTo ?? undefined}
-          />
+        {/* Filters moved to the right (скрыты на вкладке Доп. расходы, спейсер сохраняет положение вкладок) */}
+        <div className="flex items-center justify-end gap-4 min-h-10">
+          {activeTab === "expenses" ? (
+            <div className="min-h-10" aria-hidden />
+          ) : (
+            <SummaryFilters 
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              onDateRangeChange={setDateRange}
+              store={store}
+              onStoreChange={setStore}
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              showStoreFilter={activeTab !== "daily"}
+              showViewMode={activeTab === "daily"}
+              shops={shops}
+              minDate={minDate ?? undefined}
+              maxDate={maxDate ?? undefined}
+              boundsLoading={boundsLoading}
+              defaultDateFrom={defaultDateFrom ?? undefined}
+              defaultDateTo={defaultDateTo ?? undefined}
+            />
+          )}
         </div>
       </div>
 
@@ -341,7 +345,7 @@ function Dashboard() {
         </div>
       ) : activeTab === "expenses" ? (
         <div className="mt-6">
-          <ExpensesView dateFrom={dateFrom} dateTo={dateTo} shop={selectedShop} />
+          <ExpensesView />
         </div>
       ) : activeTab === "shipment" ? (
         <div className="mt-6">

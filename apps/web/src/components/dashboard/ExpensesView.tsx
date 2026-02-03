@@ -90,8 +90,9 @@ interface ExtraExpensesResponse {
 }
 
 interface ExpensesViewProps {
-  dateFrom: string;
-  dateTo: string;
+  /** Не передавать — вкладка Доп. расходы показывает все данные без фильтров по дате и магазину */
+  dateFrom?: string;
+  dateTo?: string;
   shop?: string | null;
 }
 
@@ -115,25 +116,20 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
     comment: "",
   });
 
-  // Load expenses from API (filter by date range and shop)
-  const extraExpensesQueryKey = ['extraExpenses', dateFrom, dateTo, shop];
-  console.log("queryKey extraExpenses", { date_from: dateFrom, date_to: dateTo, queryKey: extraExpensesQueryKey });
+  const noFilters = dateFrom == null || dateTo == null;
+  const extraExpensesQueryKey = ['extraExpenses', noFilters ? 'all' : dateFrom, noFilters ? null : dateTo, shop];
+
   const { data: expensesData, isLoading: expensesLoading, error: expensesError } = useQuery({
     queryKey: extraExpensesQueryKey,
     queryFn: async () => {
-      try {
-        const params = buildQueryParams({ date_from: dateFrom, date_to: dateTo, shop });
-        const url = `/api/extra-expenses?${new URLSearchParams(params as Record<string, string>).toString()}`;
-        console.log("fetch extraExpenses", url);
-        return await apiGet<ExtraExpensesResponse>("/api/extra-expenses", params);
-      } catch (error) {
-        console.error("Failed to load expenses:", error);
-        throw error;
-      }
+      const params = noFilters
+        ? { period: "all" }
+        : buildQueryParams({ date_from: dateFrom, date_to: dateTo, shop });
+      return await apiGet<ExtraExpensesResponse>("/api/extra-expenses", params);
     },
-    enabled: !!dateFrom && !!dateTo,
-    retry: 1, // Retry once on failure
-    refetchOnWindowFocus: false, // Don't refetch on window focus
+    enabled: true,
+    retry: 1,
+    refetchOnWindowFocus: false,
   });
 
   const expenses = expensesData?.expenses || [];
@@ -152,7 +148,7 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
     onSuccess: () => {
       // Invalidate and refetch expenses list to show new row immediately
       queryClient.invalidateQueries({ queryKey: ['extraExpenses'] });
-      queryClient.refetchQueries({ queryKey: ['extraExpenses', periodCode, shop] });
+      queryClient.refetchQueries({ queryKey: extraExpensesQueryKey });
       toast.success("Расход успешно добавлен");
       setIsDialogOpen(false);
       setEditingExpense(null);
@@ -187,7 +183,7 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
     onSuccess: () => {
       // Invalidate and refetch expenses list
       queryClient.invalidateQueries({ queryKey: ['extraExpenses'] });
-      queryClient.refetchQueries({ queryKey: ['extraExpenses', periodCode, shop] });
+      queryClient.refetchQueries({ queryKey: extraExpensesQueryKey });
       toast.success("Расход успешно обновлен");
       setIsDialogOpen(false);
       setEditingExpense(null);
@@ -212,7 +208,7 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
     onSuccess: () => {
       // Invalidate and refetch expenses list to remove deleted row immediately
       queryClient.invalidateQueries({ queryKey: ['extraExpenses'] });
-      queryClient.refetchQueries({ queryKey: ['extraExpenses', periodCode, shop] });
+      queryClient.refetchQueries({ queryKey: extraExpensesQueryKey });
       toast.success("Расход успешно удален");
     },
     onError: (error) => {
@@ -552,6 +548,8 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
                           }}
                           initialFocus
                           className="pointer-events-auto"
+                          locale={ru}
+                          weekStartsOn={1}
                         />
                       </PopoverContent>
                     </Popover>
