@@ -149,6 +149,9 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
       // Invalidate and refetch expenses list to show new row immediately
       queryClient.invalidateQueries({ queryKey: ['extraExpenses'] });
       queryClient.refetchQueries({ queryKey: extraExpensesQueryKey });
+      // Чтобы на вкладках Сводка и По месячно метрики (в т.ч. доп. расходы) обновились без перезагрузки
+      queryClient.invalidateQueries({ queryKey: ['kpiSummary'] });
+      queryClient.invalidateQueries({ queryKey: ['kpiMonthly'] });
       toast.success("Расход успешно добавлен");
       setIsDialogOpen(false);
       setEditingExpense(null);
@@ -184,6 +187,8 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
       // Invalidate and refetch expenses list
       queryClient.invalidateQueries({ queryKey: ['extraExpenses'] });
       queryClient.refetchQueries({ queryKey: extraExpensesQueryKey });
+      queryClient.invalidateQueries({ queryKey: ['kpiSummary'] });
+      queryClient.invalidateQueries({ queryKey: ['kpiMonthly'] });
       toast.success("Расход успешно обновлен");
       setIsDialogOpen(false);
       setEditingExpense(null);
@@ -209,6 +214,8 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
       // Invalidate and refetch expenses list to remove deleted row immediately
       queryClient.invalidateQueries({ queryKey: ['extraExpenses'] });
       queryClient.refetchQueries({ queryKey: extraExpensesQueryKey });
+      queryClient.invalidateQueries({ queryKey: ['kpiSummary'] });
+      queryClient.invalidateQueries({ queryKey: ['kpiMonthly'] });
       toast.success("Расход успешно удален");
     },
     onError: (error) => {
