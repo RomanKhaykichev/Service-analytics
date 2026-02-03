@@ -109,7 +109,8 @@ async def check_manual_expenses_schema(
 class ExtraExpenseCreate(BaseModel):
     expense_date: date
     amount_sum: float
-    shop_id: Optional[str] = None
+    shop_id: Optional[str] = None  # UUID (legacy)
+    shop: Optional[str] = None  # Shop name from seller-storage (column "Магазин"); resolved to shop_id via dim_shop
     category: str = "Прочее"  # Default category if not provided
     comment: Optional[str] = None
 
@@ -264,16 +265,42 @@ async def create_extra_expense(
     """Create a new extra expense."""
     if expense.amount_sum < 0:
         raise HTTPException(status_code=400, detail="amount_sum must be >= 0")
-    
+
+    # Resolve shop (name from seller-storage) to shop_id (UUID) via dim_shop; prefer shop over shop_id
+    resolved_shop_id: Optional[str] = None
+    if expense.shop and expense.shop.strip():
+        shop_norm = _shop_name_norm(expense.shop)
+        if shop_norm:
+            try:
+                resolve_query = text(f"""
+                    SELECT shop_id::text FROM {qname("dim_shop")}
+                    WHERE user_id = CAST(:user_id AS uuid)
+                      AND upper(regexp_replace(trim(COALESCE(shop_name, '')), '\\s+', ' ', 'g')) = :shop_norm
+                    LIMIT 1
+                """)
+                resolve_result = db.execute(resolve_query, {"user_id": str(user_id), "shop_norm": shop_norm})
+                resolve_row = resolve_result.fetchone()
+                if resolve_row:
+                    resolved_shop_id = resolve_row[0]
+            except Exception as e:
+                logger.warning(f"Could not resolve shop name to UUID: {e}")
+    if resolved_shop_id is None and expense.shop_id and expense.shop_id.strip():
+        # Legacy: use shop_id if it looks like UUID
+        try:
+            UUID(expense.shop_id)
+            resolved_shop_id = expense.shop_id
+        except (ValueError, TypeError):
+            pass
+
     params = {
         "user_id": str(user_id),
         "expense_date": expense.expense_date.isoformat(),
         "amount_sum": expense.amount_sum,
-        "shop_id": expense.shop_id if expense.shop_id else None,
+        "shop_id": resolved_shop_id,
         "category": expense.category or "Прочее",  # Ensure category is not None
         "comment": expense.comment
     }
-    
+
     try:
         # Diagnostic queries to verify database and schema
         try:

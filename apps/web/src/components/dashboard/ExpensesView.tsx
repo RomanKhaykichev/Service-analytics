@@ -48,7 +48,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { apiGet, apiPost, apiPut, apiDelete, buildQueryParams } from "@/lib/api";
-import { useShops } from "@/hooks/useShops";
+import { useStorageShops } from "@/hooks/useStorageShops";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -97,7 +97,7 @@ interface ExpensesViewProps {
 }
 
 export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProps) {
-  const { shops, loading: shopsLoading } = useShops();
+  const { shops, loading: shopsLoading } = useStorageShops();
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<ExtraExpense | null>(null);
@@ -139,7 +139,7 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
     mutationFn: async (expense: {
       expense_date: string;
       amount_sum: number;
-      shop_id?: string | null;
+      shop?: string | null;
       category?: string | null;
       comment?: string | null;
     }) => {
@@ -261,17 +261,24 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
       return;
     }
 
-    const expenseData = {
-      expense_date: format(newExpense.date, "yyyy-MM-dd"),
-      amount_sum: Number(newExpense.amount),
-      shop_id: newExpense.shop_id || null,
-      category: newExpense.type,
-      comment: newExpense.comment || null,
-    };
-
     if (editingExpense) {
+      const expenseData = {
+        expense_date: format(newExpense.date, "yyyy-MM-dd"),
+        amount_sum: Number(newExpense.amount),
+        shop_id: newExpense.shop_id || null,
+        category: newExpense.type,
+        comment: newExpense.comment || null,
+      };
       updateMutation.mutate({ id: editingExpense.id, expense: expenseData });
     } else {
+      // При создании отправляем shop (название из seller-storage); бэкенд резолвит в shop_id
+      const expenseData = {
+        expense_date: format(newExpense.date, "yyyy-MM-dd"),
+        amount_sum: Number(newExpense.amount),
+        shop: newExpense.shop_id || null,
+        category: newExpense.type,
+        comment: newExpense.comment || null,
+      };
       createMutation.mutate(expenseData);
     }
   };
@@ -590,30 +597,42 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
                     />
                   </div>
 
-                  {/* Shop */}
+                  {/* Shop: список из seller-storage (колонка «Магазин»); при редактировании добавляем текущий магазин в опции */}
                   <div className="grid gap-2">
                     <Label>Магазин</Label>
                     <Select
-                      value={newExpense.shop_id}
-                      onValueChange={(value) =>
-                        setNewExpense({ ...newExpense, shop_id: value || "" })
+                      value={
+                        shopsLoading
+                          ? "__loading__"
+                          : (newExpense.shop_id === "" || newExpense.shop_id == null ? "__none__" : newExpense.shop_id)
                       }
+                      onValueChange={(value) => {
+                        if (value === "__loading__" || value === "__empty__") return;
+                        setNewExpense({ ...newExpense, shop_id: value === "__none__" ? "" : value });
+                      }}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Выберите магазин (опционально)" />
                       </SelectTrigger>
                       <SelectContent>
                         {shopsLoading ? (
-                          <SelectItem value="" disabled>Загрузка...</SelectItem>
-                        ) : shops.length === 0 ? (
-                          <SelectItem value="" disabled>Нет доступных магазинов</SelectItem>
+                          <SelectItem value="__loading__" disabled>Загрузка...</SelectItem>
                         ) : (
                           <>
-                            {shops.map((shop) => (
-                              <SelectItem key={shop.shop_id} value={shop.shop_id}>
-                                {shop.shop_name || shop.shop_id}
+                            <SelectItem value="__none__">Не выбран</SelectItem>
+                            {(shops ?? []).filter((s) => s?.shop_id != null && String(s.shop_id).trim() !== "").map((shop) => (
+                              <SelectItem key={String(shop.shop_id)} value={String(shop.shop_id)}>
+                                {shop.shop_name ?? shop.shop_id ?? ""}
                               </SelectItem>
                             ))}
+                            {editingExpense?.shop_id && !(shops ?? []).some((s) => s?.shop_id === editingExpense?.shop_id) && (
+                              <SelectItem value={String(editingExpense.shop_id)}>
+                                {editingExpense.shop_name ?? editingExpense.shop_id ?? ""}
+                              </SelectItem>
+                            )}
+                            {(shops ?? []).length === 0 && !editingExpense?.shop_id ? (
+                              <SelectItem value="__empty__" disabled>Нет доступных магазинов (загрузите seller-storage)</SelectItem>
+                            ) : null}
                           </>
                         )}
                       </SelectContent>
