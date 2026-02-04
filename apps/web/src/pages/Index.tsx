@@ -353,7 +353,7 @@ function Dashboard() {
         </div>
       ) : activeTab === "shipment" ? (
         <div className="mt-6">
-          <ShipmentView />
+          <ShipmentView shop={store === "all" ? undefined : store} />
         </div>
       ) : (
         <>

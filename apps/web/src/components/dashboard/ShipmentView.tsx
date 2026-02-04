@@ -15,12 +15,17 @@ import {
 import { Package, Calculator, Warehouse } from "lucide-react";
 import { useShipmentRecommendations } from "@/hooks/useShipmentRecommendations";
 
-export function ShipmentView() {
+interface ShipmentViewProps {
+  /** Фильтр по магазину (seller-storage); фильтрует таблицу через fact_storage_snapshot по баркодам */
+  shop?: string | null;
+}
+
+export function ShipmentView({ shop }: ShipmentViewProps) {
   const [daysUntilShipment, setDaysUntilShipment] = useState<number>(7);
   const [daysForCalculation, setDaysForCalculation] = useState<number>(30);
   const [considerStock, setConsiderStock] = useState<string>("yes");
 
-  const { data, isLoading, error } = useShipmentRecommendations();
+  const { data, isLoading, error } = useShipmentRecommendations(shop);
   const items = data?.items ?? [];
 
   return (

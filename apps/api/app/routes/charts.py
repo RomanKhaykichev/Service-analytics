@@ -638,34 +638,59 @@ def _str_val(v) -> Optional[str]:
 @router.get("/charts/shipment-recommendations", response_model=ShipmentRecommendationsResponse)
 async def get_shipment_recommendations(
     user_id: UUID = Depends(require_user),
+    shop: Optional[str] = Query(default=None, description="Shop name (seller-storage) — фильтр по магазину через fact_storage_snapshot по баркодам"),
     db: Session = Depends(get_db)
 ):
     """Рекомендации по отгрузке: данные из left-out-report_old (Оборачиваемость < 60).
     Товар=Наименование, Артикул=SKU, Штрихкод, На складе=Общий остаток, Продаж в день=Среднесуточные продажи,
     Рекомендуемое кол-во='-', Запланировано к отгрузке=К отправке.
+    При shop: только строки, чей баркод есть в fact_storage_snapshot для выбранного магазина.
     """
     try:
-        # Последний батч leftout_old по user_id
-        batch_query = text(f"""
-            SELECT upload_batch_id
-            FROM {qname("fact_leftout_old_snapshot")}
-            WHERE user_id = CAST(:user_id AS uuid)
-            ORDER BY loaded_at DESC NULLS LAST
-            LIMIT 1
-        """)
-        batch_result = db.execute(batch_query, {"user_id": str(user_id)})
+        shop_norm = normalize_shop(shop)
+        params_batch = {"user_id": str(user_id)}
+        shop_filter_sql = ""
+        if shop_norm:
+            params_batch["shop_norm"] = shop_norm
+            shop_filter_sql = "\n              " + storage_barcode_filter_sql(
+                "sl", prefix_and=True, outer_barcode_norm_expr=barcode_norm_sql("sl.barcode_raw")
+            )
+
+        # Последний батч: без shop — из fact_leftout_old_snapshot; с shop — из stg_leftout_old с фильтром по баркодам магазина
+        if not shop_norm:
+            batch_query = text(f"""
+                SELECT upload_batch_id
+                FROM {qname("fact_leftout_old_snapshot")}
+                WHERE user_id = CAST(:user_id AS uuid)
+                ORDER BY loaded_at DESC NULLS LAST
+                LIMIT 1
+            """)
+        else:
+            batch_query = text(f"""
+                SELECT sl.upload_batch_id
+                FROM {qname("stg_leftout_old")} sl
+                WHERE sl.user_id = CAST(:user_id AS uuid)
+                {shop_filter_sql}
+                ORDER BY sl.upload_batch_id DESC NULLS LAST
+                LIMIT 1
+            """)
+        batch_result = db.execute(batch_query, params_batch)
         batch_row = batch_result.fetchone()
         if not batch_row or not batch_row[0]:
             return ShipmentRecommendationsResponse(items=[])
 
         batch_id = str(batch_row[0])
+        params_stg = {"user_id": str(user_id), "batch_id": batch_id}
+        if shop_norm:
+            params_stg["shop_norm"] = shop_norm
         stg_query = text(f"""
-            SELECT data, barcode_raw, in_sale_raw
-            FROM {qname("stg_leftout_old")}
-            WHERE user_id = CAST(:user_id AS uuid)
-              AND upload_batch_id = CAST(:batch_id AS uuid)
+            SELECT sl.data, sl.barcode_raw, sl.in_sale_raw
+            FROM {qname("stg_leftout_old")} sl
+            WHERE sl.user_id = CAST(:user_id AS uuid)
+              AND sl.upload_batch_id = CAST(:batch_id AS uuid)
+            {shop_filter_sql}
         """)
-        stg_result = db.execute(stg_query, {"user_id": str(user_id), "batch_id": batch_id})
+        stg_result = db.execute(stg_query, params_stg)
         rows = stg_result.fetchall()
 
         items: list[ShipmentRecommendationItem] = []

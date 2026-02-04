@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiGet } from "@/lib/api";
+import { apiGet, buildQueryParams } from "@/lib/api";
 
 export interface ShipmentRecommendationItem {
   product_name: string | null;
@@ -15,11 +15,13 @@ interface ShipmentRecommendationsResponse {
   items: ShipmentRecommendationItem[];
 }
 
-export function useShipmentRecommendations() {
+/** shop — значение фильтра магазина (seller-storage, нормализованное имя); при "all" не передавать */
+export function useShipmentRecommendations(shop?: string | null) {
   return useQuery({
-    queryKey: ["shipment-recommendations"],
+    queryKey: ["shipment-recommendations", shop ?? "all"],
     queryFn: async () => {
-      return await apiGet<ShipmentRecommendationsResponse>("/api/charts/shipment-recommendations");
+      const params = shop ? buildQueryParams({ shop }) : undefined;
+      return await apiGet<ShipmentRecommendationsResponse>("/api/charts/shipment-recommendations", params);
     },
   });
 }
