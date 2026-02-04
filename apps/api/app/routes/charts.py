@@ -493,15 +493,15 @@ async def get_uzum_services_daily(
         
         # 1) Expenses (expenses-report): storage, ads, fines — те же формулы, что в KPI Summary (по дням)
         # Реклама: SUM(Стоимость) Маркетинг+Оплата минус Маркетинг+Возврат
-        # Хранение: SUM(Стоимость) Услуга='Оплата за услуги хранения' минус 'Возврат оплаты за услуги хранения'
+        # Хранение: SUM(Стоимость) Источник='Склад' и Тип операции='Оплата' минус Источник='Склад' и Тип операции='Возврат'
         # Штрафы: SUM(Сумма) Услуга LIKE '%Штраф%' и Оплата минус Возврат
         query_expenses = text(f"""
             SELECT 
                 date_written_off::date AS day,
                 COALESCE(SUM(
                     CASE
-                        WHEN upper(trim(COALESCE(service, ''))) = 'ОПЛАТА ЗА УСЛУГИ ХРАНЕНИЯ' THEN COALESCE(cost_sum, 0)
-                        WHEN upper(trim(COALESCE(service, ''))) = 'ВОЗВРАТ ОПЛАТЫ ЗА УСЛУГИ ХРАНЕНИЯ' THEN -COALESCE(cost_sum, 0)
+                        WHEN upper(trim(COALESCE(source, ''))) = 'СКЛАД' AND upper(trim(COALESCE(operation_type, ''))) = 'ОПЛАТА' THEN COALESCE(cost_sum, 0)
+                        WHEN upper(trim(COALESCE(source, ''))) = 'СКЛАД' AND upper(trim(COALESCE(operation_type, ''))) = 'ВОЗВРАТ' THEN -COALESCE(cost_sum, 0)
                         ELSE 0
                     END
                 ), 0) AS storage,
@@ -859,8 +859,8 @@ async def get_daily_summary(
                         fe.date_written_off::date AS day,
                         COALESCE(SUM(
                             CASE
-                                WHEN upper(trim(COALESCE(fe.service, ''))) = 'ОПЛАТА ЗА УСЛУГИ ХРАНЕНИЯ' THEN COALESCE(fe.cost_sum, 0)
-                                WHEN upper(trim(COALESCE(fe.service, ''))) = 'ВОЗВРАТ ОПЛАТЫ ЗА УСЛУГИ ХРАНЕНИЯ' THEN -COALESCE(fe.cost_sum, 0)
+                                WHEN upper(trim(COALESCE(fe.source, ''))) = 'СКЛАД' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ОПЛАТА' THEN COALESCE(fe.cost_sum, 0)
+                                WHEN upper(trim(COALESCE(fe.source, ''))) = 'СКЛАД' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ВОЗВРАТ' THEN -COALESCE(fe.cost_sum, 0)
                                 ELSE 0
                             END
                         ), 0) AS storage,
@@ -940,8 +940,8 @@ async def get_daily_summary(
                         fe.date_written_off::date AS day,
                         COALESCE(SUM(
                             CASE
-                                WHEN upper(trim(COALESCE(fe.service, ''))) = 'ОПЛАТА ЗА УСЛУГИ ХРАНЕНИЯ' THEN COALESCE(fe.cost_sum, 0)
-                                WHEN upper(trim(COALESCE(fe.service, ''))) = 'ВОЗВРАТ ОПЛАТЫ ЗА УСЛУГИ ХРАНЕНИЯ' THEN -COALESCE(fe.cost_sum, 0)
+                                WHEN upper(trim(COALESCE(fe.source, ''))) = 'СКЛАД' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ОПЛАТА' THEN COALESCE(fe.cost_sum, 0)
+                                WHEN upper(trim(COALESCE(fe.source, ''))) = 'СКЛАД' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ВОЗВРАТ' THEN -COALESCE(fe.cost_sum, 0)
                                 ELSE 0
                             END
                         ), 0) AS storage,

@@ -359,7 +359,7 @@ def kpi_summary(
         expenses_table = qname("fact_expenses")
         # Формулы ТЗ: строго из fact_expenses; нормализация upper(trim(COALESCE(col,'')))
         # Реклама: SUM(Стоимость) Маркетинг+Оплата минус SUM(Стоимость) Маркетинг+Возврат
-        # Хранение: SUM(Стоимость) Услуга='Оплата за услуги хранения' минус 'Возврат оплаты за услуги хранения'
+        # Хранение: SUM(Стоимость) Источник='Склад' и Тип операции='Оплата' минус SUM(Стоимость) Источник='Склад' и Тип операции='Возврат'
         # Штрафы: SUM(Сумма) Услуга LIKE '%Штраф%' и Оплата минус Возврат
         expenses_query = text(f"""
             SELECT
@@ -374,9 +374,9 @@ def kpi_summary(
                 ), 0) AS uzum_ads,
                 COALESCE(SUM(
                     CASE
-                        WHEN upper(trim(COALESCE(service, ''))) = 'ОПЛАТА ЗА УСЛУГИ ХРАНЕНИЯ'
+                        WHEN upper(trim(COALESCE(source, ''))) = 'СКЛАД' AND upper(trim(COALESCE(operation_type, ''))) = 'ОПЛАТА'
                         THEN COALESCE(cost_sum, 0)
-                        WHEN upper(trim(COALESCE(service, ''))) = 'ВОЗВРАТ ОПЛАТЫ ЗА УСЛУГИ ХРАНЕНИЯ'
+                        WHEN upper(trim(COALESCE(source, ''))) = 'СКЛАД' AND upper(trim(COALESCE(operation_type, ''))) = 'ВОЗВРАТ'
                         THEN -COALESCE(cost_sum, 0)
                         ELSE 0
                     END

@@ -43,6 +43,8 @@ interface SummaryFiltersProps {
   onViewModeChange?: (mode: string) => void;
   /** Показывать селект магазина (на вкладке "По дням" скрыт) */
   showStoreFilter?: boolean;
+  /** Показывать выбор периода (на вкладке "Отгрузка" скрыт) */
+  showPeriodFilter?: boolean;
   showViewMode?: boolean;
   shops?: Shop[];
   /** Границы дат из fact_sales (sells-report). Если нет — пикер отключён. */
@@ -63,6 +65,7 @@ export function SummaryFilters({
   viewMode = "day",
   onViewModeChange,
   showStoreFilter = true,
+  showPeriodFilter = true,
   showViewMode = false,
   shops = [],
   minDate,
@@ -141,7 +144,7 @@ export function SummaryFilters({
         </Select>
       )}
 
-      {boundsLoading ? (
+      {showPeriodFilter && (boundsLoading ? (
         <Skeleton className="h-9 w-[240px]" />
       ) : !hasBounds ? (
         <TooltipProvider>
@@ -154,9 +157,9 @@ export function SummaryFilters({
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
-      ) : null}
+      ) : null)}
 
-      {hasBounds && (
+      {showPeriodFilter && hasBounds && (
         <Popover open={open} onOpenChange={handleOpen}>
           <PopoverTrigger asChild>{periodButton}</PopoverTrigger>
           <PopoverContent className="w-auto p-4" align="start">

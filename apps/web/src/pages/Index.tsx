@@ -299,7 +299,7 @@ function Dashboard() {
           />
         </div>
 
-        {/* Filters moved to the right (скрыты на вкладках Доп. расходы и По месячно, спейсер сохраняет положение вкладок) */}
+        {/* Filters: скрыты на Доп. расходы и По месячно; на Отгрузка — только магазин (без периода) */}
         <div className="flex items-center justify-end gap-4 min-h-10">
           {activeTab === "expenses" || activeTab === "monthly" ? (
             <div className="min-h-10" aria-hidden />
@@ -314,6 +314,7 @@ function Dashboard() {
               onViewModeChange={setViewMode}
               showStoreFilter={activeTab !== "daily"}
               showViewMode={activeTab === "daily"}
+              showPeriodFilter={activeTab !== "shipment"}
               shops={shops}
               minDate={minDate ?? undefined}
               maxDate={maxDate ?? undefined}

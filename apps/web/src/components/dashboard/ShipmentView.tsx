@@ -62,7 +62,7 @@ export function ShipmentView() {
                 className="max-w-[200px]"
               />
               <p className="text-sm text-muted-foreground">
-                Укажите за сколько дней до отгрузки нужно подготовить товар
+                Укажите через сколько дней планируется отгрузка товара начиная с даты выгрузки последнего отчета
               </p>
             </div>
           </CardContent>
