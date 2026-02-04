@@ -35,6 +35,8 @@ from app.schemas import (
     DailySummaryResponse,
     DailySummaryPoint,
     DailySummaryFilters,
+    ShipmentRecommendationsResponse,
+    ShipmentRecommendationItem,
 )
 
 logger = logging.getLogger(__name__)
@@ -605,6 +607,97 @@ async def get_uzum_services_daily(
         raise
     except Exception as e:
         logger.error(f"Error in get_uzum_services_daily: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
+
+
+def _parse_turnover(data: dict) -> Optional[float]:
+    """Из data (jsonb) извлечь оборачиваемость; ключи: Оборачиваемость, дней / Оборачиваемость."""
+    if not data:
+        return None
+    raw = data.get("Оборачиваемость, дней") or data.get("Оборачиваемость")
+    if raw is None:
+        return None
+    try:
+        if isinstance(raw, (int, float)):
+            return float(raw)
+        s = str(raw).strip().replace(",", ".")
+        return float(s) if s else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _str_val(v) -> Optional[str]:
+    if v is None:
+        return None
+    return str(v).strip() or None
+
+
+@router.get("/charts/shipment-recommendations", response_model=ShipmentRecommendationsResponse)
+async def get_shipment_recommendations(
+    user_id: UUID = Depends(require_user),
+    db: Session = Depends(get_db)
+):
+    """Рекомендации по отгрузке: данные из left-out-report_old (Оборачиваемость < 60).
+    Товар=Наименование, Артикул=SKU, Штрихкод, На складе=Общий остаток, Продаж в день=Среднесуточные продажи,
+    Рекомендуемое кол-во='-', Запланировано к отгрузке=К отправке.
+    """
+    try:
+        # Последний батч leftout_old по user_id
+        batch_query = text(f"""
+            SELECT upload_batch_id
+            FROM {qname("fact_leftout_old_snapshot")}
+            WHERE user_id = CAST(:user_id AS uuid)
+            ORDER BY loaded_at DESC NULLS LAST
+            LIMIT 1
+        """)
+        batch_result = db.execute(batch_query, {"user_id": str(user_id)})
+        batch_row = batch_result.fetchone()
+        if not batch_row or not batch_row[0]:
+            return ShipmentRecommendationsResponse(items=[])
+
+        batch_id = str(batch_row[0])
+        stg_query = text(f"""
+            SELECT data, barcode_raw, in_sale_raw
+            FROM {qname("stg_leftout_old")}
+            WHERE user_id = CAST(:user_id AS uuid)
+              AND upload_batch_id = CAST(:batch_id AS uuid)
+        """)
+        stg_result = db.execute(stg_query, {"user_id": str(user_id), "batch_id": batch_id})
+        rows = stg_result.fetchall()
+
+        items: list[ShipmentRecommendationItem] = []
+        for row in rows:
+            data = row[0]  # jsonb -> dict
+            if not isinstance(data, dict):
+                continue
+            turnover = _parse_turnover(data)
+            if turnover is None or turnover >= 60:
+                continue
+            barcode_raw = _str_val(row[1]) if len(row) > 1 else None
+            in_sale_raw = _str_val(row[2]) if len(row) > 2 else None
+            product_name = _str_val(data.get("Наименование") or data.get("Название товара"))
+            sku = _str_val(data.get("SKU"))
+            barcode = _str_val(data.get("Штрихкод")) or barcode_raw
+            stock = _str_val(data.get("Общий остаток") or data.get("В продаже")) or in_sale_raw
+            sales_per_day = _str_val(data.get("Среднесуточные продажи"))
+            to_ship = _str_val(data.get("К отправке"))
+            items.append(ShipmentRecommendationItem(
+                product_name=product_name,
+                sku=sku,
+                barcode=barcode,
+                stock=stock,
+                sales_per_day=sales_per_day,
+                recommended_qty="-",
+                to_ship=to_ship,
+            ))
+        return ShipmentRecommendationsResponse(items=items)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_shipment_recommendations: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Internal server error: {str(e)}"

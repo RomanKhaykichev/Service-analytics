@@ -13,31 +13,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Package, Calculator, Warehouse } from "lucide-react";
-
-// Mock data for the table
-const mockProducts = [
-  { id: 1, name: "Футболка базовая", article: "FT-001", barcode: "4680012345678", stock: 150, salesPerDay: 12, recommended: 84 },
-  { id: 2, name: "Джинсы классические", article: "JN-002", barcode: "4680012345679", stock: 80, salesPerDay: 5, recommended: 35 },
-  { id: 3, name: "Куртка зимняя", article: "KR-003", barcode: "4680012345680", stock: 45, salesPerDay: 3, recommended: 21 },
-  { id: 4, name: "Кроссовки спортивные", article: "KS-004", barcode: "4680012345681", stock: 200, salesPerDay: 18, recommended: 126 },
-  { id: 5, name: "Рубашка офисная", article: "RB-005", barcode: "4680012345682", stock: 60, salesPerDay: 4, recommended: 28 },
-];
+import { useShipmentRecommendations } from "@/hooks/useShipmentRecommendations";
 
 export function ShipmentView() {
   const [daysUntilShipment, setDaysUntilShipment] = useState<number>(7);
   const [daysForCalculation, setDaysForCalculation] = useState<number>(30);
   const [considerStock, setConsiderStock] = useState<string>("yes");
-  const [calculatedData, setCalculatedData] = useState(mockProducts);
 
-  const handleCalculate = () => {
-    const updated = mockProducts.map(product => ({
-      ...product,
-      recommended: considerStock === "yes" 
-        ? Math.max(0, (product.salesPerDay * daysUntilShipment) - product.stock)
-        : product.salesPerDay * daysUntilShipment
-    }));
-    setCalculatedData(updated);
-  };
+  const { data, isLoading, error } = useShipmentRecommendations();
+  const items = data?.items ?? [];
 
   return (
     <div className="space-y-6">
@@ -114,7 +98,7 @@ export function ShipmentView() {
                   <Label htmlFor="stock-no">Нет</Label>
                 </div>
               </RadioGroup>
-              <Button onClick={handleCalculate} className="w-full">
+              <Button type="button" className="w-full" disabled>
                 Рассчитать
               </Button>
             </div>
@@ -122,7 +106,7 @@ export function ShipmentView() {
         </Card>
       </div>
 
-      {/* Shipment calculation table */}
+      {/* Рекомендации по отгрузке: left-out-report_old, Оборачиваемость < 60 */}
       <Card>
         <CardHeader>
           <CardTitle>Рекомендации по отгрузке</CardTitle>
@@ -135,24 +119,56 @@ export function ShipmentView() {
                   <TableHead>Товар</TableHead>
                   <TableHead>Артикул</TableHead>
                   <TableHead>Штрихкод</TableHead>
-                  <TableHead className="text-right">На складе</TableHead>
-                  <TableHead className="text-right">Продаж в день</TableHead>
-                  <TableHead className="text-right">Рекомендуемое кол-во</TableHead>
+                  <TableHead className="text-center whitespace-nowrap">На складе</TableHead>
+                  <TableHead className="text-center">
+                    Продаж
+                    <br />
+                    в день
+                  </TableHead>
+                  <TableHead className="text-center">
+                    Рекомендуемое
+                    <br />
+                    кол-во
+                  </TableHead>
+                  <TableHead className="text-center">
+                    Запланировано
+                    <br />
+                    к отгрузке
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {calculatedData.map((product) => (
-                  <TableRow key={product.id}>
-                    <TableCell className="font-medium">{product.name}</TableCell>
-                    <TableCell>{product.article}</TableCell>
-                    <TableCell className="font-mono text-sm">{product.barcode}</TableCell>
-                    <TableCell className="text-right">{product.stock}</TableCell>
-                    <TableCell className="text-right">{product.salesPerDay}</TableCell>
-                    <TableCell className="text-right font-semibold text-primary">
-                      {product.recommended}
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                      Загрузка…
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : error ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-destructive py-8">
+                      Ошибка загрузки данных
+                    </TableCell>
+                  </TableRow>
+                ) : items.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                      Нет данных. Загрузите отчёт «Остатки (старый)» (left-out-report_old) с колонкой Оборачиваемость &lt; 60.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  items.map((row, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell className="font-medium">{row.product_name ?? "—"}</TableCell>
+                      <TableCell>{row.sku ?? "—"}</TableCell>
+                      <TableCell className="font-mono text-sm">{row.barcode ?? "—"}</TableCell>
+                      <TableCell className="text-center">{row.stock ?? "—"}</TableCell>
+                      <TableCell className="text-center">{row.sales_per_day ?? "—"}</TableCell>
+                      <TableCell className="text-center">{row.recommended_qty}</TableCell>
+                      <TableCell className="text-center">{row.to_ship ?? "—"}</TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>

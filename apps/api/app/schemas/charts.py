@@ -150,3 +150,18 @@ class DailySummaryResponse(BaseModel):
     points: list[DailySummaryPoint]
     period: PeriodInfo
     filters: DailySummaryFilters
+
+
+# Shipment recommendations (left-out-report_old, Оборачиваемость < 60)
+class ShipmentRecommendationItem(BaseModel):
+    product_name: Optional[str] = None  # Товар = Наименование
+    sku: Optional[str] = None  # Артикул = SKU
+    barcode: Optional[str] = None  # Штрихкод
+    stock: Optional[str] = None  # На складе = Общий остаток
+    sales_per_day: Optional[str] = None  # Продаж в день = Среднесуточные продажи
+    recommended_qty: str = "-"  # Рекомендуемое кол-во
+    to_ship: Optional[str] = None  # Запланировано к отгрузке = К отправке
+
+
+class ShipmentRecommendationsResponse(BaseModel):
+    items: list[ShipmentRecommendationItem]
