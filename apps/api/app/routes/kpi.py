@@ -255,8 +255,8 @@ def kpi_summary(
         # Заказы: SELECT SUM(qty), SUM(revenue_sum) FROM fact_sales WHERE ...
         # В обработке: SELECT SUM(qty), SUM(revenue_sum) FROM fact_sales WHERE ... AND lower(trim(status))='в обработке'
         # Выкупы: SELECT SUM(qty), SUM(revenue_sum) FROM fact_sales WHERE ... AND lower(trim(status))='завершен'
-        # Возвраты сумма: SELECT SUM(returns_qty * price_sum) FROM fact_sales WHERE ... AND lower(trim(status)) IN ('завершен', 'отменен/отменён')
-        # Return rate: SELECT (SUM(returns_qty)/NULLIF(SUM(qty),0))*100 FROM fact_sales WHERE ...
+        # Возвраты = файл sells_report из колонки Количество со статусом из колонки Статус «отменен»
+        # Возвраты (сумма после /) = (Количество * Цена (сумы)) со статусом «отменен»
         # Avg check: SELECT SUM(revenue_sum)/NULLIF(SUM(qty),0) FROM fact_sales WHERE ... AND lower(trim(status))='завершен'
         
         sales_query = text(f"""
@@ -271,37 +271,20 @@ def kpi_summary(
                 -- completedCount/completedValue: SUM(qty) and SUM(revenue_sum) WHERE status='завершен'
                 COALESCE(SUM(CASE WHEN {completed_status_condition} THEN qty ELSE 0 END), 0) as completed_count,
                 COALESCE(SUM(CASE WHEN {completed_status_condition} THEN revenue_sum ELSE 0 END), 0) as completed_value,
-                -- returnsCount: SUM(returns_qty) from all rows (same filters period/shop)
-                COALESCE(SUM(returns_qty), 0) as returns_count,
-                -- returnsValue: SUM(returns_qty * price_sum) WHERE status IN ('завершен', 'отменен/отменён')
-                COALESCE(SUM(
-                    CASE 
-                        WHEN ({completed_status_condition} OR {cancelled_status_condition})
-                        THEN COALESCE(returns_qty, 0) * COALESCE(price_sum, 0)
-                        ELSE 0
-                    END
-                ), 0) as returns_value,
-                -- returnsValueCompleted: SUM(returns_qty * price_sum) WHERE status='завершен' (только для завершенных заказов)
-                COALESCE(SUM(
-                    CASE 
-                        WHEN {completed_status_condition}
-                        THEN COALESCE(returns_qty, 0) * COALESCE(price_sum, 0)
-                        ELSE 0
-                    END
-                ), 0) as returns_value_completed,
+                -- Возвраты = файл sells_report из колонки Количество со статусом «отменен»
+                COALESCE(SUM(CASE WHEN {cancelled_status_condition} THEN qty ELSE 0 END), 0) as returns_count,
+                -- Возвраты (после /) = (Количество * Цена (сумы)) со статусом «отменен»
+                COALESCE(SUM(CASE WHEN {cancelled_status_condition} THEN COALESCE(qty, 0) * COALESCE(price_sum, 0) ELSE 0 END), 0) as returns_value,
+                -- returns_value_completed: оставлено для совместимости API (равно returns_value при новой формуле)
+                COALESCE(SUM(CASE WHEN {cancelled_status_condition} THEN COALESCE(qty, 0) * COALESCE(price_sum, 0) ELSE 0 END), 0) as returns_value_completed,
                 -- uzumCommission/uzumLogistics: только completed
+                -- Комиссия UZUM = файл sells_report из колонки Комиссия маркетплейса (сумы) со статусом из колонки Статус «Завершен»
                 COALESCE(SUM(CASE WHEN {completed_status_condition} THEN commission_sum ELSE 0 END), 0) as uzum_commission,
+                -- Логистика UZUM = файл sells_report из колонки Логистический сбор со статусом «Завершен»
                 COALESCE(SUM(CASE WHEN {completed_status_condition} THEN logistics_sum ELSE 0 END), 0) as uzum_logistics,
-                -- productCost: completed OR processing (для productCost в ответе)
-                COALESCE(SUM(
-                    CASE 
-                        WHEN {completed_status_condition} OR {processing_status_condition}
-                        THEN cogs_sum 
-                        ELSE 0 
-                    END
-                ), 0) as product_cost_total,
-                -- productCost: completed (для salesProfitability и ROI)
-                COALESCE(SUM(CASE WHEN {completed_status_condition} THEN cogs_sum ELSE 0 END), 0) as product_cost_completed
+                -- Себест. прод. тов. = файл sells_report (из колонки Себестоимость (сумы) * из колонки Количество) со статусом из колонки Статус «Завершен»
+                COALESCE(SUM(CASE WHEN {completed_status_condition} THEN cogs_sum * qty ELSE 0 END), 0) as product_cost_total,
+                COALESCE(SUM(CASE WHEN {completed_status_condition} THEN cogs_sum * qty ELSE 0 END), 0) as product_cost_completed
             FROM {qname("fact_sales")}
             WHERE {sales_where_clause}
         """)
@@ -331,7 +314,7 @@ def kpi_summary(
         )
         
         # Derived metrics from sales
-        # Return rate: (SUM(returns_qty) / SUM(qty)) * 100 (from all rows, same filters)
+        # Return rate: (Возвраты qty / Заказы qty) * 100 = (SUM(qty) по отменен / SUM(qty) всего) * 100
         return_rate = (returns_count / orders_count * 100) if orders_count > 0 else 0.0
         # Average check: SUM(revenue_sum)/SUM(qty) WHERE status='завершен'
         average_check = (completed_value / completed_count) if completed_count > 0 else 0.0

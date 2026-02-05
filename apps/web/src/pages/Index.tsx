@@ -193,7 +193,7 @@ function Dashboard() {
       icon: <Boxes className="w-4 h-4" />,
       label: "Себест. прод. тов.",
       value: formatCurrency(metrics.productCost),
-      tooltip: "Себестоимость × количество (в обработке + завершен)"
+      tooltip: "Себестоимость × количество (со статусом завершен)"
     },
     {
       icon: <Receipt className="w-4 h-4" />,

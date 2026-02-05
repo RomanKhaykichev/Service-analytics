@@ -36,11 +36,15 @@ def get_sales_metrics_sql(
         dict with SQL expressions for:
         - orders_qty: SUM(qty) WITHOUT status filter (same as KPI ordersCount)
         - buyouts_qty: SUM(qty) WHERE status='завершен' (same as KPI completedCount)
-        - returns_qty: SUM(returns_qty) from all rows (same as KPI returnsCount)
+        - returns_qty: SUM(qty) WHERE status='отменен' (same as KPI returnsCount)
+          Возвраты = файл sells_report из колонки Количество со статусом из колонки Статус «отменен»
         - revenue_sum: SUM(revenue_sum) WHERE status='завершен' (same as KPI revenue)
         - commission_sum: SUM(commission_sum) WHERE status='завершен' (same as KPI uzumCommission)
+          Комиссия UZUM = файл sells_report из колонки Комиссия маркетплейса (сумы) со статусом из колонки Статус «Завершен»
         - logistics_sum: SUM(logistics_sum) WHERE status='завершен' (same as KPI uzumLogistics)
-        - cogs_sum: SUM(cogs_sum) WHERE status='завершен' OR 'в обработке' (same as KPI productCostTotal)
+          Логистика UZUM = файл sells_report из колонки Логистический сбор со статусом «Завершен»
+        - cogs_sum: SUM(cogs_sum * qty) WHERE status='завершен' (same as KPI productCostTotal/productCostCompleted)
+          Себест. прод. тов. = файл sells_report (из колонки Себестоимость (сумы) * из колонки Количество) со статусом из колонки Статус «Завершен»
     """
     conditions = get_status_conditions()
     alias = f"{table_alias}." if table_alias else ""
@@ -48,11 +52,11 @@ def get_sales_metrics_sql(
     return {
         'orders_qty': f"COALESCE(SUM({alias}qty), 0)",
         'buyouts_qty': f"COALESCE(SUM(CASE WHEN ({conditions['completed']}) THEN {alias}qty ELSE 0 END), 0)",
-        'returns_qty': f"COALESCE(SUM({alias}returns_qty), 0)",
+        'returns_qty': f"COALESCE(SUM(CASE WHEN ({conditions['cancelled']}) THEN {alias}qty ELSE 0 END), 0)",
         'revenue_sum': f"COALESCE(SUM(CASE WHEN ({conditions['completed']}) THEN {alias}revenue_sum ELSE 0 END), 0)",
         'commission_sum': f"COALESCE(SUM(CASE WHEN ({conditions['completed']}) THEN {alias}commission_sum ELSE 0 END), 0)",
         'logistics_sum': f"COALESCE(SUM(CASE WHEN ({conditions['completed']}) THEN {alias}logistics_sum ELSE 0 END), 0)",
-        'cogs_sum': f"COALESCE(SUM(CASE WHEN ({conditions['completed']}) OR ({conditions['processing']}) THEN {alias}cogs_sum ELSE 0 END), 0)",
+        'cogs_sum': f"COALESCE(SUM(CASE WHEN ({conditions['completed']}) THEN {alias}cogs_sum * {alias}qty ELSE 0 END), 0)",
     }
 
 

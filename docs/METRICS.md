@@ -25,14 +25,13 @@
 - **Фильтры**: `period`, `shop_id`, `user_id`
 
 ### 4. Возвраты
-- **Количество (returnsCount)**: `SUM(returns_qty)` из всех строк (без фильтра по статусу)
-- **Денежно (returnsValue)**: `SUM(returns_qty * price_sum)` где `lower(trim(status)) IN ('завершен', 'завершён', 'отменен', 'отменён')`
+- **Количество (returnsCount)**: файл sells_report из колонки Количество со статусом из колонки Статус «отменен» — `SUM(qty)` где `lower(trim(status)) IN ('отменен', 'отменён')`
+- **Денежно (returnsValue, после / в блоке Продажи)**: файл sells_report (из колонки Количество × из колонки Цена (сумы)) со статусом «отменен» — `SUM(qty * price_sum)` где `lower(trim(status)) IN ('отменен', 'отменён')`
 - **Источник**: `sells_report` → `fact_sales`
 - **Фильтры**: `period`, `shop_id`, `user_id`
-- **Примечание**: Возвраты учитываются для завершённых и отменённых заказов
 
 ### 5. Процент возврата (returnRate)
-- **Формула**: `(SUM(returns_qty) / SUM(qty)) * 100`
+- **Формула**: `(SUM(qty) по отменен / SUM(qty) всего) * 100`
 - **Источник**: `fact_sales`
 - **Безопасное деление**: Если `SUM(qty) = 0`, возвращается `0`
 
@@ -103,11 +102,13 @@
 - **Формула**: `SUM(commission_sum)` где `lower(trim(status)) IN ('завершен', 'завершён')`
 - **Источник**: `sells_report` → `fact_sales`
 - **Фильтры**: `period`, `shop_id`, `user_id`
+- **ТЗ**: файл sells_report из колонки Комиссия маркетплейса (сумы) со статусом из колонки Статус «Завершен»
 
 ### 2. Логистика UZUM (uzumLogistics)
 - **Формула**: `SUM(logistics_sum)` где `lower(trim(status)) IN ('завершен', 'завершён')`
 - **Источник**: `sells_report` → `fact_sales`
 - **Фильтры**: `period`, `shop_id`, `user_id`
+- **ТЗ**: файл sells_report из колонки Логистический сбор со статусом из колонки Статус «Завершен»
 
 ### 3. Реклама UZUM (uzumAds)
 - **Формула**: `SUM(cost_sum)` где `source ILIKE '%маркетинг%' OR source ILIKE '%marketing%'` И `operation_type ILIKE '%оплат%' OR operation_type ILIKE '%payment%'`
@@ -128,12 +129,10 @@
 - **ТЗ**: `sum(Сумма (сумы))` где `Услуга ILIKE '%Штраф%'`
 
 ### 6. Себестоимость проданных товаров (productCost)
-- **productCostTotal**: `SUM(cogs_sum)` где `lower(trim(status)) IN ('завершен', 'завершён', 'в обработке')`
-- **productCostCompleted**: `SUM(cogs_sum)` где `lower(trim(status)) IN ('завершен', 'завершён')`
+- **productCostTotal** и **productCostCompleted**: `SUM(cogs_sum * qty)` где `lower(trim(status)) IN ('завершен', 'завершён')`
 - **Источник**: `sells_report` → `fact_sales`
 - **Фильтры**: `period`, `shop_id`, `user_id`
-- **ТЗ**: `sum(Себестоимость (сумы) * Количество)` где `Статус IN ("Завершен","В обработке")`
-- **Важно**: В `fact_sales` поле `cogs_sum` уже является итоговой себестоимостью по строке (не единичной), поэтому умножение на количество не требуется
+- **ТЗ**: файл sells_report (из колонки Себестоимость (сумы) * из колонки Количество) со статусом из колонки Статус «Завершен»
 
 ## Блок "Склад"
 
