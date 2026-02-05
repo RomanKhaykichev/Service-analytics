@@ -377,7 +377,7 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
 
   const SortableHeader = ({ column, children }: { column: keyof ExtraExpense; children: React.ReactNode }) => (
     <TableHead
-      className="cursor-pointer hover:bg-muted/50 transition-colors"
+      className="cursor-pointer bg-violet-50/80 dark:bg-violet-950/30 hover:bg-violet-100/80 dark:hover:bg-violet-900/40 transition-colors"
       onClick={() => handleSort(column)}
     >
       <div className="flex items-center gap-1">
@@ -429,14 +429,14 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
             sortedExpenses.length > 10 && "max-h-[500px] overflow-y-auto"
           )}>
             <Table>
-              <TableHeader className="sticky top-0 bg-background z-10 [&_tr]:bg-background [&_th]:bg-background">
-                <TableRow>
+              <TableHeader className="sticky top-0 z-10 [&_tr]:bg-violet-50/80 [&_tr]:dark:bg-violet-950/30 [&_th]:bg-violet-50/80 [&_th]:dark:bg-violet-950/30">
+                <TableRow className="bg-violet-50/80 dark:bg-violet-950/30 border-border">
                   <SortableHeader column="expense_date">Дата</SortableHeader>
                   <SortableHeader column="category">Тип</SortableHeader>
                   <SortableHeader column="amount_sum">Сумма</SortableHeader>
                   <SortableHeader column="shop_name">Магазин</SortableHeader>
-                  <TableHead>Комментарий</TableHead>
-                  <TableHead className="w-[100px]">Действия</TableHead>
+                  <TableHead className="bg-violet-50/80 dark:bg-violet-950/30">Комментарий</TableHead>
+                  <TableHead className="w-[100px] bg-violet-50/80 dark:bg-violet-950/30">Действия</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

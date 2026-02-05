@@ -717,6 +717,7 @@ async def get_shipment_recommendations(
                 sales_per_day=sales_per_day,
                 recommended_qty="-",
                 to_ship=to_ship,
+                turnover=turnover,
             ))
         return ShipmentRecommendationsResponse(items=items)
     except HTTPException:

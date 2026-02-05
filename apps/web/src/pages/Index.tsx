@@ -30,6 +30,13 @@ function Dashboard() {
   const [activeTab, setActiveTab] = useState("summary");
   const [store, setStore] = useState(() => searchParams.get("shop") ?? "all");
   const [viewMode, setViewMode] = useState("day");
+  // Состояние вкладки «Отгрузка»: кнопка «Рассчитать» пересчитывает всю таблицу (все товары без фильтра); данные общие для всех магазинов до следующего пересчёта
+  const [shipmentDaysUntilShipment, setShipmentDaysUntilShipment] = useState(7);
+  const [shipmentConsiderStock, setShipmentConsiderStock] = useState<string>("yes");
+  const [shipmentCalculatedByKey, setShipmentCalculatedByKey] = useState<Record<string, number>>({});
+  const setShipmentCalculatedRecommended = (map: Record<string, number>) => {
+    setShipmentCalculatedByKey(map);
+  };
 
   const {
     dateFrom,
@@ -353,7 +360,15 @@ function Dashboard() {
         </div>
       ) : activeTab === "shipment" ? (
         <div className="mt-6">
-          <ShipmentView shop={store === "all" ? undefined : store} />
+          <ShipmentView
+            shop={store === "all" ? undefined : store}
+            daysUntilShipment={shipmentDaysUntilShipment}
+            setDaysUntilShipment={setShipmentDaysUntilShipment}
+            considerStock={shipmentConsiderStock}
+            setConsiderStock={setShipmentConsiderStock}
+            calculatedRecommendedByKey={shipmentCalculatedByKey}
+            setCalculatedRecommended={setShipmentCalculatedRecommended}
+          />
         </div>
       ) : (
         <>

@@ -12,25 +12,86 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Package, Calculator, Warehouse } from "lucide-react";
+import { Package, Warehouse } from "lucide-react";
 import { useShipmentRecommendations } from "@/hooks/useShipmentRecommendations";
+import type { ShipmentRecommendationItem } from "@/hooks/useShipmentRecommendations";
+import { apiGet } from "@/lib/api";
+
+/** Ключ строки для хранения рассчитанного значения (штрихкод или артикул) */
+function rowKey(row: { barcode?: string | null; sku?: string | null }): string {
+  return (row.barcode ?? row.sku ?? "").trim();
+}
 
 interface ShipmentViewProps {
   /** Фильтр по магазину (seller-storage); фильтрует таблицу через fact_storage_snapshot по баркодам */
   shop?: string | null;
+  daysUntilShipment: number;
+  setDaysUntilShipment: (v: number) => void;
+  considerStock: string;
+  setConsiderStock: (v: string) => void;
+  /** Рассчитанные значения по ключу товара (barcode/sku); общие для всей таблицы до следующего пересчёта */
+  calculatedRecommendedByKey: Record<string, number>;
+  setCalculatedRecommended: (map: Record<string, number>) => void;
 }
 
-export function ShipmentView({ shop }: ShipmentViewProps) {
-  const [daysUntilShipment, setDaysUntilShipment] = useState<number>(7);
-  const [daysForCalculation, setDaysForCalculation] = useState<number>(30);
-  const [considerStock, setConsiderStock] = useState<string>("yes");
+interface ShipmentRecommendationsResponse {
+  items: ShipmentRecommendationItem[];
+}
 
+/** Парсим число из строки (дробные с запятой/точкой); NaN при пустом или нечисле */
+function parseNum(s: string | null | undefined): number {
+  if (s == null || s === "") return NaN;
+  const n = Number(String(s).replace(",", ".").trim());
+  return Number.isFinite(n) ? n : NaN;
+}
+
+export function ShipmentView({
+  shop,
+  daysUntilShipment,
+  setDaysUntilShipment,
+  considerStock,
+  setConsiderStock,
+  calculatedRecommendedByKey,
+  setCalculatedRecommended,
+}: ShipmentViewProps) {
   const { data, isLoading, error } = useShipmentRecommendations(shop);
   const items = data?.items ?? [];
+  const [calculateLoading, setCalculateLoading] = useState(false);
+
+  const handleCalculate = async () => {
+    setCalculateLoading(true);
+    try {
+      const res = await apiGet<ShipmentRecommendationsResponse>("/api/charts/shipment-recommendations");
+      const allItems = res?.items ?? [];
+      if (allItems.length === 0) return;
+      const days = Math.max(0, Number(daysUntilShipment) || 0);
+      const map: Record<string, number> = {};
+      for (const row of allItems) {
+        const key = rowKey(row);
+        if (!key) continue;
+        const salesPerDay = parseNum(row.sales_per_day);
+        const turnover = row.turnover != null ? Number(row.turnover) : NaN;
+        if (!Number.isFinite(salesPerDay) || salesPerDay < 0) {
+          map[key] = 0;
+          continue;
+        }
+        if (considerStock === "yes") {
+          const t = Number.isFinite(turnover) ? turnover : 0;
+          const factor = Math.max(0, 60 - t + days);
+          map[key] = Math.ceil(factor * salesPerDay);
+        } else {
+          map[key] = Math.ceil(salesPerDay * 60);
+        }
+      }
+      setCalculatedRecommended(map);
+    } finally {
+      setCalculateLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Block 1: Days until shipment */}
         <Card>
           <CardHeader className="pb-4">
@@ -57,33 +118,7 @@ export function ShipmentView({ shop }: ShipmentViewProps) {
           </CardContent>
         </Card>
 
-        {/* Block 2: Days for data calculation */}
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Calculator className="h-5 w-5 text-primary" />
-              Дней расчёта данных
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <Label htmlFor="daysForCalculation">Количество дней</Label>
-              <Input
-                id="daysForCalculation"
-                type="number"
-                min={1}
-                value={daysForCalculation}
-                onChange={(e) => setDaysForCalculation(Number(e.target.value))}
-                className="max-w-[200px]"
-              />
-              <p className="text-sm text-muted-foreground">
-                Укажите период для расчёта средних показателей продаж
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Block 3: Consider stock */}
+        {/* Block 2: Consider stock */}
         <Card>
           <CardHeader className="pb-4">
             <CardTitle className="flex items-center gap-2 text-lg">
@@ -94,17 +129,26 @@ export function ShipmentView({ shop }: ShipmentViewProps) {
           <CardContent>
             <div className="space-y-4">
               <RadioGroup value={considerStock} onValueChange={setConsiderStock}>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center gap-2">
                   <RadioGroupItem value="yes" id="stock-yes" />
-                  <Label htmlFor="stock-yes">Да</Label>
+                  <Label htmlFor="stock-yes" className="font-normal cursor-pointer">
+                    Да — <span className="text-sm text-muted-foreground">2 месяца с учётом продаж, склада, оборачиваемости и дней до отгрузки.</span>
+                  </Label>
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center gap-2">
                   <RadioGroupItem value="no" id="stock-no" />
-                  <Label htmlFor="stock-no">Нет</Label>
+                  <Label htmlFor="stock-no" className="font-normal cursor-pointer">
+                    Нет — <span className="text-sm text-muted-foreground">2 месяца с учетом продаж.</span>
+                  </Label>
                 </div>
               </RadioGroup>
-              <Button type="button" className="w-full" disabled>
-                Рассчитать
+              <Button
+                type="button"
+                className="w-full"
+                onClick={handleCalculate}
+                disabled={calculateLoading}
+              >
+                {calculateLoading ? "Расчёт…" : "Рассчитать"}
               </Button>
             </div>
           </CardContent>
@@ -120,22 +164,22 @@ export function ShipmentView({ shop }: ShipmentViewProps) {
           <div className="rounded-md border">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Товар</TableHead>
-                  <TableHead>Артикул</TableHead>
-                  <TableHead>Штрихкод</TableHead>
-                  <TableHead className="text-center whitespace-nowrap">На складе</TableHead>
-                  <TableHead className="text-center">
+                <TableRow className="bg-violet-50/80 dark:bg-violet-950/30 border-border">
+                  <TableHead className="bg-violet-50/80 dark:bg-violet-950/30">Товар</TableHead>
+                  <TableHead className="bg-violet-50/80 dark:bg-violet-950/30">Артикул</TableHead>
+                  <TableHead className="bg-violet-50/80 dark:bg-violet-950/30">Штрихкод</TableHead>
+                  <TableHead className="text-center whitespace-nowrap bg-violet-50/80 dark:bg-violet-950/30">На складе</TableHead>
+                  <TableHead className="text-center bg-violet-50/80 dark:bg-violet-950/30">
                     Продаж
                     <br />
                     в день
                   </TableHead>
-                  <TableHead className="text-center">
+                  <TableHead className="text-center bg-violet-50/80 dark:bg-violet-950/30">
                     Рекомендуемое
                     <br />
                     кол-во
                   </TableHead>
-                  <TableHead className="text-center">
+                  <TableHead className="text-center bg-violet-50/80 dark:bg-violet-950/30">
                     Запланировано
                     <br />
                     к отгрузке
@@ -162,17 +206,26 @@ export function ShipmentView({ shop }: ShipmentViewProps) {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  items.map((row, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-medium">{row.product_name ?? "—"}</TableCell>
-                      <TableCell>{row.sku ?? "—"}</TableCell>
-                      <TableCell className="font-mono text-sm">{row.barcode ?? "—"}</TableCell>
-                      <TableCell className="text-center">{row.stock ?? "—"}</TableCell>
-                      <TableCell className="text-center">{row.sales_per_day ?? "—"}</TableCell>
-                      <TableCell className="text-center">{row.recommended_qty}</TableCell>
-                      <TableCell className="text-center">{row.to_ship ?? "—"}</TableCell>
-                    </TableRow>
-                  ))
+                  items.map((row, idx) => {
+                    const key = rowKey(row);
+                    const recommendedDisplay =
+                      key && calculatedRecommendedByKey[key] !== undefined
+                        ? String(calculatedRecommendedByKey[key])
+                        : row.recommended_qty;
+                    return (
+                      <TableRow key={idx}>
+                        <TableCell className="font-medium">{row.product_name ?? "—"}</TableCell>
+                        <TableCell>{row.sku ?? "—"}</TableCell>
+                        <TableCell className="font-mono text-sm">{row.barcode ?? "—"}</TableCell>
+                        <TableCell className="text-center">{row.stock ?? "—"}</TableCell>
+                        <TableCell className="text-center">{row.sales_per_day ?? "—"}</TableCell>
+                        <TableCell className="text-center font-bold text-purple-600 dark:text-purple-400">
+                          {recommendedDisplay}
+                        </TableCell>
+                        <TableCell className="text-center">{row.to_ship ?? "—"}</TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>

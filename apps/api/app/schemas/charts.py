@@ -159,8 +159,9 @@ class ShipmentRecommendationItem(BaseModel):
     barcode: Optional[str] = None  # Штрихкод
     stock: Optional[str] = None  # На складе = Общий остаток
     sales_per_day: Optional[str] = None  # Продаж в день = Среднесуточные продажи
-    recommended_qty: str = "-"  # Рекомендуемое кол-во
+    recommended_qty: str = "-"  # Рекомендуемое кол-во (считается на фронте по кнопке Рассчитать)
     to_ship: Optional[str] = None  # Запланировано к отгрузке = К отправке
+    turnover: Optional[float] = None  # Оборачиваемость (дней) из left-out-report_old для расчёта recommended_qty
 
 
 class ShipmentRecommendationsResponse(BaseModel):

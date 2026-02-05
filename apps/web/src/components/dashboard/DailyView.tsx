@@ -299,12 +299,12 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
           ) : (
             <Table className="table-fixed w-full min-w-[800px]">
               <TableHeader>
-                <TableRow className="border-border hover:bg-muted/50">
+                <TableRow className="bg-violet-50/80 dark:bg-violet-950/30 border-border">
                   {columns.map((col) => (
                     <TableHead
                       key={col.key}
                       className={cn(
-                        "text-muted-foreground px-2 py-1 whitespace-nowrap",
+                        "text-muted-foreground px-2 py-1 whitespace-nowrap bg-violet-50/80 dark:bg-violet-950/30",
                         col.key === "dateFormatted" ? "text-left" : "text-center"
                       )}
                     >

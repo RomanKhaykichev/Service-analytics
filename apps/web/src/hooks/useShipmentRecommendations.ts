@@ -9,6 +9,8 @@ export interface ShipmentRecommendationItem {
   sales_per_day: string | null;
   recommended_qty: string;
   to_ship: string | null;
+  /** Оборачиваемость (дней) из left-out-report_old для расчёта recommended_qty */
+  turnover?: number | null;
 }
 
 interface ShipmentRecommendationsResponse {
