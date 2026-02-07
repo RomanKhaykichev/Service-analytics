@@ -13,14 +13,15 @@ export function useCumulativeRevenueGlobal() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["kpi", "cumulativeRevenue", "global"],
     queryFn: async () => {
-      const res = await apiGet<{ cumulativeRevenue: number }>("/api/kpi/cumulative-revenue");
-      return res.cumulativeRevenue;
+      const res = await apiGet<{ cumulativeRevenue: number; cumulativeRevenueYear: number }>("/api/kpi/cumulative-revenue");
+      return { cumulativeRevenue: res.cumulativeRevenue, cumulativeRevenueYear: res.cumulativeRevenueYear };
     },
     enabled: !!user,
   });
 
   return {
-    cumulativeRevenue: data ?? 0,
+    cumulativeRevenue: data?.cumulativeRevenue ?? 0,
+    cumulativeRevenueYear: data?.cumulativeRevenueYear ?? new Date().getFullYear(),
     loading: isLoading,
     error: error ? (error instanceof Error ? error.message : "Ошибка загрузки") : null,
   };

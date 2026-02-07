@@ -2,8 +2,9 @@ from pydantic import BaseModel
 
 
 class CumulativeRevenueResponse(BaseModel):
-    """Общая накопительная выручка пользователя за всё время, без фильтров по магазину и периоду."""
+    """Накопительная выручка за год последней даты в выгрузке; год отображается под надписью."""
     cumulativeRevenue: float
+    cumulativeRevenueYear: int  # год последней даты в выгрузке (fact_sales.date_created)
 
 
 class KPISummaryResponse(BaseModel):

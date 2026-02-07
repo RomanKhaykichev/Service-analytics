@@ -132,13 +132,13 @@ export function ShipmentView({
                 <div className="flex items-center gap-2">
                   <RadioGroupItem value="yes" id="stock-yes" />
                   <Label htmlFor="stock-yes" className="font-normal cursor-pointer">
-                    Да — <span className="text-sm text-muted-foreground">2 месяца с учётом продаж, склада, оборачиваемости и дней до отгрузки.</span>
+                    Да
                   </Label>
                 </div>
                 <div className="flex items-center gap-2">
                   <RadioGroupItem value="no" id="stock-no" />
                   <Label htmlFor="stock-no" className="font-normal cursor-pointer">
-                    Нет — <span className="text-sm text-muted-foreground">2 месяца с учетом продаж.</span>
+                    Нет
                   </Label>
                 </div>
               </RadioGroup>

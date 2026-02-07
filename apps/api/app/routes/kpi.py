@@ -252,31 +252,35 @@ def kpi_summary(
         orders_condition = "lower(trim(status)) NOT IN ('отменен', 'отменено', 'cancelled', 'canceled')"
         
         # Control SQL for verification (not executed, for reference):
-        # Заказы: SELECT SUM(qty), SUM(revenue_sum) FROM fact_sales WHERE ...
-        # В обработке: SELECT SUM(qty), SUM(revenue_sum) FROM fact_sales WHERE ... AND lower(trim(status))='в обработке'
-        # Выкупы: SELECT SUM(qty), SUM(revenue_sum) FROM fact_sales WHERE ... AND lower(trim(status))='завершен'
-        # Возвраты = файл sells_report из колонки Количество со статусом из колонки Статус «отменен»
-        # Возвраты (сумма после /) = (Количество * Цена (сумы)) со статусом «отменен»
+        # Заказы = В обработке + Выкупы + Возвраты (количество и сумма)
+        # В обработке: SUM(qty), SUM(revenue_sum) WHERE status='в обработке'
+        # Выкупы: SUM(qty), SUM(revenue_sum) WHERE status='завершен'
+        # Возвраты = файл sells_report из колонки Возвраты
+        # Возвраты (сумма после /) = (колонка Возвраты * колонка Цена (сумы)) = SUM(returns_qty * price_sum)
         # Avg check: SELECT SUM(revenue_sum)/NULLIF(SUM(qty),0) FROM fact_sales WHERE ... AND lower(trim(status))='завершен'
         
         sales_query = text(f"""
             SELECT 
-                -- ordersCount: SUM(qty) WITHOUT status filter
-                COALESCE(SUM(qty), 0) as orders_count,
-                -- ordersValue: ТЗ: SUM(Количество * Цена (сумы)) БЕЗ фильтра по статусу (как orders_count)
-                COALESCE(SUM(COALESCE(qty, 0) * COALESCE(price_sum, 0)), 0) as orders_value,
+                -- ordersCount: Заказы = В обработке + Выкупы + Возвраты
+                ( COALESCE(SUM(CASE WHEN {processing_status_condition} THEN qty ELSE 0 END), 0)
+                  + COALESCE(SUM(CASE WHEN {completed_status_condition} THEN qty ELSE 0 END), 0)
+                  + COALESCE(SUM(COALESCE(returns_qty, 0)), 0) ) AS orders_count,
+                -- ordersValue: сумма (В обработке + Выкупы + Возвраты) в деньгах
+                ( COALESCE(SUM(CASE WHEN {processing_status_condition} THEN revenue_sum ELSE 0 END), 0)
+                  + COALESCE(SUM(CASE WHEN {completed_status_condition} THEN revenue_sum ELSE 0 END), 0)
+                  + COALESCE(SUM(COALESCE(returns_qty, 0) * COALESCE(price_sum, 0)), 0) ) AS orders_value,
                 -- processingCount/processingValue: SUM(qty) and SUM(revenue_sum) WHERE status='в обработке'
                 COALESCE(SUM(CASE WHEN {processing_status_condition} THEN qty ELSE 0 END), 0) as processing_count,
                 COALESCE(SUM(CASE WHEN {processing_status_condition} THEN revenue_sum ELSE 0 END), 0) as processing_value,
                 -- completedCount/completedValue: SUM(qty) and SUM(revenue_sum) WHERE status='завершен'
                 COALESCE(SUM(CASE WHEN {completed_status_condition} THEN qty ELSE 0 END), 0) as completed_count,
                 COALESCE(SUM(CASE WHEN {completed_status_condition} THEN revenue_sum ELSE 0 END), 0) as completed_value,
-                -- Возвраты = файл sells_report из колонки Количество со статусом «отменен»
-                COALESCE(SUM(CASE WHEN {cancelled_status_condition} THEN qty ELSE 0 END), 0) as returns_count,
-                -- Возвраты (после /) = (Количество * Цена (сумы)) со статусом «отменен»
-                COALESCE(SUM(CASE WHEN {cancelled_status_condition} THEN COALESCE(qty, 0) * COALESCE(price_sum, 0) ELSE 0 END), 0) as returns_value,
-                -- returns_value_completed: оставлено для совместимости API (равно returns_value при новой формуле)
-                COALESCE(SUM(CASE WHEN {cancelled_status_condition} THEN COALESCE(qty, 0) * COALESCE(price_sum, 0) ELSE 0 END), 0) as returns_value_completed,
+                -- Возвраты = файл sells_report из колонки Возвраты (returns_qty)
+                COALESCE(SUM(COALESCE(returns_qty, 0)), 0) as returns_count,
+                -- Возвраты (после /) = колонка Возвраты * колонка Цена (сумы)
+                COALESCE(SUM(COALESCE(returns_qty, 0) * COALESCE(price_sum, 0)), 0) as returns_value,
+                -- returns_value_completed: для совместимости API (равно returns_value)
+                COALESCE(SUM(COALESCE(returns_qty, 0) * COALESCE(price_sum, 0)), 0) as returns_value_completed,
                 -- uzumCommission/uzumLogistics: только completed
                 -- Комиссия UZUM = файл sells_report из колонки Комиссия маркетплейса (сумы) со статусом из колонки Статус «Завершен»
                 COALESCE(SUM(CASE WHEN {completed_status_condition} THEN commission_sum ELSE 0 END), 0) as uzum_commission,
@@ -292,8 +296,8 @@ def kpi_summary(
         sales_result = db.execute(sales_query, sales_params)
         sales_row = sales_result.fetchone()
         
-        orders_count = float(sales_row[0] or 0)
-        orders_value = float(sales_row[1] or 0)  # ТЗ: SUM(qty * price_sum) БЕЗ фильтра по статусу
+        orders_count = float(sales_row[0] or 0)  # В обработке + Выкупы + Возвраты
+        orders_value = float(sales_row[1] or 0)  # сумма (В обработке + Выкупы + Возвраты)
         processing_count = float(sales_row[2] or 0)
         processing_value = float(sales_row[3] or 0)
         completed_count = float(sales_row[4] or 0)
@@ -306,15 +310,14 @@ def kpi_summary(
         product_cost_total = float(sales_row[11] or 0)
         product_cost_completed = float(sales_row[12] or 0)
         
-        # Лог для проверки формулы orders_value (dev only)
+        # Лог для проверки формулы заказов (dev only)
         logger.info(
-            f"orders_revenue calculation: orders_value={orders_value} (SUM(qty * price_sum) без фильтра по статусу), "
-            f"orders_count={orders_count}, "
-            f"period={period_code}, shop_id={shop_id}"
+            f"orders: orders_count={orders_count} (В обработке + Выкупы + Возвраты), "
+            f"orders_value={orders_value}, period={period_code}, shop_id={shop_id}"
         )
         
         # Derived metrics from sales
-        # Return rate: (Возвраты qty / Заказы qty) * 100 = (SUM(qty) по отменен / SUM(qty) всего) * 100
+        # Return rate: (Возвраты qty / Заказы qty) * 100, Заказы = В обработке + Выкупы + Возвраты
         return_rate = (returns_count / orders_count * 100) if orders_count > 0 else 0.0
         # Average check: SUM(revenue_sum)/SUM(qty) WHERE status='завершен'
         average_check = (completed_value / completed_count) if completed_count > 0 else 0.0
@@ -427,22 +430,23 @@ def kpi_summary(
         logger.info(f"extra_expenses: period={period_code}, date_to={date_to_iso}, shop_norm={shop_norm}, shop_id={shop_id}, value={extra_expenses}")
         
         # C) Total expenses, profit, ratios
-        # ТЗ: Расходы в блоке Финансы = сумма выбранных строк из блока Расходы:
-        # Комиссия UZUM + Логистика UZUM + Себест. прод. тов. + Налоги 1% + Доп. расходы
-        # Формула применяется одинаково для всех магазинов и для выбранного магазина
-        # (компоненты уже отфильтрованы по shop_id, если он задан)
+        # ЧИСТАЯ ПРИБЫЛЬ = Выручка - Себестоимость - Комиссия – Логистика – Хранение – Реклама – Штрафы - Налог 1% - Доп. расходы
+        # total_expenses = все перечисленные расходы (для profit и ROI)
         total_expenses = (
+            (product_cost_total or 0.0) +
             (uzum_commission or 0.0) +
             (uzum_logistics or 0.0) +
-            (product_cost_total or 0.0) +
+            (uzum_storage or 0.0) +
+            (uzum_ads or 0.0) +
+            (uzum_fines or 0.0) +
             (taxes_1pct or 0.0) +
             (extra_expenses or 0.0)
         )
         
         # DEBUG: Логируем состав total_expenses для проверки
-        logger.info(f"[DEBUG] total_expenses breakdown: commission={uzum_commission}, logistics={uzum_logistics}, product_cost={product_cost_total}, taxes={taxes_1pct}, extra_expenses={extra_expenses}, total={total_expenses}")
+        logger.info(f"[DEBUG] total_expenses breakdown: product_cost={product_cost_total}, commission={uzum_commission}, logistics={uzum_logistics}, storage={uzum_storage}, ads={uzum_ads}, fines={uzum_fines}, taxes={taxes_1pct}, extra_expenses={extra_expenses}, total={total_expenses}")
         
-        profit = revenue - total_expenses
+        profit = revenue - total_expenses  # Чистая прибыль по формуле выше
         
         # ТЗ: Рентабельность продаж = (Прибыль / Выручка) * 100%
         # Формула: profitability_pct = COALESCE((profit / NULLIF(revenue, 0)) * 100, 0)
@@ -509,17 +513,25 @@ def kpi_summary(
                 revenue_trend = 0.0
                 revenue_trend_detail["delta_pct"] = 0.0
         
-        # E) Cumulative revenue — ИСКЛЮЧЕНИЕ: всегда вся выручка пользователя (без дат и без магазина)
-        # То же, что GET /api/kpi/cumulative-revenue: SUM(revenue_sum) WHERE user_id AND completed
+        # E) Cumulative revenue = выручка за год, дата которого последняя в выгрузке (то же, что GET /api/kpi/cumulative-revenue)
+        data_end_for_cumulative = get_data_end_date(db, user_id)
+        year_start = data_end_for_cumulative.replace(month=1, day=1)
+        year_end = year_start.replace(year=year_start.year + 1)
         cumulative_query = text(f"""
             SELECT COALESCE(SUM(revenue_sum), 0)
             FROM {qname("fact_sales")}
             WHERE user_id = CAST(:user_id AS uuid)
               AND ({completed_condition})
+              AND date_created >= CAST(:year_start AS date)
+              AND date_created < CAST(:year_end AS date)
         """)
-        cumulative_result = db.execute(cumulative_query, {"user_id": str(user_id)})
+        cumulative_result = db.execute(cumulative_query, {
+            "user_id": str(user_id),
+            "year_start": year_start.isoformat(),
+            "year_end": year_end.isoformat(),
+        })
         cumulative_revenue = float(cumulative_result.scalar() or 0)
-        logger.info(f"cumulativeRevenue (global, unfiltered): user_id={user_id}, value={cumulative_revenue}")
+        logger.info(f"cumulativeRevenue (year of last date): user_id={user_id}, year={year_start.year}, value={cumulative_revenue}")
         
         # F) STOCK aggregation — источник: left-out-report_old (fact_leftout_old_snapshot или stg_leftout_old fallback)
         # Товаров на складе = SUM(in_sale_qty), Себест. тов. = SUM(in_sale_qty * cost_sum), Рознич. цена = SUM(in_sale_qty * price_sum)
@@ -894,17 +906,28 @@ def get_cumulative_revenue_global(
     db: Session = Depends(get_db)
 ):
     """
-    Общая накопительная выручка пользователя за всё время.
-    Не зависит от фильтров магазина и периода: SUM(revenue_sum) по всем данным пользователя (status завершен).
+    Накопительная выручка = выручка за год, дата которого последняя в выгрузке.
+    Берётся последняя дата из fact_sales (date_created), год по ней; SUM(revenue_sum) за этот год (status завершен).
     """
+    data_end_date = get_data_end_date(db, user_id)
+    year_start = data_end_date.replace(month=1, day=1)
+    year_end = year_start.replace(year=year_start.year + 1)
     completed_condition = get_status_sql_condition("completed")
     query = text(f"""
         SELECT COALESCE(SUM(revenue_sum), 0)
         FROM {qname("fact_sales")}
         WHERE user_id = CAST(:user_id AS uuid)
           AND ({completed_condition})
+          AND date_created >= CAST(:year_start AS date)
+          AND date_created < CAST(:year_end AS date)
     """)
-    result = db.execute(query, {"user_id": str(user_id)})
+    result = db.execute(query, {
+        "user_id": str(user_id),
+        "year_start": year_start.isoformat(),
+        "year_end": year_end.isoformat(),
+    })
     cumulative_revenue = float(result.scalar() or 0)
-    logger.info(f"cumulative-revenue (global): user_id={user_id}, value={cumulative_revenue}")
-    return CumulativeRevenueResponse(cumulativeRevenue=cumulative_revenue)
+    logger.info(
+        f"cumulative-revenue (global): user_id={user_id}, data_end_date={data_end_date}, year={year_start.year}, value={cumulative_revenue}"
+    )
+    return CumulativeRevenueResponse(cumulativeRevenue=cumulative_revenue, cumulativeRevenueYear=year_start.year)

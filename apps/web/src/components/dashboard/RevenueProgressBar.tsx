@@ -1,12 +1,15 @@
 interface RevenueProgressBarProps {
   current: number;
   target: number;
+  /** Год последней даты в выгрузке — отображается под надписью «Накопительная выручка» */
+  year?: number;
   compact?: boolean;
 }
 
 export function RevenueProgressBar({
   current,
   target,
+  year,
   compact = false
 }: RevenueProgressBarProps) {
   const percentage = Math.min(current / target * 100, 100);
@@ -22,9 +25,14 @@ export function RevenueProgressBar({
   if (compact) {
     return (
       <div className="gap-4 py-3 border border-purple-300/30 shadow rounded-lg min-w-[700px] bg-gradient-to-r from-purple-50 to-violet-50 dark:from-purple-950/30 dark:to-violet-950/30 px-[30px] flex items-center justify-center">
-        <span className="text-sm font-medium text-purple-700 dark:text-purple-300 whitespace-nowrap">
-          Накопительная выручка
-        </span>
+        <div className="flex flex-col">
+          <span className="text-sm font-medium text-purple-700 dark:text-purple-300 whitespace-nowrap">
+            Накопительная выручка
+          </span>
+          {year != null && (
+            <span className="text-xs text-purple-600/80 dark:text-purple-400/80">{year}</span>
+          )}
+        </div>
         <div className="relative flex-1">
           <div className="relative h-5 bg-purple-100 dark:bg-purple-900/40 rounded-full overflow-hidden">
             <div 
@@ -61,9 +69,14 @@ export function RevenueProgressBar({
   return (
     <div className="bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-950/30 dark:to-violet-950/30 p-5 border border-purple-200/50 dark:border-purple-700/30 shadow rounded-lg">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-base font-medium text-purple-700 dark:text-purple-300">
-          Накопительная выручка
-        </span>
+        <div className="flex flex-col">
+          <span className="text-base font-medium text-purple-700 dark:text-purple-300">
+            Накопительная выручка
+          </span>
+          {year != null && (
+            <span className="text-sm text-purple-600/80 dark:text-purple-400/80">{year}</span>
+          )}
+        </div>
         <span className="text-base font-semibold text-purple-600 dark:text-purple-400">
           {formatNumber(current)} / {formatNumber(target)} сум
         </span>

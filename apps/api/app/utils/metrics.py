@@ -34,10 +34,9 @@ def get_sales_metrics_sql(
     
     Returns:
         dict with SQL expressions for:
-        - orders_qty: SUM(qty) WITHOUT status filter (same as KPI ordersCount)
+        - orders_qty: Заказы = В обработке + Выкупы + Возвраты (same as KPI ordersCount)
         - buyouts_qty: SUM(qty) WHERE status='завершен' (same as KPI completedCount)
-        - returns_qty: SUM(qty) WHERE status='отменен' (same as KPI returnsCount)
-          Возвраты = файл sells_report из колонки Количество со статусом из колонки Статус «отменен»
+        - returns_qty: SUM(returns_qty) — колонка Возвраты из sells_report (same as KPI returnsCount)
         - revenue_sum: SUM(revenue_sum) WHERE status='завершен' (same as KPI revenue)
         - commission_sum: SUM(commission_sum) WHERE status='завершен' (same as KPI uzumCommission)
           Комиссия UZUM = файл sells_report из колонки Комиссия маркетплейса (сумы) со статусом из колонки Статус «Завершен»
@@ -50,9 +49,9 @@ def get_sales_metrics_sql(
     alias = f"{table_alias}." if table_alias else ""
     
     return {
-        'orders_qty': f"COALESCE(SUM({alias}qty), 0)",
+        'orders_qty': f"( COALESCE(SUM(CASE WHEN ({conditions['processing']}) THEN {alias}qty ELSE 0 END), 0) + COALESCE(SUM(CASE WHEN ({conditions['completed']}) THEN {alias}qty ELSE 0 END), 0) + COALESCE(SUM(COALESCE({alias}returns_qty, 0)), 0) )",
         'buyouts_qty': f"COALESCE(SUM(CASE WHEN ({conditions['completed']}) THEN {alias}qty ELSE 0 END), 0)",
-        'returns_qty': f"COALESCE(SUM(CASE WHEN ({conditions['cancelled']}) THEN {alias}qty ELSE 0 END), 0)",
+        'returns_qty': f"COALESCE(SUM(COALESCE({alias}returns_qty, 0)), 0)",
         'revenue_sum': f"COALESCE(SUM(CASE WHEN ({conditions['completed']}) THEN {alias}revenue_sum ELSE 0 END), 0)",
         'commission_sum': f"COALESCE(SUM(CASE WHEN ({conditions['completed']}) THEN {alias}commission_sum ELSE 0 END), 0)",
         'logistics_sum': f"COALESCE(SUM(CASE WHEN ({conditions['completed']}) THEN {alias}logistics_sum ELSE 0 END), 0)",

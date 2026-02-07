@@ -55,7 +55,7 @@ function Dashboard() {
   // Для seller-storage фильтрация по строке магазина (shop), а не по UUID (shop_id)
   const selectedShop = store === "all" ? undefined : store;  // строка магазина из seller-storage
   const { metrics, loading, error } = useDashboardMetrics(dateFrom, dateTo, undefined, selectedShop);
-  const { cumulativeRevenue: cumulativeRevenueGlobal } = useCumulativeRevenueGlobal();
+  const { cumulativeRevenue: cumulativeRevenueGlobal, cumulativeRevenueYear } = useCumulativeRevenueGlobal();
   const shopId = null;  // Не используем shop_id для seller-storage метрик
 
   // Load revenue and UZUM services data (filtered by selectedShop via barcode_norm)
@@ -288,6 +288,7 @@ function Dashboard() {
             <RevenueProgressBar 
               current={cumulativeRevenueGlobal} 
               target={1000000000} 
+              year={cumulativeRevenueYear}
               compact 
             />
           </div>
@@ -302,6 +303,7 @@ function Dashboard() {
           <RevenueProgressBar 
             current={cumulativeRevenueGlobal} 
             target={1000000000} 
+            year={cumulativeRevenueYear}
             compact 
           />
         </div>

@@ -7,8 +7,8 @@
 ## Блок "Продажи"
 
 ### 1. Заказы
-- **Количество (ordersCount)**: `SUM(qty)` из `fact_sales` (без фильтра по статусу)
-- **Выручка (ordersValue)**: `SUM(revenue_sum)` из `fact_sales` (без фильтра по статусу)
+- **Количество (ordersCount)**: В обработке + Выкупы + Возвраты = `processingCount + completedCount + returnsCount`
+- **Выручка (ordersValue)**: сумма (В обработке + Выкупы + Возвраты) = `processingValue + completedValue + returnsValue`
 - **Источник**: `sells_report` → `fact_sales`
 - **Фильтры**: `period`, `shop_id`, `user_id`
 
@@ -25,13 +25,13 @@
 - **Фильтры**: `period`, `shop_id`, `user_id`
 
 ### 4. Возвраты
-- **Количество (returnsCount)**: файл sells_report из колонки Количество со статусом из колонки Статус «отменен» — `SUM(qty)` где `lower(trim(status)) IN ('отменен', 'отменён')`
-- **Денежно (returnsValue, после / в блоке Продажи)**: файл sells_report (из колонки Количество × из колонки Цена (сумы)) со статусом «отменен» — `SUM(qty * price_sum)` где `lower(trim(status)) IN ('отменен', 'отменён')`
+- **Количество (returnsCount)**: файл sells_report из колонки Возвраты — `SUM(returns_qty)` по `fact_sales`
+- **Денежно (returnsValue, после / в блоке Продажи)**: файл sells_report (колонка Возвраты × колонка Цена (сумы)) — `SUM(returns_qty * price_sum)` по `fact_sales`
 - **Источник**: `sells_report` → `fact_sales`
 - **Фильтры**: `period`, `shop_id`, `user_id`
 
 ### 5. Процент возврата (returnRate)
-- **Формула**: `(SUM(qty) по отменен / SUM(qty) всего) * 100`
+- **Формула**: `(SUM(returns_qty) / SUM(qty) всего) * 100`
 - **Источник**: `fact_sales`
 - **Безопасное деление**: Если `SUM(qty) = 0`, возвращается `0`
 
@@ -50,19 +50,15 @@
 - **Примечание**: Совпадает с `completedValue`
 
 ### 2. Расходы (totalExpenses)
-- **Формула**: `uzum_commission + uzum_logistics + uzum_ads + uzum_storage + uzum_fines + product_cost_total`
-- **Компоненты**:
-  - Комиссия UZUM (`uzum_commission`)
-  - Логистика UZUM (`uzum_logistics`)
-  - Реклама UZUM (`uzum_ads`)
-  - Хранение UZUM (`uzum_storage`)
-  - Штрафы UZUM (`uzum_fines`)
-  - Себестоимость проданных товаров (`product_cost_total`)
-- **Источники**: `fact_sales`, `fact_expenses`
+- **Формула**: сумма всех расходов для расчёта чистой прибыли (см. ниже)
+- **Компоненты**: Себестоимость, Комиссия UZUM, Логистика UZUM, Хранение UZUM, Реклама UZUM, Штрафы UZUM, Налог 1%, Доп. расходы
+- **Источники**: `fact_sales`, `fact_expenses`, `manual_expenses`
 
-### 3. Прибыль (profit)
-- **Формула**: `revenue - total_expenses`
+### 3. Чистая прибыль (profit)
+- **Формула**: ЧИСТАЯ ПРИБЫЛЬ = Выручка − Себестоимость − Комиссия − Логистика − Хранение − Реклама − Штрафы − Налог 1% − Доп. расходы  
+  То есть `profit = revenue - total_expenses`, где `total_expenses` включает все перечисленные компоненты.
 - **Источник**: Расчётный (на основе выручки и расходов)
+- **Использование**: Сводка, вкладка «По месячно» (таблица)
 
 ### 4. Рентабельность продаж (salesProfitability)
 - **Формула**: `(revenue / product_cost_completed) * 100`
