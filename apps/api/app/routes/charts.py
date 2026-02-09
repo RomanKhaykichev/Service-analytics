@@ -10,6 +10,9 @@ from app.db import get_db, qname
 from app.deps import require_user
 from app.routes.kpi import get_data_end_date, period_range, normalize_period, resolve_date_range
 from app.utils.statuses import get_status_sql_condition
+
+# SQL condition for "status = Завершен" (completed)
+_STATUS_COMPLETED_SQL = " (status ILIKE '%заверш%' OR status ILIKE '%достав%' OR status ILIKE '%получ%' OR status ILIKE '%выдан%') "
 from app.utils.metrics import get_status_conditions, get_sales_metrics_sql, get_profit_sql, get_avg_check_sql
 from app.utils.barcode import barcode_norm_sql
 from app.utils.shop_filter import normalize_shop, shop_filter_condition, storage_barcode_filter_sql
@@ -37,6 +40,8 @@ from app.schemas import (
     DailySummaryFilters,
     ShipmentRecommendationsResponse,
     ShipmentRecommendationItem,
+    ProductsTableResponse,
+    ProductsTableItem,
 )
 
 logger = logging.getLogger(__name__)
@@ -728,6 +733,176 @@ async def get_shipment_recommendations(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
         )
+
+
+def _parse_num(v) -> Optional[float]:
+    """Parse number from data cell (int/float/string with comma)."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    try:
+        s = str(v).strip().replace(",", ".")
+        return float(s) if s else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_int(v) -> Optional[int]:
+    """Parse integer (e.g. В продаже, Остаток)."""
+    n = _parse_num(v)
+    return int(n) if n is not None and not (isinstance(n, float) and n != int(n)) else (int(n) if n is not None else None)
+
+
+@router.get("/charts/products-table", response_model=ProductsTableResponse)
+async def get_products_table(
+    user_id: UUID = Depends(require_user),
+    shop: Optional[str] = Query(default=None, description="Shop name (seller-storage) — filter by barcode set"),
+    db: Session = Depends(get_db)
+):
+    """
+    Таблица товаров: left-out-report_old + sells_report по штрихкоду.
+    Наименование, Артикул, Цена, Продажи, Возвраты, Выручка, Оборачиваемость, Остаток,
+    Габаритная группа, Закончится, Себестоимость, Комиссия, Логистика, ABC, Штрихкод, Хранение сут/сум, Магазин.
+    """
+    try:
+        import math
+        shop_norm = normalize_shop(shop)
+        params_batch = {"user_id": str(user_id)}
+        shop_filter_sql = ""
+        if shop_norm:
+            params_batch["shop_norm"] = shop_norm
+            shop_filter_sql = "\n              " + storage_barcode_filter_sql(
+                "sl", prefix_and=True, outer_barcode_norm_expr=barcode_norm_sql("sl.barcode_raw")
+            )
+        # Latest batch from stg_leftout_old (with optional shop filter by barcode set)
+        batch_query = text(f"""
+            SELECT sl.upload_batch_id FROM {qname("stg_leftout_old")} sl
+            WHERE sl.user_id = CAST(:user_id AS uuid)
+            {shop_filter_sql}
+            ORDER BY sl.upload_batch_id DESC NULLS LAST
+            LIMIT 1
+        """)
+        batch_result = db.execute(batch_query, params_batch)
+        batch_row = batch_result.fetchone()
+        if not batch_row or not batch_row[0]:
+            return ProductsTableResponse(items=[])
+
+        batch_id = str(batch_row[0])
+        params_stg = {"user_id": str(user_id), "batch_id": batch_id}
+        if shop_norm:
+            params_stg["shop_norm"] = shop_norm
+        stg_query = text(f"""
+            SELECT sl.data, sl.barcode_raw, sl.in_sale_raw,
+                   NULLIF(trim(regexp_replace(COALESCE(sl.barcode_raw, ''), '\\s+', '', 'g')), '') AS barcode_norm
+            FROM {qname("stg_leftout_old")} sl
+            WHERE sl.user_id = CAST(:user_id AS uuid)
+              AND sl.upload_batch_id = CAST(:batch_id AS uuid)
+            {shop_filter_sql if shop_norm else ""}
+        """)
+        stg_result = db.execute(stg_query, params_stg)
+        stg_rows = stg_result.fetchall()
+
+        # Sales aggregates by barcode_norm (sells_report)
+        sales_query = text(f"""
+            SELECT
+                fs.barcode_norm,
+                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.qty, 0) ELSE 0 END)::int AS sales_qty,
+                SUM(COALESCE(fs.returns_qty, 0))::int AS returns_qty,
+                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.revenue_sum, 0) ELSE 0 END)::double precision AS revenue,
+                SUM(COALESCE(fs.cogs_sum, 0))::double precision AS cogs,
+                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.commission_sum, 0) ELSE 0 END)::double precision AS commission,
+                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.logistics_sum, 0) ELSE 0 END)::double precision AS logistics,
+                MAX(ds.shop_name) AS shop
+            FROM {qname("fact_sales")} fs
+            LEFT JOIN {qname("dim_shop")} ds ON ds.user_id = fs.user_id AND ds.shop_id = fs.shop_id
+            WHERE fs.user_id = CAST(:user_id AS uuid)
+              AND fs.barcode_norm IS NOT NULL
+            GROUP BY fs.barcode_norm
+        """)
+        sales_result = db.execute(sales_query, {"user_id": str(user_id)})
+        sales_by_barcode: dict = {}
+        for row in sales_result.fetchall():
+            bn = (row[0] or "").strip() if row[0] else ""
+            if bn:
+                sales_by_barcode[bn] = {
+                    "sales_qty": int(row[1] or 0),
+                    "returns_qty": int(row[2] or 0),
+                    "revenue": float(row[3] or 0),
+                    "cogs": float(row[4] or 0),
+                    "commission": float(row[5] or 0),
+                    "logistics": float(row[6] or 0),
+                    "shop": _str_val(row[7]),
+                }
+
+        items: list[ProductsTableItem] = []
+        for row in stg_rows:
+            data = row[0]
+            if not isinstance(data, dict):
+                continue
+            barcode_raw = _str_val(row[1])
+            in_sale_raw = _str_val(row[2])
+            barcode_norm = (row[3] or "").strip() if row[3] else ""
+            if not barcode_norm and barcode_raw:
+                barcode_norm = (barcode_raw or "").replace(" ", "").strip()
+
+            product_name = _str_val(data.get("Наименование") or data.get("Название товара"))
+            sku = _str_val(data.get("SKU"))
+            price = _parse_num(data.get("Стоимость продажи (сумы)"))
+            turnover = _parse_turnover(data)
+            stock = _parse_int(data.get("В продаже") or in_sale_raw)
+            size_group_raw = _str_val(data.get("Габаритная группа"))
+            size_group = "-" if (size_group_raw and "неопределен" in (size_group_raw or "").lower()) else (size_group_raw or "-")
+            sales_per_day = _parse_num(data.get("Среднесуточные продажи"))
+            storage_cost = _parse_num(data.get("Стоимость хранения 1 дня, сум") or data.get("Стоимость хранения 1 дня"))
+            barcode = _str_val(data.get("Штрихкод")) or barcode_raw
+
+            sales_row = sales_by_barcode.get(barcode_norm) if barcode_norm else None
+            if sales_row:
+                sales_qty = sales_row["sales_qty"]
+                returns_qty = sales_row["returns_qty"]
+                revenue = sales_row["revenue"]
+                cogs = sales_row["cogs"]
+                commission = sales_row["commission"]
+                logistics = sales_row["logistics"]
+                shop = sales_row["shop"]
+            else:
+                sales_qty = returns_qty = 0
+                revenue = cogs = commission = logistics = 0.0
+                shop = None
+
+            # Закончится = ceil(Остаток / Среднесуточные продажи)
+            ends_in_days = None
+            if stock is not None and sales_per_day is not None and sales_per_day > 0:
+                ends_in_days = math.ceil(stock / sales_per_day)
+
+            items.append(ProductsTableItem(
+                product_name=product_name,
+                sku=sku,
+                price=price,
+                sales_qty=sales_qty,
+                returns_qty=returns_qty,
+                revenue=revenue,
+                turnover=turnover,
+                stock=stock,
+                size_group=size_group or "-",
+                ends_in_days=ends_in_days,
+                cogs=cogs,
+                commission=commission,
+                logistics=logistics,
+                abc_orders=None,
+                abc_profit=None,
+                abc_revenue=None,
+                barcode=barcode,
+                storage_cost_per_day=storage_cost,
+                shop=shop,
+            ))
+        return ProductsTableResponse(items=items)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_products_table: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.get("/charts/orders-sales-daily", response_model=OrdersSalesDailyResponse)

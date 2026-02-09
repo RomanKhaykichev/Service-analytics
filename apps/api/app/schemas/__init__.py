@@ -26,6 +26,8 @@ from .charts import (
     DailySummaryResponse,
     ShipmentRecommendationItem,
     ShipmentRecommendationsResponse,
+    ProductsTableItem,
+    ProductsTableResponse,
 )
 from .products import ProductItem, ProductsResponse
 from .kpi import KPISummaryResponse, CumulativeRevenueResponse
@@ -60,6 +62,8 @@ __all__ = [
     "DailySummaryResponse",
     "ShipmentRecommendationItem",
     "ShipmentRecommendationsResponse",
+    "ProductsTableItem",
+    "ProductsTableResponse",
     "ProductItem",
     "ProductsResponse",
     "KPISummaryResponse",

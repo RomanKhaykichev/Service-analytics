@@ -166,3 +166,30 @@ class ShipmentRecommendationItem(BaseModel):
 
 class ShipmentRecommendationsResponse(BaseModel):
     items: list[ShipmentRecommendationItem]
+
+
+# Products table (Товары): left-out-report_old + sells_report by barcode
+class ProductsTableItem(BaseModel):
+    product_name: Optional[str] = None   # Наименование (leftout_old)
+    sku: Optional[str] = None           # Артикул = SKU (leftout_old)
+    price: Optional[float] = None       # Цена = Стоимость продажи (сумы) (leftout_old)
+    sales_qty: int = 0                  # Продажи = Количество, статус «завершен»
+    returns_qty: int = 0                # Возвраты (sells_report)
+    revenue: float = 0.0                # Выручка (сумы), статус «Завершен»
+    turnover: Optional[float] = None   # Оборачиваемость (leftout_old)
+    stock: Optional[int] = None         # Остаток = В продаже (leftout_old)
+    size_group: Optional[str] = None   # Габаритная группа; «Неопределенная» → «-»
+    ends_in_days: Optional[int] = None # Закончится = ceil(Остаток / Среднесуточные продажи)
+    cogs: float = 0.0                   # Себестоимость (сумы) (sells_report)
+    commission: float = 0.0             # Комиссия маркетплейса, статус «Завершен»
+    logistics: float = 0.0             # Логистический сбор, статус «Завершен»
+    abc_orders: Optional[str] = None   # ABC заказы (оставить как есть)
+    abc_profit: Optional[str] = None   # ABC прибыль
+    abc_revenue: Optional[str] = None  # ABC выручка
+    barcode: Optional[str] = None     # Штрихкод (leftout_old)
+    storage_cost_per_day: Optional[float] = None  # Стоимость хранения 1 дня, сум
+    shop: Optional[str] = None         # Магазин (sells_report)
+
+
+class ProductsTableResponse(BaseModel):
+    items: list[ProductsTableItem]

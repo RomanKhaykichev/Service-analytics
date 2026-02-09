@@ -2,10 +2,6 @@ import { useState } from "react";
 import {
   Search,
   Download,
-  MoreHorizontal,
-  Eye,
-  Edit,
-  Trash2,
   Settings,
   Layers,
   ArrowUpDown,
@@ -15,7 +11,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -42,257 +37,91 @@ import { cn } from "@/lib/utils";
 import { ProductDetailView } from "./ProductDetailView";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
+import { useQuery } from "@tanstack/react-query";
+import { apiGet, buildQueryParams } from "@/lib/api";
 
-type AvailabilityStatus = "excess" | "out_of_stock" | "needs_supply";
+/** Элемент таблицы товаров: left-out-report_old + sells_report по штрихкоду */
+export interface ProductsTableItemType {
+  product_name: string | null;
+  sku: string | null;
+  price: number | null;
+  sales_qty: number;
+  returns_qty: number;
+  revenue: number;
+  turnover: number | null;
+  stock: number | null;
+  size_group: string | null;
+  ends_in_days: number | null;
+  cogs: number;
+  commission: number;
+  logistics: number;
+  abc_orders: string | null;
+  abc_profit: string | null;
+  abc_revenue: string | null;
+  barcode: string | null;
+  storage_cost_per_day: number | null;
+  shop: string | null;
+}
 
-const products = [
-  {
-    id: "SKU-001",
-    name: "UZUM Smart Kettle Pro",
-    article: "KTL-PRO-001",
-    price: 189000,
-    sales: 1245,
-    returns: 23,
-    revenue: 235305000,
-    lostRevenue: 4536000,
-    turnover: 12.5,
-    stock: 342,
-    endsIn: "45 дней",
-    costPrice: null as number | null,
-    uzumCommission: 18900,
-    uzumLogistics: 12000,
-    abcOrders: "A",
-    abcProfit: "A",
-    abcRevenue: "A",
-    barcode: "4780012345001",
-    brand: "UZUM Home",
-    category: "Электроника",
-    status: "active",
-    availability: "excess" as AvailabilityStatus,
-  },
-  {
-    id: "SKU-002",
-    name: "UZUM Wireless Earbuds X5",
-    article: "EAR-X5-002",
-    price: 245000,
-    sales: 987,
-    returns: 15,
-    revenue: 241815000,
-    lostRevenue: 2450000,
-    turnover: 8.3,
-    stock: 156,
-    endsIn: "21 день",
-    costPrice: 120000,
-    uzumCommission: 24500,
-    uzumLogistics: 8000,
-    abcOrders: "A",
-    abcProfit: "B",
-    abcRevenue: "A",
-    barcode: "4780012345002",
-    brand: "UZUM Tech",
-    category: "Электроника",
-    status: "active",
-    availability: "needs_supply" as AvailabilityStatus,
-  },
-  {
-    id: "SKU-003",
-    name: "UZUM Fitness Band Plus",
-    article: "FIT-PLUS-003",
-    price: 156000,
-    sales: 876,
-    returns: 8,
-    revenue: 136656000,
-    lostRevenue: 1560000,
-    turnover: 15.2,
-    stock: 89,
-    endsIn: "12 дней",
-    costPrice: 75000,
-    uzumCommission: 15600,
-    uzumLogistics: 6000,
-    abcOrders: "B",
-    abcProfit: "A",
-    abcRevenue: "B",
-    barcode: "4780012345003",
-    brand: "UZUM Fit",
-    category: "Электроника",
-    status: "low_stock",
-    availability: "needs_supply" as AvailabilityStatus,
-  },
-  {
-    id: "SKU-004",
-    name: "Кухонный комбайн UZUM",
-    article: "KMB-UZ-004",
-    price: 425000,
-    sales: 543,
-    returns: 12,
-    revenue: 230775000,
-    lostRevenue: 8500000,
-    turnover: 6.8,
-    stock: 234,
-    endsIn: "56 дней",
-    costPrice: null,
-    uzumCommission: 42500,
-    uzumLogistics: 25000,
-    abcOrders: "B",
-    abcProfit: "B",
-    abcRevenue: "A",
-    barcode: "4780012345004",
-    brand: "UZUM Home",
-    category: "Дом и кухня",
-    status: "active",
-    availability: "excess" as AvailabilityStatus,
-  },
-  {
-    id: "SKU-005",
-    name: "Набор косметики Premium",
-    article: "COS-PRM-005",
-    price: 178000,
-    sales: 432,
-    returns: 5,
-    revenue: 76896000,
-    lostRevenue: 890000,
-    turnover: 0,
-    stock: 0,
-    endsIn: "—",
-    costPrice: 89000,
-    uzumCommission: 17800,
-    uzumLogistics: 5000,
-    abcOrders: "C",
-    abcProfit: "B",
-    abcRevenue: "C",
-    barcode: "4780012345005",
-    brand: "Beauty Plus",
-    category: "Красота",
-    status: "out_of_stock",
-    availability: "out_of_stock" as AvailabilityStatus,
-  },
-  {
-    id: "SKU-006",
-    name: "Умные часы UZUM Watch",
-    article: "WCH-UZ-006",
-    price: 389000,
-    sales: 654,
-    returns: 18,
-    revenue: 254406000,
-    lostRevenue: 3890000,
-    turnover: 9.1,
-    stock: 178,
-    endsIn: "32 дня",
-    costPrice: 195000,
-    uzumCommission: 38900,
-    uzumLogistics: 8000,
-    abcOrders: "A",
-    abcProfit: "A",
-    abcRevenue: "A",
-    barcode: "4780012345006",
-    brand: "UZUM Tech",
-    category: "Электроника",
-    status: "active",
-    availability: "excess" as AvailabilityStatus,
-  },
-  {
-    id: "SKU-007",
-    name: "Блендер UZUM Power",
-    article: "BLN-PWR-007",
-    price: 145000,
-    sales: 321,
-    returns: 7,
-    revenue: 46545000,
-    lostRevenue: 1450000,
-    turnover: 7.4,
-    stock: 67,
-    endsIn: "14 дней",
-    costPrice: null,
-    uzumCommission: 14500,
-    uzumLogistics: 15000,
-    abcOrders: "C",
-    abcProfit: "C",
-    abcRevenue: "C",
-    barcode: "4780012345007",
-    brand: "UZUM Home",
-    category: "Дом и кухня",
-    status: "low_stock",
-    availability: "needs_supply" as AvailabilityStatus,
-  },
-  {
-    id: "SKU-008",
-    name: "Крем для лица Hydra+",
-    article: "CRM-HYD-008",
-    price: 89000,
-    sales: 567,
-    returns: 3,
-    revenue: 50463000,
-    lostRevenue: 445000,
-    turnover: 18.9,
-    stock: 289,
-    endsIn: "67 дней",
-    costPrice: 35000,
-    uzumCommission: 8900,
-    uzumLogistics: 3000,
-    abcOrders: "B",
-    abcProfit: "A",
-    abcRevenue: "B",
-    barcode: "4780012345008",
-    brand: "Beauty Plus",
-    category: "Красота",
-    status: "active",
-    availability: "excess" as AvailabilityStatus,
-  },
-];
+interface ProductsTableResponse {
+  items: ProductsTableItemType[];
+}
 
-type SortField = 
-  | "name" 
-  | "article" 
-  | "price" 
-  | "sales" 
-  | "returns" 
-  | "revenue" 
-  | "lostRevenue" 
-  | "turnover" 
-  | "stock" 
-  | "endsIn" 
-  | "costPrice" 
-  | "uzumCommission" 
-  | "uzumLogistics" 
-  | "abcOrders" 
-  | "abcProfit" 
-  | "abcRevenue" 
-  | "barcode" 
-  | "brand" 
-  | "category";
+type SortField =
+  | "product_name"
+  | "sku"
+  | "price"
+  | "sales_qty"
+  | "returns_qty"
+  | "revenue"
+  | "turnover"
+  | "stock"
+  | "ends_in_days"
+  | "cogs"
+  | "commission"
+  | "logistics"
+  | "abc_orders"
+  | "abc_profit"
+  | "abc_revenue"
+  | "barcode"
+  | "size_group"
+  | "storage_cost_per_day"
+  | "shop";
 
 type SortDirection = "asc" | "desc" | null;
 
-export function ProductsView() {
-  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
+interface ProductsViewProps {
+  shop?: string | null;
+}
+
+export function ProductsView({ shop }: ProductsViewProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [groupBy, setGroupBy] = useState<string | null>(null);
-  const [selectedProduct, setSelectedProduct] = useState<typeof products[0] | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<ProductsTableItemType | null>(null);
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
 
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat("ru-RU").format(price) + " сум";
-  };
+  const { data: productsData, isLoading: productsLoading } = useQuery({
+    queryKey: ["products-table", shop],
+    queryFn: async () => {
+      const params = buildQueryParams({ shop: shop ?? undefined });
+      return apiGet<ProductsTableResponse>("/api/charts/products-table", params);
+    },
+    refetchOnWindowFocus: false,
+  });
+
+  const products: ProductsTableItemType[] = productsData?.items ?? [];
+  const productId = (p: ProductsTableItemType, idx: number) => p.barcode || p.sku || `row-${idx}`;
 
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat("ru-RU").format(num);
   };
 
-  const getAvailabilityBadge = (availability: AvailabilityStatus) => {
-    switch (availability) {
-      case "excess":
-        return <Badge className="bg-success/10 text-success hover:bg-success/20 text-xs">Избыток</Badge>;
-      case "out_of_stock":
-        return <Badge className="bg-destructive/10 text-destructive hover:bg-destructive/20 text-xs">Нет на складе</Badge>;
-      case "needs_supply":
-        return <Badge className="bg-warning/10 text-warning hover:bg-warning/20 text-xs">Нужна поставка</Badge>;
-      default:
-        return null;
-    }
-  };
+  /** Числа в колонках без суффикса «сум» */
+  const formatValue = (price: number) => new Intl.NumberFormat("ru-RU").format(price);
 
-  const getAbcBadge = (abc: string) => {
+  const getAbcBadge = (abc: string | null) => {
+    if (abc == null || abc === "") return null;
     switch (abc) {
       case "A":
         return <Badge className="bg-success/10 text-success hover:bg-success/20 text-xs px-2">A</Badge>;
@@ -304,21 +133,6 @@ export function ProductsView() {
         return null;
     }
   };
-
-  const toggleSelectAll = () => {
-    if (selectedProducts.length === sortedProducts.length) {
-      setSelectedProducts([]);
-    } else {
-      setSelectedProducts(sortedProducts.map((p) => p.id));
-    }
-  };
-
-  const toggleSelect = (id: string) => {
-    setSelectedProducts((prev) =>
-      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
-    );
-  };
-
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -349,75 +163,99 @@ export function ProductsView() {
     return <ArrowUpDown className="w-3 h-3 ml-1 opacity-50" />;
   };
 
-  const sortedProducts = [...products].sort((a, b) => {
+  const filteredProducts = products.filter((p) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.trim().toLowerCase();
+    return (
+      (p.product_name?.toLowerCase().includes(q)) ||
+      (p.sku?.toLowerCase().includes(q)) ||
+      (p.barcode?.toLowerCase().includes(q))
+    );
+  });
+
+  const sortedProducts = [...filteredProducts].sort((a, b) => {
     if (!sortField || !sortDirection) return 0;
 
-    let aValue: any = a[sortField];
-    let bValue: any = b[sortField];
+    let aValue: unknown = a[sortField as keyof ProductsTableItemType];
+    let bValue: unknown = b[sortField as keyof ProductsTableItemType];
 
-    // Handle null values
-    if (aValue === null) aValue = sortDirection === "asc" ? Infinity : -Infinity;
-    if (bValue === null) bValue = sortDirection === "asc" ? Infinity : -Infinity;
+    if (aValue === null || aValue === undefined) aValue = sortDirection === "asc" ? Infinity : -Infinity;
+    if (bValue === null || bValue === undefined) bValue = sortDirection === "asc" ? Infinity : -Infinity;
 
-    // String comparison
     if (typeof aValue === "string" && typeof bValue === "string") {
-      return sortDirection === "asc" 
-        ? aValue.localeCompare(bValue, "ru") 
+      return sortDirection === "asc"
+        ? aValue.localeCompare(bValue, "ru")
         : bValue.localeCompare(aValue, "ru");
     }
 
-    // Number comparison
     if (sortDirection === "asc") {
-      return aValue > bValue ? 1 : -1;
+      return (aValue as number) > (bValue as number) ? 1 : -1;
     } else {
-      return aValue < bValue ? 1 : -1;
+      return (aValue as number) < (bValue as number) ? 1 : -1;
     }
   });
 
   const handleExportXLSX = () => {
-    if (selectedProducts.length === 0) {
-      toast.error("Выберите товары для выгрузки");
-      return;
-    }
-
-    const selectedData = sortedProducts
-      .filter((p) => selectedProducts.includes(p.id))
-      .map((p) => ({
-        "Наименование": p.name,
-        "Артикул": p.article,
-        "Цена": p.price,
-        "Продажи": p.sales,
-        "Возвраты": p.returns,
+    const selectedData = sortedProducts.map((p) => ({
+        "Наименование": p.product_name ?? "",
+        "Артикул": p.sku ?? "",
+        "Цена": p.price ?? "",
+        "Продажи": p.sales_qty,
+        "Возвраты": p.returns_qty,
         "Выручка": p.revenue,
-        "Упущ. выручка": p.lostRevenue,
-        "Оборачиваемость": p.turnover,
-        "Остаток": p.stock,
-        "Закончится": p.endsIn,
-        "Себестоимость": p.costPrice || "",
-        "Наличие": p.availability === "excess" ? "Избыток" : p.availability === "out_of_stock" ? "Нет на складе" : "Нужна поставка",
-        "Комиссия UZUM": p.uzumCommission,
-        "Логистика UZUM": p.uzumLogistics,
-        "ABC заказы": p.abcOrders,
-        "ABC прибыль": p.abcProfit,
-        "ABC выручка": p.abcRevenue,
-        "Штрихкод": p.barcode,
-        "Бренд": p.brand,
-        "Категория": p.category,
+        "Оборачиваемость": p.turnover ?? "",
+        "Остаток": p.stock ?? "",
+        "Габаритная группа": p.size_group ?? "-",
+        "Закончится": p.ends_in_days != null ? `${p.ends_in_days} дн.` : "—",
+        "Себестоимость": p.cogs || "",
+        "Комиссия": p.commission,
+        "Логистика": p.logistics,
+        "ABC заказы": p.abc_orders ?? "",
+        "ABC прибыль": p.abc_profit ?? "",
+        "ABC выручка": p.abc_revenue ?? "",
+        "Штрихкод": p.barcode ?? "",
+        "Хранение сут/сум": p.storage_cost_per_day ?? "",
+        "Магазин": p.shop ?? "",
       }));
 
     const worksheet = XLSX.utils.json_to_sheet(selectedData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Товары");
     XLSX.writeFile(workbook, `товары_${new Date().toISOString().split("T")[0]}.xlsx`);
-    toast.success(`Выгружено ${selectedProducts.length} товаров`);
+    toast.success(`Выгружено ${selectedData.length} товаров`);
   };
+
+  // Map API item to Product shape for ProductDetailView
+  const productToDetailShape = (p: ProductsTableItemType) => ({
+    id: p.barcode || p.sku || "",
+    name: p.product_name ?? "",
+    article: p.sku ?? "",
+    price: p.price ?? 0,
+    sales: p.sales_qty,
+    returns: p.returns_qty,
+    revenue: p.revenue,
+    lostRevenue: 0,
+    turnover: p.turnover ?? 0,
+    stock: p.stock ?? 0,
+    endsIn: p.ends_in_days != null ? `${p.ends_in_days} дн.` : "—",
+    costPrice: p.cogs || null,
+    uzumCommission: p.commission,
+    uzumLogistics: p.logistics,
+    abcOrders: p.abc_orders ?? "",
+    abcProfit: p.abc_profit ?? "",
+    abcRevenue: p.abc_revenue ?? "",
+    barcode: p.barcode ?? "",
+    brand: "",
+    category: p.size_group ?? "",
+    status: "active",
+  });
 
   // If a product is selected, show the detail view
   if (selectedProduct) {
     return (
-      <ProductDetailView 
-        product={selectedProduct} 
-        onBack={() => setSelectedProduct(null)} 
+      <ProductDetailView
+        product={productToDetailShape(selectedProduct)}
+        onBack={() => setSelectedProduct(null)}
       />
     );
   }
@@ -448,45 +286,13 @@ export function ProductsView() {
           />
         </div>
 
-        <Select defaultValue="all">
-          <SelectTrigger className="w-40 bg-background">
-            <SelectValue placeholder="Категория" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Все категории</SelectItem>
-            <SelectItem value="electronics">Электроника</SelectItem>
-            <SelectItem value="home">Дом и кухня</SelectItem>
-            <SelectItem value="beauty">Красота</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select defaultValue="all">
-          <SelectTrigger className="w-40 bg-background">
-            <SelectValue placeholder="Наличие" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Все</SelectItem>
-            <SelectItem value="excess">Избыток</SelectItem>
-            <SelectItem value="out_of_stock">Нет на складе</SelectItem>
-            <SelectItem value="needs_supply">Нужна поставка</SelectItem>
-          </SelectContent>
-        </Select>
-
         <div className="flex-1" />
-
-        {selectedProducts.length > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">
-              Выбрано: {selectedProducts.length}
-            </span>
-          </div>
-        )}
 
         <Button 
           variant="outline" 
           size="sm"
           onClick={handleExportXLSX}
-          disabled={selectedProducts.length === 0}
+          disabled={sortedProducts.length === 0}
         >
           <Download className="w-4 h-4 mr-2" />
           Выгрузить в XLSX
@@ -528,195 +334,161 @@ export function ProductsView() {
       )}
 
       {/* Products Table */}
-      <div className="data-table animate-fade-in overflow-hidden rounded-lg border border-border">
-        <div className="overflow-x-auto">
-          <Table>
+      {productsLoading ? (
+        <div className="rounded-lg border border-border p-8 text-center text-muted-foreground">
+          Загрузка товаров…
+        </div>
+      ) : (
+      <div className="data-table animate-fade-in rounded-lg border border-border">
+        <div className="overflow-x-auto overflow-y-visible">
+          <Table className="min-w-[1600px]">
             <TableHeader>
-              <TableRow className="hover:bg-transparent bg-muted/30">
-                <TableHead className="w-10 sticky left-0 bg-muted/30 z-10">
-                  <Checkbox
-                    checked={selectedProducts.length === sortedProducts.length && sortedProducts.length > 0}
-                    onCheckedChange={toggleSelectAll}
-                  />
-                </TableHead>
-                <SortableHeader field="name" className="min-w-[200px] sticky left-10 bg-muted/30 z-10">
+              <TableRow className="hover:bg-transparent bg-muted/50">
+                <SortableHeader field="product_name" className="min-w-[400px] max-w-[400px] sticky left-0 bg-muted z-10 border-r-0">
                   Наименование
                 </SortableHeader>
-                <SortableHeader field="article" className="min-w-[100px]">
+                <SortableHeader field="sku" className="min-w-[100px] border-l-0 bg-muted/30">
                   Артикул
                 </SortableHeader>
                 <SortableHeader field="price" className="text-right min-w-[100px]">
                   Цена
                 </SortableHeader>
-                <SortableHeader field="sales" className="text-right min-w-[80px]">
+                <SortableHeader field="sales_qty" className="text-right min-w-[80px]">
                   Продажи
                 </SortableHeader>
-                <SortableHeader field="returns" className="text-right min-w-[80px]">
+                <SortableHeader field="returns_qty" className="text-right min-w-[80px]">
                   Возвраты
                 </SortableHeader>
                 <SortableHeader field="revenue" className="text-right min-w-[120px]">
                   Выручка
                 </SortableHeader>
-                <SortableHeader field="lostRevenue" className="text-right min-w-[120px]">
-                  Упущ. выручка
-                </SortableHeader>
                 <SortableHeader field="turnover" className="text-right min-w-[100px]">
                   Оборач-ть
                 </SortableHeader>
-                <SortableHeader field="stock" className="text-right min-w-[120px]">
+                <SortableHeader field="stock" className="text-right min-w-[80px]">
                   Остаток
                 </SortableHeader>
-                <SortableHeader field="endsIn" className="text-right min-w-[100px]">
+                <SortableHeader field="size_group" className="min-w-[100px]">
+                  Габаритная группа
+                </SortableHeader>
+                <SortableHeader field="ends_in_days" className="text-right min-w-[90px]">
                   Закончится
                 </SortableHeader>
-                <TableHead className="text-center min-w-[120px]">
-                  Наличие
-                </TableHead>
-                <SortableHeader field="costPrice" className="text-right min-w-[150px]">
+                <SortableHeader field="cogs" className="text-right min-w-[120px]">
                   Себестоимость
                 </SortableHeader>
-                <SortableHeader field="uzumCommission" className="text-right min-w-[100px]">
+                <SortableHeader field="commission" className="text-right min-w-[100px]">
                   Комиссия
                 </SortableHeader>
-                <SortableHeader field="uzumLogistics" className="text-right min-w-[100px]">
+                <SortableHeader field="logistics" className="text-right min-w-[100px]">
                   Логистика
                 </SortableHeader>
-                <SortableHeader field="abcOrders" className="text-center min-w-[80px]">
+                <SortableHeader field="abc_orders" className="text-center min-w-[80px]">
                   ABC заказы
                 </SortableHeader>
-                <SortableHeader field="abcProfit" className="text-center min-w-[80px]">
+                <SortableHeader field="abc_profit" className="text-center min-w-[80px]">
                   ABC прибыль
                 </SortableHeader>
-                <SortableHeader field="abcRevenue" className="text-center min-w-[80px]">
+                <SortableHeader field="abc_revenue" className="text-center min-w-[80px]">
                   ABC выручка
                 </SortableHeader>
                 <SortableHeader field="barcode" className="min-w-[130px]">
                   Штрихкод
                 </SortableHeader>
-                <SortableHeader field="brand" className="min-w-[100px]">
-                  Бренд
+                <SortableHeader field="storage_cost_per_day" className="text-right min-w-[100px]">
+                  Хранение сут/сум
                 </SortableHeader>
-                <SortableHeader field="category" className="min-w-[100px]">
-                  Категория
+                <SortableHeader field="shop" className="min-w-[120px]">
+                  Магазин
                 </SortableHeader>
-                <TableHead className="w-10"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedProducts.map((product) => (
+              {sortedProducts.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={19} className="text-center text-muted-foreground py-8">
+                    Нет данных. Загрузите left-out-report_old и sells_report.
+                  </TableCell>
+                </TableRow>
+              ) : (
+              sortedProducts.map((product, idx) => {
+                const id = productId(product, idx);
+                return (
                 <TableRow
-                  key={product.id}
-                  className={cn(
-                    "cursor-pointer hover:bg-muted/50",
-                    selectedProducts.includes(product.id) && "bg-primary/5"
-                  )}
+                  key={id}
+                  className="cursor-pointer hover:bg-muted/50"
                   onClick={() => setSelectedProduct(product)}
                 >
-                  <TableCell className="sticky left-0 bg-card z-10" onClick={(e) => e.stopPropagation()}>
-                    <Checkbox
-                      checked={selectedProducts.includes(product.id)}
-                      onCheckedChange={() => toggleSelect(product.id)}
-                    />
-                  </TableCell>
-                  <TableCell className="sticky left-10 bg-card z-10">
-                    <div className="min-w-0">
-                      <p className="font-medium text-foreground truncate">{product.name}</p>
-                      <p className="text-xs text-muted-foreground">{product.id}</p>
+                  <TableCell className="sticky left-0 bg-card z-10 min-w-[400px] max-w-[400px] border-r-0">
+                    <div className="min-w-0 break-words whitespace-normal text-sm">
+                      <p className="font-medium text-foreground">{product.product_name ?? "—"}</p>
+                      <p className="text-xs text-muted-foreground">{product.sku ?? ""}</p>
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">{product.article}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm border-l-0">{product.sku ?? "—"}</TableCell>
                   <TableCell className="text-right font-medium">
-                    {formatPrice(product.price)}
+                    {product.price != null ? formatValue(product.price) : "—"}
                   </TableCell>
                   <TableCell className="text-right font-medium">
-                    {formatNumber(product.sales)}
+                    {formatNumber(product.sales_qty)}
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground">
-                    {formatNumber(product.returns)}
+                    {formatNumber(product.returns_qty)}
                   </TableCell>
                   <TableCell className="text-right font-medium">
-                    {formatPrice(product.revenue)}
-                  </TableCell>
-                  <TableCell className="text-right font-medium">
-                    {formatPrice(product.lostRevenue)}
+                    {formatValue(product.revenue)}
                   </TableCell>
                   <TableCell className="text-right">
-                    {product.turnover > 0 ? `${product.turnover}x` : "—"}
+                    {product.turnover != null && product.turnover > 0 ? `${product.turnover}` : "—"}
                   </TableCell>
                   <TableCell className="text-right font-medium">
-                    {formatNumber(product.stock)}
+                    {product.stock != null ? formatNumber(product.stock) : "—"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {product.size_group ?? "—"}
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground">
-                    {product.endsIn}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {getAvailabilityBadge(product.availability)}
+                    {product.ends_in_days != null ? `${product.ends_in_days} дн.` : "—"}
                   </TableCell>
                   <TableCell className="text-right">
-                    {product.costPrice ? (
-                      <span className="font-medium">{formatPrice(product.costPrice)}</span>
+                    {product.cogs ? (
+                      <span className="font-medium">{formatValue(product.cogs)}</span>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground">
-                    {formatPrice(product.uzumCommission)}
+                    {formatValue(product.commission)}
                   </TableCell>
                   <TableCell className="text-right text-muted-foreground">
-                    {formatPrice(product.uzumLogistics)}
+                    {formatValue(product.logistics)}
                   </TableCell>
                   <TableCell className="text-center">
-                    {getAbcBadge(product.abcOrders)}
+                    {getAbcBadge(product.abc_orders)}
                   </TableCell>
                   <TableCell className="text-center">
-                    {getAbcBadge(product.abcProfit)}
+                    {getAbcBadge(product.abc_profit)}
                   </TableCell>
                   <TableCell className="text-center">
-                    {getAbcBadge(product.abcRevenue)}
+                    {getAbcBadge(product.abc_revenue)}
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm font-mono">
-                    {product.barcode}
+                    {product.barcode ?? "—"}
                   </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className="font-normal text-xs">
-                      {product.brand}
-                    </Badge>
+                  <TableCell className="text-right text-muted-foreground">
+                    {product.storage_cost_per_day != null ? formatValue(product.storage_cost_per_day) : "—"}
                   </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="font-normal text-xs">
-                      {product.category}
-                    </Badge>
-                  </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setSelectedProduct(product)}>
-                          <Eye className="w-4 h-4 mr-2" />
-                          Просмотр
-                        </DropdownMenuItem>
-                        <DropdownMenuItem>
-                          <Edit className="w-4 h-4 mr-2" />
-                          Редактировать
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-destructive">
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Удалить
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                  <TableCell className="text-muted-foreground text-sm">
+                    {product.shop ?? "—"}
                   </TableCell>
                 </TableRow>
-              ))}
+              );
+              }) )}
             </TableBody>
           </Table>
         </div>
       </div>
+      )}
     </div>
   );
 }

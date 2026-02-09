@@ -354,7 +354,7 @@ function Dashboard() {
         </div>
       ) : activeTab === "products" ? (
         <div className="mt-6">
-          <ProductsView />
+          <ProductsView shop={selectedShop} />
         </div>
       ) : activeTab === "expenses" ? (
         <div className="mt-6">
