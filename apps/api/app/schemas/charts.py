@@ -176,10 +176,10 @@ class ProductsTableItem(BaseModel):
     sales_qty: int = 0                  # Продажи = Количество, статус «завершен»
     returns_qty: int = 0                # Возвраты (sells_report)
     revenue: float = 0.0                # Выручка (сумы), статус «Завершен»
+    profit: float = 0.0                 # Прибыль = Выручка - Себестоимость(заверш.) - Комиссия - Логистика - (Выручка*1%)
     turnover: Optional[float] = None   # Оборачиваемость (leftout_old)
-    stock: Optional[int] = None         # Остаток = В продаже (leftout_old)
+    stock: Optional[int] = None         # Остаток = Общий остаток (leftout_old)
     size_group: Optional[str] = None   # Габаритная группа; «Неопределенная» → «-»
-    ends_in_days: Optional[int] = None # Закончится = ceil(Остаток / Среднесуточные продажи)
     cogs: float = 0.0                   # Себестоимость (сумы) (sells_report)
     commission: float = 0.0             # Комиссия маркетплейса, статус «Завершен»
     logistics: float = 0.0             # Логистический сбор, статус «Завершен»

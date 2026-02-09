@@ -761,9 +761,11 @@ async def get_products_table(
     db: Session = Depends(get_db)
 ):
     """
-    Таблица товаров: left-out-report_old + sells_report по штрихкоду.
-    Наименование, Артикул, Цена, Продажи, Возвраты, Выручка, Оборачиваемость, Остаток,
-    Габаритная группа, Закончится, Себестоимость, Комиссия, Логистика, ABC, Штрихкод, Хранение сут/сум, Магазин.
+    Таблица товаров: три источника связаны по штрихкоду (barcode_norm):
+    - left-out-report_old (stg_leftout_old / fact_leftout_old_snapshot) — база строк, Наименование, Артикул, Цена, Остаток, Оборачиваемость и т.д.
+    - sells_report (fact_sales) — Продажи, Возвраты, Выручка, Себестоимость, Комиссия, Логистика
+    - seller-storage (fact_storage_snapshot) — Габаритная группа, Магазин
+    Связь по штрихкоду: barcode_norm = нормализованный штрихкод (пробелы убраны).
     """
     try:
         import math
@@ -803,19 +805,43 @@ async def get_products_table(
         stg_result = db.execute(stg_query, params_stg)
         stg_rows = stg_result.fetchall()
 
-        # Sales aggregates by barcode_norm (sells_report)
+        # Связь по штрихкоду: left-out-report_old (строки выше) + seller-storage + sells_report по barcode_norm
+
+        # Seller-storage: Габаритная группа и Магазин по barcode_norm (файл seller-storage = fact_storage_snapshot)
+        storage_query = text(f"""
+            SELECT
+                COALESCE(fss.barcode_norm, NULLIF(trim(regexp_replace(COALESCE(fss.barcode, ''), '\\s+', '', 'g')), '')) AS barcode_norm,
+                MAX(NULLIF(trim(fss.size_group), '')) AS size_group,
+                MAX(NULLIF(trim(fss.shop_raw), '')) AS shop
+            FROM {qname("fact_storage_snapshot")} fss
+            WHERE fss.user_id = CAST(:user_id AS uuid)
+              AND (fss.barcode_norm IS NOT NULL OR fss.barcode IS NOT NULL)
+            GROUP BY fss.user_id, COALESCE(fss.barcode_norm, NULLIF(trim(regexp_replace(COALESCE(fss.barcode, ''), '\\s+', '', 'g')), ''))
+        """)
+        storage_result = db.execute(storage_query, {"user_id": str(user_id)})
+        storage_by_barcode: dict = {}
+        for row in storage_result.fetchall():
+            bn = (row[0] or "").strip() if row[0] else ""
+            if bn:
+                sg = _str_val(row[1])
+                if sg and "неопределен" in (sg or "").lower():
+                    sg = "-"
+                storage_by_barcode[bn] = {
+                    "size_group": sg or "-",
+                    "shop": _str_val(row[2]),
+                }
+
+        # Sells_report: агрегаты по barcode_norm. Себестоимость — только со статусом «Завершен» (Себестоимость (сумы)*Количество).
         sales_query = text(f"""
             SELECT
                 fs.barcode_norm,
                 SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.qty, 0) ELSE 0 END)::int AS sales_qty,
                 SUM(COALESCE(fs.returns_qty, 0))::int AS returns_qty,
                 SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.revenue_sum, 0) ELSE 0 END)::double precision AS revenue,
-                SUM(COALESCE(fs.cogs_sum, 0))::double precision AS cogs,
+                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.cogs_sum, 0) ELSE 0 END)::double precision AS cogs,
                 SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.commission_sum, 0) ELSE 0 END)::double precision AS commission,
-                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.logistics_sum, 0) ELSE 0 END)::double precision AS logistics,
-                MAX(ds.shop_name) AS shop
+                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.logistics_sum, 0) ELSE 0 END)::double precision AS logistics
             FROM {qname("fact_sales")} fs
-            LEFT JOIN {qname("dim_shop")} ds ON ds.user_id = fs.user_id AND ds.shop_id = fs.shop_id
             WHERE fs.user_id = CAST(:user_id AS uuid)
               AND fs.barcode_norm IS NOT NULL
             GROUP BY fs.barcode_norm
@@ -832,7 +858,6 @@ async def get_products_table(
                     "cogs": float(row[4] or 0),
                     "commission": float(row[5] or 0),
                     "logistics": float(row[6] or 0),
-                    "shop": _str_val(row[7]),
                 }
 
         items: list[ProductsTableItem] = []
@@ -850,12 +875,17 @@ async def get_products_table(
             sku = _str_val(data.get("SKU"))
             price = _parse_num(data.get("Стоимость продажи (сумы)"))
             turnover = _parse_turnover(data)
-            stock = _parse_int(data.get("В продаже") or in_sale_raw)
-            size_group_raw = _str_val(data.get("Габаритная группа"))
-            size_group = "-" if (size_group_raw and "неопределен" in (size_group_raw or "").lower()) else (size_group_raw or "-")
-            sales_per_day = _parse_num(data.get("Среднесуточные продажи"))
+            stock = _parse_int(data.get("Общий остаток") or data.get("В продаже") or in_sale_raw)
             storage_cost = _parse_num(data.get("Стоимость хранения 1 дня, сум") or data.get("Стоимость хранения 1 дня"))
             barcode = _str_val(data.get("Штрихкод")) or barcode_raw
+
+            # Габаритная группа и Магазин — только из seller-storage (fact_storage_snapshot), колонка Магазин = shop_raw
+            shop = None
+            size_group = "-"
+            storage_row = storage_by_barcode.get(barcode_norm) if barcode_norm else None
+            if storage_row:
+                size_group = storage_row["size_group"]
+                shop = storage_row["shop"]  # только из seller-storage, колонка Магазин
 
             sales_row = sales_by_barcode.get(barcode_norm) if barcode_norm else None
             if sales_row:
@@ -865,16 +895,12 @@ async def get_products_table(
                 cogs = sales_row["cogs"]
                 commission = sales_row["commission"]
                 logistics = sales_row["logistics"]
-                shop = sales_row["shop"]
             else:
                 sales_qty = returns_qty = 0
                 revenue = cogs = commission = logistics = 0.0
-                shop = None
 
-            # Закончится = ceil(Остаток / Среднесуточные продажи)
-            ends_in_days = None
-            if stock is not None and sales_per_day is not None and sales_per_day > 0:
-                ends_in_days = math.ceil(stock / sales_per_day)
+            # Прибыль = Выручка - Себестоимость(заверш.) - Комиссия - Логистика - (Выручка*1%)
+            profit = revenue - cogs - commission - logistics - (revenue * 0.01)
 
             items.append(ProductsTableItem(
                 product_name=product_name,
@@ -883,10 +909,10 @@ async def get_products_table(
                 sales_qty=sales_qty,
                 returns_qty=returns_qty,
                 revenue=revenue,
+                profit=profit,
                 turnover=turnover,
                 stock=stock,
                 size_group=size_group or "-",
-                ends_in_days=ends_in_days,
                 cogs=cogs,
                 commission=commission,
                 logistics=logistics,

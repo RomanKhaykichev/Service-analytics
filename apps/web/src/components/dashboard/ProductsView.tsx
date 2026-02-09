@@ -48,10 +48,10 @@ export interface ProductsTableItemType {
   sales_qty: number;
   returns_qty: number;
   revenue: number;
+  profit: number;
   turnover: number | null;
   stock: number | null;
   size_group: string | null;
-  ends_in_days: number | null;
   cogs: number;
   commission: number;
   logistics: number;
@@ -74,9 +74,9 @@ type SortField =
   | "sales_qty"
   | "returns_qty"
   | "revenue"
+  | "profit"
   | "turnover"
   | "stock"
-  | "ends_in_days"
   | "cogs"
   | "commission"
   | "logistics"
@@ -203,10 +203,10 @@ export function ProductsView({ shop }: ProductsViewProps) {
         "Продажи": p.sales_qty,
         "Возвраты": p.returns_qty,
         "Выручка": p.revenue,
+        "Прибыль": p.profit,
         "Оборачиваемость": p.turnover ?? "",
         "Остаток": p.stock ?? "",
         "Габаритная группа": p.size_group ?? "-",
-        "Закончится": p.ends_in_days != null ? `${p.ends_in_days} дн.` : "—",
         "Себестоимость": p.cogs || "",
         "Комиссия": p.commission,
         "Логистика": p.logistics,
@@ -237,7 +237,7 @@ export function ProductsView({ shop }: ProductsViewProps) {
     lostRevenue: 0,
     turnover: p.turnover ?? 0,
     stock: p.stock ?? 0,
-    endsIn: p.ends_in_days != null ? `${p.ends_in_days} дн.` : "—",
+    endsIn: "—",
     costPrice: p.cogs || null,
     uzumCommission: p.commission,
     uzumLogistics: p.logistics,
@@ -347,40 +347,37 @@ export function ProductsView({ shop }: ProductsViewProps) {
                 <SortableHeader field="product_name" className="min-w-[400px] max-w-[400px] sticky left-0 bg-muted z-10 border-r-0">
                   Наименование
                 </SortableHeader>
-                <SortableHeader field="sku" className="min-w-[100px] border-l-0 bg-muted/30">
-                  Артикул
-                </SortableHeader>
-                <SortableHeader field="price" className="text-right min-w-[100px]">
+                <SortableHeader field="price" className="text-center min-w-[100px]">
                   Цена
                 </SortableHeader>
-                <SortableHeader field="sales_qty" className="text-right min-w-[80px]">
+                <SortableHeader field="sales_qty" className="text-center min-w-[80px]">
                   Продажи
                 </SortableHeader>
-                <SortableHeader field="returns_qty" className="text-right min-w-[80px]">
+                <SortableHeader field="returns_qty" className="text-center min-w-[80px]">
                   Возвраты
                 </SortableHeader>
-                <SortableHeader field="revenue" className="text-right min-w-[120px]">
+                <SortableHeader field="revenue" className="text-center min-w-[120px]">
                   Выручка
                 </SortableHeader>
-                <SortableHeader field="turnover" className="text-right min-w-[100px]">
+                <SortableHeader field="profit" className="text-center min-w-[120px]">
+                  Прибыль
+                </SortableHeader>
+                <SortableHeader field="turnover" className="text-center min-w-[100px] whitespace-nowrap">
                   Оборач-ть
                 </SortableHeader>
-                <SortableHeader field="stock" className="text-right min-w-[80px]">
+                <SortableHeader field="stock" className="text-center min-w-[80px]">
                   Остаток
                 </SortableHeader>
-                <SortableHeader field="size_group" className="min-w-[100px]">
+                <SortableHeader field="size_group" className="text-center min-w-[100px]">
                   Габаритная группа
                 </SortableHeader>
-                <SortableHeader field="ends_in_days" className="text-right min-w-[90px]">
-                  Закончится
-                </SortableHeader>
-                <SortableHeader field="cogs" className="text-right min-w-[120px]">
+                <SortableHeader field="cogs" className="text-center min-w-[120px]">
                   Себестоимость
                 </SortableHeader>
-                <SortableHeader field="commission" className="text-right min-w-[100px]">
+                <SortableHeader field="commission" className="text-center min-w-[100px]">
                   Комиссия
                 </SortableHeader>
-                <SortableHeader field="logistics" className="text-right min-w-[100px]">
+                <SortableHeader field="logistics" className="text-center min-w-[100px]">
                   Логистика
                 </SortableHeader>
                 <SortableHeader field="abc_orders" className="text-center min-w-[80px]">
@@ -392,13 +389,13 @@ export function ProductsView({ shop }: ProductsViewProps) {
                 <SortableHeader field="abc_revenue" className="text-center min-w-[80px]">
                   ABC выручка
                 </SortableHeader>
-                <SortableHeader field="barcode" className="min-w-[130px]">
+                <SortableHeader field="barcode" className="text-center min-w-[130px]">
                   Штрихкод
                 </SortableHeader>
-                <SortableHeader field="storage_cost_per_day" className="text-right min-w-[100px]">
+                <SortableHeader field="storage_cost_per_day" className="text-center min-w-[100px]">
                   Хранение сут/сум
                 </SortableHeader>
-                <SortableHeader field="shop" className="min-w-[120px]">
+                <SortableHeader field="shop" className="text-center min-w-[120px]">
                   Магазин
                 </SortableHeader>
               </TableRow>
@@ -406,7 +403,7 @@ export function ProductsView({ shop }: ProductsViewProps) {
             <TableBody>
               {sortedProducts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={19} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={18} className="text-center text-muted-foreground py-8">
                     Нет данных. Загрузите left-out-report_old и sells_report.
                   </TableCell>
                 </TableRow>
@@ -420,47 +417,66 @@ export function ProductsView({ shop }: ProductsViewProps) {
                   onClick={() => setSelectedProduct(product)}
                 >
                   <TableCell className="sticky left-0 bg-card z-10 min-w-[400px] max-w-[400px] border-r-0">
-                    <div className="min-w-0 break-words whitespace-normal text-sm">
-                      <p className="font-medium text-foreground">{product.product_name ?? "—"}</p>
-                      <p className="text-xs text-muted-foreground">{product.sku ?? ""}</p>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="w-3 h-3 rounded-full border-2 border-purple-500 bg-transparent shrink-0" aria-hidden />
+                      <div className="min-w-0 break-words whitespace-normal text-sm">
+                        <p className="font-medium text-foreground">{product.product_name ?? "—"}</p>
+                        <p className="text-xs text-muted-foreground">SKU: {product.sku ?? ""}</p>
+                      </div>
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-sm border-l-0">{product.sku ?? "—"}</TableCell>
-                  <TableCell className="text-right font-medium">
+                  <TableCell className="text-center font-medium">
                     {product.price != null ? formatValue(product.price) : "—"}
                   </TableCell>
-                  <TableCell className="text-right font-medium">
+                  <TableCell className="text-center font-medium">
                     {formatNumber(product.sales_qty)}
                   </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
+                  <TableCell className="text-center text-muted-foreground">
                     {formatNumber(product.returns_qty)}
                   </TableCell>
-                  <TableCell className="text-right font-medium">
+                  <TableCell className="text-center font-medium">
                     {formatValue(product.revenue)}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-center font-medium">
+                    {formatValue(product.profit)}
+                  </TableCell>
+                  <TableCell className="text-center">
                     {product.turnover != null && product.turnover > 0 ? `${product.turnover}` : "—"}
                   </TableCell>
-                  <TableCell className="text-right font-medium">
+                  <TableCell className="text-center font-medium">
                     {product.stock != null ? formatNumber(product.stock) : "—"}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {product.size_group ?? "—"}
+                  <TableCell className="text-center">
+                    {(() => {
+                      const sg = (product.size_group ?? "").trim().toUpperCase();
+                      const isSGT = sg === "СГТ";
+                      const isMGT = sg === "МГТ";
+                      const isBGT = sg === "БГТ";
+                      const bgClass = isSGT
+                        ? "bg-green-100 text-green-800"
+                        : isMGT
+                          ? "bg-orange-100 text-orange-800"
+                          : isBGT
+                            ? "bg-red-100 text-red-800"
+                            : "bg-muted/60 text-muted-foreground";
+                      return (
+                        <span className={`inline-block px-2 py-0.5 rounded-md text-sm font-medium ${bgClass}`}>
+                          {product.size_group ?? "—"}
+                        </span>
+                      );
+                    })()}
                   </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {product.ends_in_days != null ? `${product.ends_in_days} дн.` : "—"}
-                  </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-center">
                     {product.cogs ? (
                       <span className="font-medium">{formatValue(product.cogs)}</span>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
+                  <TableCell className="text-center text-muted-foreground">
                     {formatValue(product.commission)}
                   </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
+                  <TableCell className="text-center text-muted-foreground">
                     {formatValue(product.logistics)}
                   </TableCell>
                   <TableCell className="text-center">
@@ -472,13 +488,13 @@ export function ProductsView({ shop }: ProductsViewProps) {
                   <TableCell className="text-center">
                     {getAbcBadge(product.abc_revenue)}
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-sm font-mono">
+                  <TableCell className="text-center text-muted-foreground text-sm font-mono">
                     {product.barcode ?? "—"}
                   </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
+                  <TableCell className="text-center text-muted-foreground">
                     {product.storage_cost_per_day != null ? formatValue(product.storage_cost_per_day) : "—"}
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
+                  <TableCell className="text-center text-muted-foreground text-sm">
                     {product.shop ?? "—"}
                   </TableCell>
                 </TableRow>
