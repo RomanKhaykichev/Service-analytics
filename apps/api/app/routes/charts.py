@@ -769,6 +769,11 @@ async def get_products_table(
     """
     try:
         import math
+        # Период для метрик в таблице: последние 30 дней по дате создания заказа (date_created) из sells_report.
+        data_end_date = get_data_end_date(db, user_id)
+        date_to_iso = data_end_date.isoformat()
+        date_from_iso = (data_end_date - timedelta(days=29)).isoformat()
+
         shop_norm = normalize_shop(shop)
         params_batch = {"user_id": str(user_id)}
         shop_filter_sql = ""
@@ -847,22 +852,24 @@ async def get_products_table(
             FROM {qname("fact_sales")} fs
             WHERE fs.user_id = CAST(:user_id AS uuid)
               AND fs.barcode_norm IS NOT NULL
+              AND fs.date_created >= CAST(:date_from AS date)
+              AND fs.date_created < CAST(:date_to AS date) + INTERVAL '1 day'
             GROUP BY fs.barcode_norm
         """)
-        sales_result = db.execute(sales_query, {"user_id": str(user_id)})
+        sales_result = db.execute(sales_query, {"user_id": str(user_id), "date_from": date_from_iso, "date_to": date_to_iso})
         sales_by_barcode: dict = {}
         for row in sales_result.fetchall():
             bn = (row[0] or "").strip() if row[0] else ""
             if bn:
                 revenue_val = float(row[3] or 0)
-                cogs_val = float(row[4] or 0)
+                cogs_total_val = float(row[4] or 0)
                 commission_val = float(row[5] or 0)
                 logistics_val = float(row[6] or 0)
                 # Прибыль по тому же принципу, что и в блоке Финансы:
                 # profit = revenue - (cogs + commission + logistics + налог 1% с выручки)
                 profit_val = (
                     revenue_val
-                    - cogs_val
+                    - cogs_total_val
                     - commission_val
                     - logistics_val
                     - (revenue_val * 0.01)
@@ -871,11 +878,65 @@ async def get_products_table(
                     "sales_qty": int(row[1] or 0),
                     "returns_qty": int(row[2] or 0),
                     "revenue": revenue_val,
-                    "cogs": cogs_val,
+                    "cogs_total": cogs_total_val,
                     "commission": commission_val,
                     "logistics": logistics_val,
                     "profit": profit_val,
                 }
+
+        # Цена и Себестоимость для таблицы: по последней дате продаж для каждого штрихкода.
+        # Цена = revenue_sum / qty, Себестоимость = cogs_sum / qty на последнюю дату (только завершённые заказы).
+        last_price_cogs_by_barcode: dict[str, dict[str, float]] = {}
+        last_unit_query = text(f"""
+            WITH last_dates AS (
+                SELECT
+                    fs.barcode_norm,
+                    MAX(fs.date_created::date) AS last_date
+                FROM {qname("fact_sales")} fs
+                WHERE fs.user_id = CAST(:user_id AS uuid)
+                  AND fs.barcode_norm IS NOT NULL
+                  AND {_STATUS_COMPLETED_SQL}
+                  AND fs.date_created >= CAST(:date_from AS date)
+                  AND fs.date_created < CAST(:date_to AS date) + INTERVAL '1 day'
+                GROUP BY fs.barcode_norm
+            ),
+            last_rows AS (
+                SELECT
+                    fs.barcode_norm,
+                    fs.revenue_sum,
+                    fs.cogs_sum,
+                    fs.qty
+                FROM {qname("fact_sales")} fs
+                JOIN last_dates ld
+                  ON ld.barcode_norm = fs.barcode_norm
+                 AND fs.date_created::date = ld.last_date
+                WHERE fs.user_id = CAST(:user_id AS uuid)
+                  AND {_STATUS_COMPLETED_SQL}
+            )
+            SELECT
+                barcode_norm,
+                CASE WHEN COALESCE(SUM(qty), 0) > 0
+                     THEN SUM(COALESCE(revenue_sum, 0)) / NULLIF(SUM(qty), 0)
+                     ELSE 0
+                END AS unit_price,
+                CASE WHEN COALESCE(SUM(qty), 0) > 0
+                     THEN SUM(COALESCE(cogs_sum, 0)) / NULLIF(SUM(qty), 0)
+                     ELSE 0
+                END AS unit_cogs
+            FROM last_rows
+            GROUP BY barcode_norm
+        """)
+        last_unit_result = db.execute(last_unit_query, {"user_id": str(user_id), "date_from": date_from_iso, "date_to": date_to_iso})
+        for row in last_unit_result.fetchall():
+            bn = (row[0] or "").strip() if row[0] else ""
+            if not bn:
+                continue
+            unit_price = float(row[1] or 0)
+            unit_cogs = float(row[2] or 0)
+            last_price_cogs_by_barcode[bn] = {
+                "price": unit_price,
+                "cogs": unit_cogs,
+            }
 
         # ABC-заказы по количеству (sales_qty) за весь период данных sells_report:
         # A — первые ~80% суммарного qty, B — до 95%, C — остальные.
@@ -987,20 +1048,37 @@ async def get_products_table(
                 sales_qty = sales_row["sales_qty"]
                 returns_qty = sales_row["returns_qty"]
                 revenue = sales_row["revenue"]
-                cogs = sales_row["cogs"]
+                # По умолчанию cogs_total — агрегированная себестоимость по всем завершённым заказам.
+                cogs_total = sales_row["cogs_total"]
                 commission = sales_row["commission"]
                 logistics = sales_row["logistics"]
             else:
                 sales_qty = returns_qty = 0
-                revenue = cogs = commission = logistics = 0.0
+                revenue = cogs_total = commission = logistics = 0.0
+
+            # Цена и Себестоимость для таблицы: используем значения от последней даты продаж, если есть.
+            display_price = None
+            display_cogs = None
+            if barcode_norm:
+                last_unit = last_price_cogs_by_barcode.get(barcode_norm)
+                if last_unit:
+                    display_price = last_unit["price"]
+                    display_cogs = last_unit["cogs"]
+
+            if display_price is None:
+                # Fallback: старая логика (из left-out-report или по данным leftout_old)
+                display_price = price
+            if display_cogs is None:
+                # Fallback: агрегированная себестоимость
+                display_cogs = cogs_total
 
             # Прибыль по тому же принципу, что и для ABC-прибыли:
-            profit = revenue - cogs - commission - logistics - (revenue * 0.01)
+            profit = revenue - cogs_total - commission - logistics - (revenue * 0.01)
 
             items.append(ProductsTableItem(
                 product_name=product_name,
                 sku=sku,
-                price=price,
+                price=display_price,
                 sales_qty=sales_qty,
                 returns_qty=returns_qty,
                 revenue=revenue,
@@ -1008,7 +1086,7 @@ async def get_products_table(
                 turnover=turnover,
                 stock=stock,
                 size_group=size_group or "-",
-                cogs=cogs,
+                cogs=display_cogs,
                 commission=commission,
                 logistics=logistics,
                 abc_orders=abc_orders_by_barcode.get(barcode_norm),
