@@ -92,9 +92,11 @@ type SortDirection = "asc" | "desc" | null;
 
 interface ProductsViewProps {
   shop?: string | null;
+  /** Пользовательский процент налога (из вкладки Сводка) для карточки товара. */
+  taxPercent?: number;
 }
 
-export function ProductsView({ shop }: ProductsViewProps) {
+export function ProductsView({ shop, taxPercent = 1 }: ProductsViewProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [groupBy, setGroupBy] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<ProductsTableItemType | null>(null);
@@ -256,6 +258,7 @@ export function ProductsView({ shop }: ProductsViewProps) {
       <ProductDetailView
         product={productToDetailShape(selectedProduct)}
         onBack={() => setSelectedProduct(null)}
+        taxPercent={taxPercent}
       />
     );
   }

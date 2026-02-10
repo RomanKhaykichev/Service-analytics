@@ -58,6 +58,44 @@ function Dashboard() {
   const { cumulativeRevenue: cumulativeRevenueGlobal, cumulativeRevenueYear } = useCumulativeRevenueGlobal();
   const shopId = null;  // Не используем shop_id для seller-storage метрик
 
+  // Пользовательский процент для налога (по умолчанию 1%)
+  const [taxPercentInput, setTaxPercentInput] = useState("1");
+  const [taxPercent, setTaxPercent] = useState(1);
+
+  const handleTaxPercentKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      const parsed = parseFloat(taxPercentInput.replace(",", "."));
+      if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
+        setTaxPercent(parsed);
+      }
+    }
+  };
+
+  // Пересчёт метрик, зависящих от налога, на фронте
+  const revenueValue = metrics?.revenue ?? 0;
+  const commissionValue = metrics?.uzumCommission ?? 0;
+  const logisticsValue = metrics?.uzumLogistics ?? 0;
+  const productCostValue = metrics?.productCost ?? 0;
+  const extraExpensesValue = metrics?.extraExpenses ?? 0;
+
+  // Налог = Выручка × указанный процент
+  const adjustedTax = revenueValue * (taxPercent / 100);
+
+  // Расходы = Комиссия UZUM + Логистика UZUM + Себест. прод. тов. + Налог + Доп. расходы
+  const adjustedTotalExpenses =
+    commissionValue +
+    logisticsValue +
+    productCostValue +
+    adjustedTax +
+    extraExpensesValue;
+
+  // Прибыль = Выручка – Расходы
+  const adjustedProfit = revenueValue - adjustedTotalExpenses;
+
+  // Рентабельность и ROI пересчитываем из новых прибыли/расходов
+  const adjustedSalesProfitability = revenueValue > 0 ? (adjustedProfit / revenueValue) * 100 : 0;
+  const adjustedRoi = adjustedTotalExpenses > 0 ? (adjustedProfit / adjustedTotalExpenses) * 100 : 0;
+
   // Load revenue and UZUM services data (filtered by selectedShop via barcode_norm)
   const { points: revenuePoints } = useRevenueDaily({ dateFrom, dateTo, shopId, shop: selectedShop });
   const { items: stockItems } = useStockCurrent({ limit: 50, shopId, shop: selectedShop });
@@ -145,25 +183,25 @@ function Dashboard() {
     {
       icon: <TrendingDown className="w-4 h-4" />,
       label: "Расходы",
-      value: formatCurrency(metrics.totalExpenses),
+      value: formatCurrency(adjustedTotalExpenses),
       tooltip: "Сумма всех расходов из блока Расходы."
     },
     {
       icon: <Wallet className="w-4 h-4" />,
       label: "Прибыль",
-      value: formatCurrency(metrics.profit),
+      value: formatCurrency(adjustedProfit),
       tooltip: "Выручка минус Расходы"
     },
     {
       icon: <Target className="w-4 h-4" />,
       label: "Рентабельность продаж",
-      value: formatPercent(metrics?.salesProfitability),
+      value: formatPercent(adjustedSalesProfitability),
       tooltip: "Выручка / Себестоимость (завершённые заказы)"
     },
     {
       icon: <BarChart3 className="w-4 h-4" />,
       label: "Окупаемость инвестиций",
-      value: formatPercent(metrics?.roi),
+      value: formatPercent(adjustedRoi),
       tooltip: "ROI = (Выручка - Себестоимость) / Себестоимость × 100%"
     },
     {
@@ -204,9 +242,23 @@ function Dashboard() {
     },
     {
       icon: <Receipt className="w-4 h-4" />,
-      label: "Налоги 1%",
-      value: formatCurrency(metrics.taxes1pct),
-      tooltip: "Налоги 1% от выручки (завершённые заказы)"
+      label: (
+        <div className="flex items-center gap-1">
+          <span>Налоги</span>
+          <input
+            type="number"
+            value={taxPercentInput}
+            onChange={(e) => setTaxPercentInput(e.target.value)}
+            onKeyDown={handleTaxPercentKeyDown}
+            className="w-12 h-6 text-xs px-1 border border-border rounded bg-background text-foreground"
+            min={0}
+            max={100}
+          />
+          <span>%</span>
+        </div>
+      ),
+      value: formatCurrency((metrics.revenue ?? 0) * (taxPercent / 100)),
+      tooltip: "Налог = Выручка × указанный процент (завершённые заказы)"
     },
     {
       icon: <Info className="w-4 h-4" />,
@@ -346,15 +398,23 @@ function Dashboard() {
           <MonthlyTable
             year={maxDate ? new Date(maxDate).getFullYear() : new Date().getFullYear()}
             shop={null}
+            taxPercent={taxPercent}
           />
         </div>
       ) : activeTab === "daily" ? (
         <div className="mt-6">
-          <DailyView viewMode={viewMode} dateFrom={dateFrom} dateTo={dateTo} shopId={null} shop={null} />
+          <DailyView
+            viewMode={viewMode}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            shopId={null}
+            shop={null}
+            taxPercent={taxPercent}
+          />
         </div>
       ) : activeTab === "products" ? (
         <div className="mt-6">
-          <ProductsView shop={selectedShop} />
+          <ProductsView shop={selectedShop} taxPercent={taxPercent} />
         </div>
       ) : activeTab === "expenses" ? (
         <div className="mt-6">

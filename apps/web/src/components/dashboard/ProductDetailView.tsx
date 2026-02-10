@@ -39,10 +39,13 @@ interface Product {
 interface ProductDetailViewProps {
   product: Product;
   onBack: () => void;
+  /** Пользовательский процент налога (из вкладки Сводка). По умолчанию 1. */
+  taxPercent?: number;
 }
 export function ProductDetailView({
   product,
-  onBack
+  onBack,
+  taxPercent = 1,
 }: ProductDetailViewProps) {
   const [comment, setComment] = useState("");
   const formatPrice = (price: number) => {
@@ -218,9 +221,9 @@ export function ProductDetailView({
     tooltip: "Себестоимость проданных товаров"
   }, {
     icon: <Receipt className="w-4 h-4" />,
-    label: "Налоги",
-    value: formatPrice(Math.floor(product.revenue * 0.07)),
-    tooltip: "Налоговые отчисления"
+    label: "Налог",
+    value: formatPrice(Math.floor(product.revenue * (taxPercent / 100))),
+    tooltip: `Налог = Выручка × ${taxPercent}%`
   }];
   const warehouseMetrics = [{
     icon: <Warehouse className="w-4 h-4" />,

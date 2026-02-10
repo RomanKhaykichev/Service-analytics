@@ -33,7 +33,7 @@ const ROWS: {
   { id: "uzumStorage", label: "Хранение", isHighlighted: false, format: "currency" },
   { id: "uzumAds", label: "Реклама", isHighlighted: false, format: "currency" },
   { id: "uzumFines", label: "Штрафы", isHighlighted: false, format: "currency" },
-  { id: "taxes1pct", label: "Налог 1%", isHighlighted: false, format: "currency" },
+  { id: "taxes1pct", label: "Налог", isHighlighted: false, format: "currency" },
   { id: "extraExpenses", label: "Доп. расходы", isHighlighted: false, format: "currency" },
   { id: "profit", label: "ЧИСТАЯ ПРИБЫЛЬ", isHighlighted: true, format: "currency" },
 ];
@@ -43,15 +43,27 @@ interface MonthlyTableProps {
   year: number;
   /** Магазин (seller-storage), как на Сводке. */
   shop?: string | null;
+  /** Пользовательский процент налога (из вкладки Сводка). Если задан, Налог и Прибыль пересчитываются. */
+  taxPercent?: number;
 }
 
-export function MonthlyTable({ year, shop = null }: MonthlyTableProps) {
+export function MonthlyTable({ year, shop = null, taxPercent }: MonthlyTableProps) {
   const { monthly, loading, error } = useMonthlyKpi(year, shop ?? undefined);
+
+  const getDisplayValue = (rowId: keyof MonthlyKpiItem, item: MonthlyKpiItem): number | undefined => {
+    if (taxPercent != null) {
+      if (rowId === "taxes1pct") return (item.revenue ?? 0) * (taxPercent / 100);
+      if (rowId === "profit")
+        return (item.profit ?? 0) + (item.taxes1pct ?? 0) - (item.revenue ?? 0) * (taxPercent / 100);
+    }
+    const value = item[rowId];
+    return value != null && value !== undefined ? value : undefined;
+  };
 
   const formatValue = (rowId: keyof MonthlyKpiItem, monthIndex: number, format: RowFormat): string => {
     if (!monthly || monthIndex >= monthly.length) return "—";
     const item = monthly[monthIndex];
-    const value = item[rowId];
+    const value = getDisplayValue(rowId, item);
     if (value == null || value === undefined) return "—";
     if (format === "quantityNoUnit") return formatNumber(value);
     return formatCurrency(value);

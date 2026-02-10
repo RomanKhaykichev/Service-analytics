@@ -31,6 +31,8 @@ interface DailyViewProps {
   shopId?: string | null;
   /** Shop name (string) from seller-storage for filtering by barcode */
   shop?: string | null;
+  /** Пользовательский процент налога (из вкладки Сводка), например 1 = 1% */
+  taxPercent?: number;
 }
 
 // 8 метрик на графике: левая ось (шт) — Заказы, Возвраты; правая (сум) — остальные. Все серии — Line.
@@ -52,7 +54,7 @@ const CHART_SERIES = [
   { key: "logistics", label: "Логистика", color: SERIES_COLORS.logistics, axis: "money" as const },
   { key: "ads", label: "Реклама", color: SERIES_COLORS.ads, axis: "money" as const },
   { key: "storage", label: "Хранение", color: SERIES_COLORS.storage, axis: "money" as const },
-  { key: "taxes", label: "Налоги", color: SERIES_COLORS.taxes, axis: "money" as const },
+  { key: "taxes", label: "Налог", color: SERIES_COLORS.taxes, axis: "money" as const },
   { key: "profit", label: "Прибыль", color: SERIES_COLORS.profit, axis: "money" as const },
 ];
 
@@ -75,7 +77,7 @@ function formatChartDateLabel(dateISO: string, granularity: DailySummaryGranular
   return format(d, "MM.yyyy");
 }
 
-export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, shop = null }: DailyViewProps) {
+export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, shop = null, taxPercent = 1 }: DailyViewProps) {
   // Гранулярность графика берётся из селекта "По дням/По неделям/По месяцам" (viewMode из SummaryFilters)
   const timeGrouping: DailySummaryGranularity = (viewMode === "week" || viewMode === "month" ? viewMode : "day");
   // График: date_from/date_to + granularity (group_by на бэкенде)
@@ -92,19 +94,40 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
   // Данные графика: поля для 8 серий + подпись оси X по гранулярности
   const chartData = useMemo(() => {
     if (!chartSummaryData?.points?.length) return [];
-    return chartSummaryData.points.map((p) => ({
-      date: formatChartDateLabel(p.date, timeGrouping),
-      dateISO: p.date,
-      orders: p.orders,
-      returns: p.returns,
-      revenue: p.revenue,
-      logistics: p.logistics,
-      ads: p.ads,
-      storage: p.storage,
-      taxes: p.taxes,
-      profit: p.profit,
-    }));
-  }, [chartSummaryData?.points, timeGrouping]);
+    return chartSummaryData.points.map((p) => {
+      const revenue = p.revenue ?? 0;
+      const commission = p.commission ?? 0;
+      const logistics = p.logistics ?? 0;
+      const storage = p.storage ?? 0;
+      const ads = p.ads ?? 0;
+      const penalties = p.penalties ?? 0;
+      const cogs = p.cogs ?? 0;
+
+      const adjustedTaxes = revenue * (taxPercent / 100);
+      const adjustedProfit =
+        revenue -
+        commission -
+        logistics -
+        storage -
+        ads -
+        penalties -
+        cogs -
+        adjustedTaxes;
+
+      return {
+        date: formatChartDateLabel(p.date, timeGrouping),
+        dateISO: p.date,
+        orders: p.orders,
+        returns: p.returns,
+        revenue,
+        logistics,
+        ads,
+        storage,
+        taxes: adjustedTaxes,
+        profit: adjustedProfit,
+      };
+    });
+  }, [chartSummaryData?.points, timeGrouping, taxPercent]);
 
   // По умолчанию видны: Заказы, Выручка, Прибыль
   const [visibleSeries, setVisibleSeries] = useState<Record<string, boolean>>({
@@ -137,23 +160,44 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
   // Table data from API: map DailySummaryPoint to table row (date formatted for display)
   const tableRows = useMemo(() => {
     if (!dailySummaryData?.points?.length) return [];
-    return dailySummaryData.points.map((p) => ({
-      date: p.date,
-      dateFormatted: format(new Date(p.date), "dd.MM.yyyy"),
-      orders: p.orders,
-      buys: p.buys,
-      returns: p.returns,
-      revenue: p.revenue,
-      commission: p.commission,
-      logistics: p.logistics,
-      storage: p.storage,
-      ads: p.ads,
-      penalties: p.penalties,
-      cogs: p.cogs,
-      taxes: p.taxes,
-      profit: p.profit,
-    }));
-  }, [dailySummaryData?.points]);
+    return dailySummaryData.points.map((p) => {
+      const revenue = p.revenue ?? 0;
+      const commission = p.commission ?? 0;
+      const logistics = p.logistics ?? 0;
+      const storage = p.storage ?? 0;
+      const ads = p.ads ?? 0;
+      const penalties = p.penalties ?? 0;
+      const cogs = p.cogs ?? 0;
+
+      const adjustedTaxes = revenue * (taxPercent / 100);
+      const adjustedProfit =
+        revenue -
+        commission -
+        logistics -
+        storage -
+        ads -
+        penalties -
+        cogs -
+        adjustedTaxes;
+
+      return {
+        date: p.date,
+        dateFormatted: format(new Date(p.date), "dd.MM.yyyy"),
+        orders: p.orders,
+        buys: p.buys,
+        returns: p.returns,
+        revenue,
+        commission,
+        logistics,
+        storage,
+        ads,
+        penalties,
+        cogs,
+        taxes: adjustedTaxes,
+        profit: adjustedProfit,
+      };
+    });
+  }, [dailySummaryData?.points, taxPercent]);
 
   const filteredAndSortedData = [...tableRows].sort((a, b) => {
       if (!sortColumn || !sortDirection) return 0;
@@ -182,8 +226,8 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
     { key: "ads", label: "Реклама" },
     { key: "penalties", label: "Штрафы" },
     { key: "cogs", label: "Себестоимость" },
-    { key: "taxes", label: "Налоги" },
-    { key: "profit", label: "Прибыль" },
+    { key: "taxes", label: "Налог" },
+    { key: "profit", label: "Чистая прибыль" },
   ];
 
   return (
