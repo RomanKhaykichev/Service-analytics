@@ -306,7 +306,7 @@ export function ProductDetailView({
                   <tr className="border-b border-border">
                     <th className="px-3 py-2 text-left text-muted-foreground font-medium">Цвет</th>
                     <th className="px-3 py-2 text-left text-muted-foreground font-medium">Размер</th>
-                    <th className="px-3 py-2 text-right text-muted-foreground font-medium">Продажи</th>
+                    <th className="px-3 py-2 text-right text-muted-foreground font-medium">Заказы</th>
                     <th className="px-3 py-2 text-right text-muted-foreground font-medium">Остатки</th>
                     <th className="px-3 py-2 text-center text-muted-foreground font-medium">Габ. группа</th>
                     <th className="px-3 py-2 text-left text-muted-foreground font-medium">Штрихкод</th>

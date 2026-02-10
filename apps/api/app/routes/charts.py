@@ -831,11 +831,14 @@ async def get_products_table(
                     "shop": _str_val(row[2]),
                 }
 
-        # Sells_report: агрегаты по barcode_norm. Себестоимость — только со статусом «Завершен» (Себестоимость (сумы)*Количество).
+        # Sells_report: агрегаты по barcode_norm.
+        # Заказы (sales_qty) = Количество (qty) по всем статусам, кроме отмен (status=orders).
+        # Себестоимость/Выручка/Комиссия/Логистика — только со статусом «Завершен».
+        orders_condition = get_status_sql_condition('orders')
         sales_query = text(f"""
             SELECT
                 fs.barcode_norm,
-                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.qty, 0) ELSE 0 END)::int AS sales_qty,
+                SUM(CASE WHEN ({orders_condition}) THEN COALESCE(fs.qty, 0) ELSE 0 END)::int AS sales_qty,
                 SUM(COALESCE(fs.returns_qty, 0))::int AS returns_qty,
                 SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.revenue_sum, 0) ELSE 0 END)::double precision AS revenue,
                 SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.cogs_sum, 0) ELSE 0 END)::double precision AS cogs,
