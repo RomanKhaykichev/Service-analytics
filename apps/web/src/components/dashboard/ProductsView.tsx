@@ -2,7 +2,6 @@ import { useState, useMemo } from "react";
 import {
   Search,
   Download,
-  Settings,
   Layers,
   ArrowUpDown,
   ArrowUp,
@@ -26,13 +25,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { ProductDetailView } from "./ProductDetailView";
 import { toast } from "sonner";
@@ -98,7 +90,7 @@ interface ProductsViewProps {
 
 export function ProductsView({ shop, taxPercent = 1 }: ProductsViewProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [groupBy, setGroupBy] = useState<string | null>(null);
+  const [groupByCards, setGroupByCards] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductsTableItemType | null>(null);
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
@@ -346,63 +338,47 @@ export function ProductsView({ shop, taxPercent = 1 }: ProductsViewProps) {
   return (
     <div className="space-y-4">
       {/* Filters & Settings */}
-      <div className="flex flex-col md:flex-row md:items-center gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Поиск по названию, артикулу..."
-            className="pl-10 bg-background"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col md:flex-row md:items-center gap-4">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Поиск по названию, артикулу..."
+              className="pl-10 bg-background"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+
+          <div className="flex-1" />
+
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={handleExportXLSX}
+            disabled={sortedProducts.length === 0}
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Выгрузить в XLSX
+          </Button>
+
+          <Button
+            variant={groupByCards ? "default" : "outline"}
+            size="sm"
+            className={groupByCards ? "bg-primary hover:bg-primary/90 text-primary-foreground" : ""}
+            onClick={() => setGroupByCards((prev) => !prev)}
+          >
+            <Layers className="w-4 h-4 mr-2" />
+            Сгруппировать по карточкам
+          </Button>
         </div>
 
-        <div className="flex-1" />
-
-        <Button 
-          variant="outline" 
-          size="sm"
-          onClick={handleExportXLSX}
-          disabled={sortedProducts.length === 0}
-        >
-          <Download className="w-4 h-4 mr-2" />
-          Выгрузить в XLSX
-        </Button>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm">
-              <Settings className="w-4 h-4 mr-2" />
-              Настройки
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64">
-            <DropdownMenuItem onClick={() => setGroupBy(groupBy === "size" ? null : "size")}>
-              <Layers className="w-4 h-4 mr-2" />
-              Сгруппировать по размерам
-              {groupBy === "size" && <span className="ml-auto text-primary">✓</span>}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setGroupBy(groupBy === "color" ? null : "color")}>
-              <Layers className="w-4 h-4 mr-2" />
-              Сгруппировать по цветам
-              {groupBy === "color" && <span className="ml-auto text-primary">✓</span>}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setGroupBy(groupBy === "all" ? null : "all")}>
-              <Layers className="w-4 h-4 mr-2" />
-              Сгруппировать по всем хар-кам
-              {groupBy === "all" && <span className="ml-auto text-primary">✓</span>}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {groupByCards && (
+          <p className="text-sm text-muted-foreground">
+            Товары сгруппированы по карточкам. Прочерки означают, что значения отличаются для разных характеристик.
+          </p>
+        )}
       </div>
-
-      {groupBy && (
-        <div className="text-sm text-muted-foreground">
-          Группировка: <span className="text-primary font-medium">
-            {groupBy === "size" ? "по размерам" : groupBy === "color" ? "по цветам" : "по всем характеристикам"}
-          </span>
-        </div>
-      )}
 
       {/* Products Table */}
       {productsLoading ? (
