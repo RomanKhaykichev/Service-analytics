@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Search,
   Download,
@@ -113,6 +113,74 @@ export function ProductsView({ shop, taxPercent = 1 }: ProductsViewProps) {
   });
 
   const products: ProductsTableItemType[] = productsData?.items ?? [];
+
+  // Прибыль и ABC-прибыль в таблице Товары привязываем к введённому проценту налога:
+  // Прибыль = Выручка - Себестоимость - Комиссия - Логистика - (Выручка × Налог%).
+  const adjustedProducts: ProductsTableItemType[] = useMemo(() => {
+    if (!products.length) return products;
+    return products.map((p) => {
+      const revenue = p.revenue ?? 0;
+      const cogs = p.cogs ?? 0;
+      const commission = p.commission ?? 0;
+      const logistics = p.logistics ?? 0;
+      const tax = revenue * (taxPercent / 100);
+      const profit = revenue - cogs - commission - logistics - tax;
+      return {
+        ...p,
+        profit,
+      };
+    });
+  }, [products, taxPercent]);
+
+  // ABC-прибыль: классификация A/B/C по скорректированной прибыли
+  const adjustedProductsWithAbc: ProductsTableItemType[] = useMemo(() => {
+    if (!adjustedProducts.length) return adjustedProducts;
+
+    // Готовим список (ключ, прибыль) для ABC-классификации
+    const itemsForAbc = adjustedProducts
+      .map((p) => {
+        const key = (p.barcode || p.sku || "").trim();
+        return key ? { key, profit: p.profit } : null;
+      })
+      .filter((x): x is { key: string; profit: number } => x !== null);
+
+    const totalProfit = itemsForAbc.reduce(
+      (sum, item) => sum + Math.max(item.profit, 0),
+      0
+    );
+
+    const abcMap = new Map<string, string>();
+    if (totalProfit > 0) {
+      const sorted = [...itemsForAbc].sort((a, b) => b.profit - a.profit);
+      let cumulative = 0;
+      for (const item of sorted) {
+        const profitPos = Math.max(item.profit, 0);
+        if (profitPos <= 0) {
+          abcMap.set(item.key, "C");
+          continue;
+        }
+        cumulative += profitPos;
+        const share = (cumulative / totalProfit) * 100;
+        if (share <= 80) {
+          abcMap.set(item.key, "A");
+        } else if (share <= 95) {
+          abcMap.set(item.key, "B");
+        } else {
+          abcMap.set(item.key, "C");
+        }
+      }
+    }
+
+    return adjustedProducts.map((p) => {
+      const key = (p.barcode || p.sku || "").trim();
+      const abcProfit = key ? abcMap.get(key) ?? p.abc_profit : p.abc_profit;
+      return {
+        ...p,
+        abc_profit: abcProfit,
+      };
+    });
+  }, [adjustedProducts]);
+
   const productId = (p: ProductsTableItemType, idx: number) => p.barcode || p.sku || `row-${idx}`;
 
   const formatNumber = (num: number) => {
@@ -165,7 +233,7 @@ export function ProductsView({ shop, taxPercent = 1 }: ProductsViewProps) {
     return <ArrowUpDown className="w-3 h-3 ml-1 opacity-50" />;
   };
 
-  const filteredProducts = products.filter((p) => {
+  const filteredProducts = adjustedProductsWithAbc.filter((p) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.trim().toLowerCase();
     return (
