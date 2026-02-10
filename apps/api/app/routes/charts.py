@@ -841,7 +841,7 @@ async def get_products_table(
                 SUM(CASE WHEN ({orders_condition}) THEN COALESCE(fs.qty, 0) ELSE 0 END)::int AS sales_qty,
                 SUM(COALESCE(fs.returns_qty, 0))::int AS returns_qty,
                 SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.revenue_sum, 0) ELSE 0 END)::double precision AS revenue,
-                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.cogs_sum, 0) ELSE 0 END)::double precision AS cogs,
+                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.cogs_sum * fs.qty, 0) ELSE 0 END)::double precision AS cogs,
                 SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.commission_sum, 0) ELSE 0 END)::double precision AS commission,
                 SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.logistics_sum, 0) ELSE 0 END)::double precision AS logistics
             FROM {qname("fact_sales")} fs
@@ -854,14 +854,106 @@ async def get_products_table(
         for row in sales_result.fetchall():
             bn = (row[0] or "").strip() if row[0] else ""
             if bn:
+                revenue_val = float(row[3] or 0)
+                cogs_val = float(row[4] or 0)
+                commission_val = float(row[5] or 0)
+                logistics_val = float(row[6] or 0)
+                # Прибыль по тому же принципу, что и в блоке Финансы:
+                # profit = revenue - (cogs + commission + logistics + налог 1% с выручки)
+                profit_val = (
+                    revenue_val
+                    - cogs_val
+                    - commission_val
+                    - logistics_val
+                    - (revenue_val * 0.01)
+                )
                 sales_by_barcode[bn] = {
                     "sales_qty": int(row[1] or 0),
                     "returns_qty": int(row[2] or 0),
-                    "revenue": float(row[3] or 0),
-                    "cogs": float(row[4] or 0),
-                    "commission": float(row[5] or 0),
-                    "logistics": float(row[6] or 0),
+                    "revenue": revenue_val,
+                    "cogs": cogs_val,
+                    "commission": commission_val,
+                    "logistics": logistics_val,
+                    "profit": profit_val,
                 }
+
+        # ABC-заказы по количеству (sales_qty) за весь период данных sells_report:
+        # A — первые ~80% суммарного qty, B — до 95%, C — остальные.
+        abc_orders_by_barcode: dict[str, str] = {}
+        total_sales_qty = sum(max(data["sales_qty"], 0) for data in sales_by_barcode.values())
+        if total_sales_qty > 0:
+            # Сортируем SKU по qty по убыванию
+            sorted_items = sorted(
+                sales_by_barcode.items(),
+                key=lambda kv: kv[1]["sales_qty"],
+                reverse=True,
+            )
+            cumulative = 0
+            for bn, data in sorted_items:
+                qty = max(data["sales_qty"], 0)
+                if qty == 0:
+                    # Нулевые заказы всегда пойдут в C
+                    abc_orders_by_barcode[bn] = "C"
+                    continue
+                cumulative += qty
+                share = cumulative / total_sales_qty * 100
+                if share <= 80:
+                    abc_orders_by_barcode[bn] = "A"
+                elif share <= 95:
+                    abc_orders_by_barcode[bn] = "B"
+                else:
+                    abc_orders_by_barcode[bn] = "C"
+
+        # ABC-прибыль по накопленной прибыли (profit) за весь период:
+        # A — первые ~80% суммарной прибыли, B — до 95%, C — остальные.
+        abc_profit_by_barcode: dict[str, str] = {}
+        # Берём только положительную прибыль для расчёта долей; нулевая/отрицательная = класс C.
+        total_profit = sum(max(data["profit"], 0.0) for data in sales_by_barcode.values())
+        if total_profit > 0:
+            sorted_by_profit = sorted(
+                sales_by_barcode.items(),
+                key=lambda kv: kv[1]["profit"],
+                reverse=True,
+            )
+            cumulative_profit = 0.0
+            for bn, data in sorted_by_profit:
+                profit_val = max(data["profit"], 0.0)
+                if profit_val <= 0:
+                    abc_profit_by_barcode[bn] = "C"
+                    continue
+                cumulative_profit += profit_val
+                share_profit = cumulative_profit / total_profit * 100
+                if share_profit <= 80:
+                    abc_profit_by_barcode[bn] = "A"
+                elif share_profit <= 95:
+                    abc_profit_by_barcode[bn] = "B"
+                else:
+                    abc_profit_by_barcode[bn] = "C"
+
+        # ABC-выручка по накопленной выручке (revenue) за весь период:
+        # A — первые ~80% суммарной выручки, B — до 95%, C — остальные.
+        abc_revenue_by_barcode: dict[str, str] = {}
+        total_revenue = sum(max(data["revenue"], 0.0) for data in sales_by_barcode.values())
+        if total_revenue > 0:
+            sorted_by_revenue = sorted(
+                sales_by_barcode.items(),
+                key=lambda kv: kv[1]["revenue"],
+                reverse=True,
+            )
+            cumulative_revenue = 0.0
+            for bn, data in sorted_by_revenue:
+                revenue_val = max(data["revenue"], 0.0)
+                if revenue_val <= 0:
+                    abc_revenue_by_barcode[bn] = "C"
+                    continue
+                cumulative_revenue += revenue_val
+                share_revenue = cumulative_revenue / total_revenue * 100
+                if share_revenue <= 80:
+                    abc_revenue_by_barcode[bn] = "A"
+                elif share_revenue <= 95:
+                    abc_revenue_by_barcode[bn] = "B"
+                else:
+                    abc_revenue_by_barcode[bn] = "C"
 
         items: list[ProductsTableItem] = []
         for row in stg_rows:
@@ -902,7 +994,7 @@ async def get_products_table(
                 sales_qty = returns_qty = 0
                 revenue = cogs = commission = logistics = 0.0
 
-            # Прибыль = Выручка - Себестоимость(заверш.) - Комиссия - Логистика - (Выручка*1%)
+            # Прибыль по тому же принципу, что и для ABC-прибыли:
             profit = revenue - cogs - commission - logistics - (revenue * 0.01)
 
             items.append(ProductsTableItem(
@@ -919,9 +1011,9 @@ async def get_products_table(
                 cogs=cogs,
                 commission=commission,
                 logistics=logistics,
-                abc_orders=None,
-                abc_profit=None,
-                abc_revenue=None,
+                abc_orders=abc_orders_by_barcode.get(barcode_norm),
+                abc_profit=abc_profit_by_barcode.get(barcode_norm),
+                abc_revenue=abc_revenue_by_barcode.get(barcode_norm),
                 barcode=barcode,
                 storage_cost_per_day=storage_cost,
                 shop=shop,

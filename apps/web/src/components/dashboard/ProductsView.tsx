@@ -74,6 +74,7 @@ type SortField =
   | "sales_qty"
   | "returns_qty"
   | "revenue"
+  | "profit"
   | "turnover"
   | "stock"
   | "cogs"
@@ -202,6 +203,7 @@ export function ProductsView({ shop }: ProductsViewProps) {
         "Заказы": p.sales_qty,
         "Возвраты": p.returns_qty,
         "Выручка": p.revenue,
+        "Прибыль": p.profit,
         "Оборачиваемость": p.turnover ?? "",
         "Остаток": p.stock ?? "",
         "Габаритная группа": p.size_group ?? "-",
@@ -357,6 +359,9 @@ export function ProductsView({ shop }: ProductsViewProps) {
                 <SortableHeader field="revenue" className="text-center min-w-[120px]">
                   Выручка
                 </SortableHeader>
+                <SortableHeader field="profit" className="text-center min-w-[120px]">
+                  Прибыль
+                </SortableHeader>
                 <SortableHeader field="turnover" className="text-center min-w-[100px] whitespace-nowrap">
                   Оборач-ть
                 </SortableHeader>
@@ -398,7 +403,7 @@ export function ProductsView({ shop }: ProductsViewProps) {
             <TableBody>
               {sortedProducts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={17} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={18} className="text-center text-muted-foreground py-8">
                     Нет данных. Загрузите left-out-report_old и sells_report.
                   </TableCell>
                 </TableRow>
@@ -431,6 +436,9 @@ export function ProductsView({ shop }: ProductsViewProps) {
                   </TableCell>
                   <TableCell className="text-center font-medium">
                     {formatValue(product.revenue)}
+                  </TableCell>
+                  <TableCell className="text-center font-medium">
+                    {formatValue(product.profit)}
                   </TableCell>
                   <TableCell className="text-center">
                     {product.turnover != null && product.turnover > 0 ? `${product.turnover}` : "—"}
