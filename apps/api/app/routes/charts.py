@@ -1027,6 +1027,7 @@ async def get_products_table(
             if not barcode_norm and barcode_raw:
                 barcode_norm = (barcode_raw or "").replace(" ", "").strip()
 
+            product_id = _str_val(data.get("ID товара"))
             product_name = _str_val(data.get("Наименование") or data.get("Название товара"))
             sku = _str_val(data.get("SKU"))
             price = _parse_num(data.get("Стоимость продажи (сумы)"))
@@ -1076,6 +1077,7 @@ async def get_products_table(
             profit = revenue - cogs_total - commission - logistics - (revenue * 0.01)
 
             items.append(ProductsTableItem(
+                product_id=product_id,
                 product_name=product_name,
                 sku=sku,
                 price=display_price,

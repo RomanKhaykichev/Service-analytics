@@ -170,6 +170,7 @@ class ShipmentRecommendationsResponse(BaseModel):
 
 # Products table (Товары): left-out-report_old + sells_report by barcode
 class ProductsTableItem(BaseModel):
+    product_id: Optional[str] = None     # ID товара (left-out-report_old), для группировки по карточкам
     product_name: Optional[str] = None   # Наименование (leftout_old)
     sku: Optional[str] = None           # Артикул = SKU (leftout_old)
     price: Optional[float] = None       # Цена = Стоимость продажи (сумы) (leftout_old)

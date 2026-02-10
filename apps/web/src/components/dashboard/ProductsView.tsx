@@ -34,6 +34,7 @@ import { apiGet, buildQueryParams } from "@/lib/api";
 
 /** Элемент таблицы товаров: left-out-report_old + sells_report по штрихкоду */
 export interface ProductsTableItemType {
+  product_id?: string | null;
   product_name: string | null;
   sku: string | null;
   price: number | null;
@@ -173,7 +174,103 @@ export function ProductsView({ shop, taxPercent = 1 }: ProductsViewProps) {
     });
   }, [adjustedProducts]);
 
-  const productId = (p: ProductsTableItemType, idx: number) => p.barcode || p.sku || `row-${idx}`;
+  // Группировка по карточкам (ID товара из left-out-report_old): одна строка на product_id, метрики суммируются
+  const displayProducts: ProductsTableItemType[] = useMemo(() => {
+    if (!groupByCards || !adjustedProductsWithAbc.length) return adjustedProductsWithAbc;
+
+    const groupKey = (p: ProductsTableItemType) =>
+      (p.product_id || p.sku || p.barcode || "").trim() || `row-${p.barcode}-${p.sku}`;
+    const groups = new Map<string, ProductsTableItemType[]>();
+    for (const p of adjustedProductsWithAbc) {
+      const key = groupKey(p);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(p);
+    }
+
+    const aggregated: ProductsTableItemType[] = [];
+    for (const [, rows] of groups) {
+      const first = rows[0];
+      const same = <T>(get: (r: ProductsTableItemType) => T) => {
+        const v = get(rows[0]);
+        return rows.every((r) => get(r) === v) ? v : null;
+      };
+      const sum = (get: (r: ProductsTableItemType) => number) =>
+        rows.reduce((s, r) => s + (get(r) ?? 0), 0);
+
+      aggregated.push({
+        ...first,
+        product_id: first.product_id ?? first.sku ?? first.barcode ?? null,
+        product_name: same((r) => r.product_name) ?? "—",
+        sku: first.sku,
+        price: same((r) => r.price) ?? null,
+        sales_qty: sum((r) => r.sales_qty),
+        returns_qty: sum((r) => r.returns_qty),
+        revenue: sum((r) => r.revenue),
+        profit: sum((r) => r.profit),
+        turnover: same((r) => r.turnover) ?? null,
+        stock: rows.every((r) => r.stock != null) ? sum((r) => r.stock ?? 0) : null,
+        size_group: same((r) => r.size_group) ?? null,
+        cogs: sum((r) => r.cogs),
+        commission: sum((r) => r.commission),
+        logistics: sum((r) => r.logistics),
+        barcode: rows.length > 1 ? "—" : (first.barcode ?? null),
+        storage_cost_per_day: same((r) => r.storage_cost_per_day) ?? null,
+        shop: same((r) => r.shop) ?? null,
+        abc_orders: null,
+        abc_profit: null,
+        abc_revenue: null,
+      });
+    }
+
+    // Пересчёт ABC по сгруппированным метрикам
+    const totalOrders = aggregated.reduce((s, p) => s + Math.max(p.sales_qty, 0), 0);
+    const totalProfit = aggregated.reduce((s, p) => s + Math.max(p.profit, 0), 0);
+    const totalRevenue = aggregated.reduce((s, p) => s + Math.max(p.revenue, 0), 0);
+
+    const byOrders = [...aggregated].sort((a, b) => b.sales_qty - a.sales_qty);
+    let cum = 0;
+    const abcOrders: string[] = [];
+    byOrders.forEach((row, i) => {
+      cum += Math.max(row.sales_qty, 0);
+      const share = totalOrders > 0 ? (cum / totalOrders) * 100 : 0;
+      abcOrders[i] = share <= 80 ? "A" : share <= 95 ? "B" : "C";
+    });
+
+    const byProfit = [...aggregated].sort((a, b) => b.profit - a.profit);
+    cum = 0;
+    const abcProfit: string[] = [];
+    byProfit.forEach((row, i) => {
+      cum += Math.max(row.profit, 0);
+      const share = totalProfit > 0 ? (cum / totalProfit) * 100 : 0;
+      abcProfit[i] = share <= 80 ? "A" : share <= 95 ? "B" : "C";
+    });
+
+    const byRevenue = [...aggregated].sort((a, b) => b.revenue - a.revenue);
+    cum = 0;
+    const abcRevenue: string[] = [];
+    byRevenue.forEach((row, i) => {
+      cum += Math.max(row.revenue, 0);
+      const share = totalRevenue > 0 ? (cum / totalRevenue) * 100 : 0;
+      abcRevenue[i] = share <= 80 ? "A" : share <= 95 ? "B" : "C";
+    });
+
+    const orderIndex = new Map(byOrders.map((r, i) => [groupKey(r), i]));
+    const profitIndex = new Map(byProfit.map((r, i) => [groupKey(r), i]));
+    const revenueIndex = new Map(byRevenue.map((r, i) => [groupKey(r), i]));
+
+    return aggregated.map((p) => {
+      const key = groupKey(p);
+      return {
+        ...p,
+        abc_orders: orderIndex.get(key) != null ? abcOrders[orderIndex.get(key)!] : null,
+        abc_profit: profitIndex.get(key) != null ? abcProfit[profitIndex.get(key)!] : null,
+        abc_revenue: revenueIndex.get(key) != null ? abcRevenue[revenueIndex.get(key)!] : null,
+      };
+    });
+  }, [groupByCards, adjustedProductsWithAbc]);
+
+  const productId = (p: ProductsTableItemType, idx: number) =>
+    (groupByCards ? (p.product_id || p.sku) : p.barcode) || p.sku || `row-${idx}`;
 
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat("ru-RU").format(num);
@@ -225,7 +322,7 @@ export function ProductsView({ shop, taxPercent = 1 }: ProductsViewProps) {
     return <ArrowUpDown className="w-3 h-3 ml-1 opacity-50" />;
   };
 
-  const filteredProducts = adjustedProductsWithAbc.filter((p) => {
+  const filteredProducts = displayProducts.filter((p) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.trim().toLowerCase();
     return (
@@ -468,7 +565,9 @@ export function ProductsView({ shop, taxPercent = 1 }: ProductsViewProps) {
                       <span className="w-3 h-3 rounded-full border-2 border-purple-500 bg-transparent shrink-0" aria-hidden />
                       <div className="min-w-0 break-words whitespace-normal text-sm">
                         <p className="font-medium text-foreground">{product.product_name ?? "—"}</p>
-                        <p className="text-xs text-muted-foreground">SKU: {product.sku ?? ""}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {groupByCards ? `ID: ${product.product_id ?? "—"}` : `SKU: ${product.sku ?? ""}`}
+                        </p>
                       </div>
                     </div>
                   </TableCell>
