@@ -210,7 +210,7 @@ export function ProductsView({ shop, taxPercent = 1 }: ProductsViewProps) {
         turnover: same((r) => r.turnover) ?? null,
         stock: rows.every((r) => r.stock != null) ? sum((r) => r.stock ?? 0) : null,
         size_group: same((r) => r.size_group) ?? null,
-        cogs: sum((r) => r.cogs),
+        cogs: null, // При группировке по карточкам себестоимость не суммируется, отображается "—"
         commission: sum((r) => r.commission),
         logistics: sum((r) => r.logistics),
         barcode: rows.length > 1 ? "—" : (first.barcode ?? null),

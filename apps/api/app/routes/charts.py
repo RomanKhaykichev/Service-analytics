@@ -769,10 +769,11 @@ async def get_products_table(
     """
     try:
         import math
-        # Период для метрик в таблице: последние 30 дней по дате создания заказа (date_created) из sells_report.
+        # Период для ABC анализа: последние 30 дней по дате создания заказа (date_created) из sells_report.
+        # Основные метрики (продажи, выручка, прибыль и т.д.) считаются по всем данным без ограничения по датам.
         data_end_date = get_data_end_date(db, user_id)
-        date_to_iso = data_end_date.isoformat()
-        date_from_iso = (data_end_date - timedelta(days=29)).isoformat()
+        abc_date_to_iso = data_end_date.isoformat()
+        abc_date_from_iso = (data_end_date - timedelta(days=29)).isoformat()
 
         shop_norm = normalize_shop(shop)
         params_batch = {"user_id": str(user_id)}
@@ -836,7 +837,7 @@ async def get_products_table(
                     "shop": _str_val(row[2]),
                 }
 
-        # Sells_report: агрегаты по barcode_norm.
+        # Sells_report: агрегаты по barcode_norm по ВСЕМ данным (без ограничения по датам).
         # Заказы (sales_qty) = Количество (qty) по всем статусам, кроме отмен (status=orders).
         # Себестоимость/Выручка/Комиссия/Логистика — только со статусом «Завершен».
         orders_condition = get_status_sql_condition('orders')
@@ -852,11 +853,9 @@ async def get_products_table(
             FROM {qname("fact_sales")} fs
             WHERE fs.user_id = CAST(:user_id AS uuid)
               AND fs.barcode_norm IS NOT NULL
-              AND fs.date_created >= CAST(:date_from AS date)
-              AND fs.date_created < CAST(:date_to AS date) + INTERVAL '1 day'
             GROUP BY fs.barcode_norm
         """)
-        sales_result = db.execute(sales_query, {"user_id": str(user_id), "date_from": date_from_iso, "date_to": date_to_iso})
+        sales_result = db.execute(sales_query, {"user_id": str(user_id)})
         sales_by_barcode: dict = {}
         for row in sales_result.fetchall():
             bn = (row[0] or "").strip() if row[0] else ""
@@ -884,7 +883,7 @@ async def get_products_table(
                     "profit": profit_val,
                 }
 
-        # Цена и Себестоимость для таблицы: по последней дате продаж для каждого штрихкода.
+        # Цена и Себестоимость для таблицы: по последней дате продаж для каждого штрихкода по ВСЕМ данным.
         # Цена = revenue_sum / qty, Себестоимость = cogs_sum / qty на последнюю дату (только завершённые заказы).
         last_price_cogs_by_barcode: dict[str, dict[str, float]] = {}
         last_unit_query = text(f"""
@@ -896,8 +895,6 @@ async def get_products_table(
                 WHERE fs.user_id = CAST(:user_id AS uuid)
                   AND fs.barcode_norm IS NOT NULL
                   AND {_STATUS_COMPLETED_SQL}
-                  AND fs.date_created >= CAST(:date_from AS date)
-                  AND fs.date_created < CAST(:date_to AS date) + INTERVAL '1 day'
                 GROUP BY fs.barcode_norm
             ),
             last_rows AS (
@@ -926,7 +923,7 @@ async def get_products_table(
             FROM last_rows
             GROUP BY barcode_norm
         """)
-        last_unit_result = db.execute(last_unit_query, {"user_id": str(user_id), "date_from": date_from_iso, "date_to": date_to_iso})
+        last_unit_result = db.execute(last_unit_query, {"user_id": str(user_id)})
         for row in last_unit_result.fetchall():
             bn = (row[0] or "").strip() if row[0] else ""
             if not bn:
@@ -938,14 +935,53 @@ async def get_products_table(
                 "cogs": unit_cogs,
             }
 
-        # ABC-заказы по количеству (sales_qty) за весь период данных sells_report:
+        # ABC-заказы по количеству (sales_qty) за последние 30 дней:
         # A — первые ~80% суммарного qty, B — до 95%, C — остальные.
+        # Для ABC анализа используем отдельный запрос с ограничением по датам.
+        orders_condition_abc = get_status_sql_condition('orders')
+        abc_sales_query = text(f"""
+            SELECT
+                fs.barcode_norm,
+                SUM(CASE WHEN ({orders_condition_abc}) THEN COALESCE(fs.qty, 0) ELSE 0 END)::int AS sales_qty,
+                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.revenue_sum, 0) ELSE 0 END)::double precision AS revenue,
+                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.cogs_sum * fs.qty, 0) ELSE 0 END)::double precision AS cogs,
+                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.commission_sum, 0) ELSE 0 END)::double precision AS commission,
+                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.logistics_sum, 0) ELSE 0 END)::double precision AS logistics
+            FROM {qname("fact_sales")} fs
+            WHERE fs.user_id = CAST(:user_id AS uuid)
+              AND fs.barcode_norm IS NOT NULL
+              AND fs.date_created >= CAST(:date_from AS date)
+              AND fs.date_created < CAST(:date_to AS date) + INTERVAL '1 day'
+            GROUP BY fs.barcode_norm
+        """)
+        abc_sales_result = db.execute(abc_sales_query, {"user_id": str(user_id), "date_from": abc_date_from_iso, "date_to": abc_date_to_iso})
+        abc_sales_by_barcode: dict = {}
+        for row in abc_sales_result.fetchall():
+            bn = (row[0] or "").strip() if row[0] else ""
+            if bn:
+                revenue_val = float(row[2] or 0)
+                cogs_total_val = float(row[3] or 0)
+                commission_val = float(row[4] or 0)
+                logistics_val = float(row[5] or 0)
+                profit_val = (
+                    revenue_val
+                    - cogs_total_val
+                    - commission_val
+                    - logistics_val
+                    - (revenue_val * 0.01)
+                )
+                abc_sales_by_barcode[bn] = {
+                    "sales_qty": int(row[1] or 0),
+                    "revenue": revenue_val,
+                    "profit": profit_val,
+                }
+        
         abc_orders_by_barcode: dict[str, str] = {}
-        total_sales_qty = sum(max(data["sales_qty"], 0) for data in sales_by_barcode.values())
+        total_sales_qty = sum(max(data["sales_qty"], 0) for data in abc_sales_by_barcode.values())
         if total_sales_qty > 0:
             # Сортируем SKU по qty по убыванию
             sorted_items = sorted(
-                sales_by_barcode.items(),
+                abc_sales_by_barcode.items(),
                 key=lambda kv: kv[1]["sales_qty"],
                 reverse=True,
             )
@@ -965,14 +1001,14 @@ async def get_products_table(
                 else:
                     abc_orders_by_barcode[bn] = "C"
 
-        # ABC-прибыль по накопленной прибыли (profit) за весь период:
+        # ABC-прибыль по накопленной прибыли (profit) за последние 30 дней:
         # A — первые ~80% суммарной прибыли, B — до 95%, C — остальные.
         abc_profit_by_barcode: dict[str, str] = {}
         # Берём только положительную прибыль для расчёта долей; нулевая/отрицательная = класс C.
-        total_profit = sum(max(data["profit"], 0.0) for data in sales_by_barcode.values())
+        total_profit = sum(max(data["profit"], 0.0) for data in abc_sales_by_barcode.values())
         if total_profit > 0:
             sorted_by_profit = sorted(
-                sales_by_barcode.items(),
+                abc_sales_by_barcode.items(),
                 key=lambda kv: kv[1]["profit"],
                 reverse=True,
             )
@@ -991,13 +1027,13 @@ async def get_products_table(
                 else:
                     abc_profit_by_barcode[bn] = "C"
 
-        # ABC-выручка по накопленной выручке (revenue) за весь период:
+        # ABC-выручка по накопленной выручке (revenue) за последние 30 дней:
         # A — первые ~80% суммарной выручки, B — до 95%, C — остальные.
         abc_revenue_by_barcode: dict[str, str] = {}
-        total_revenue = sum(max(data["revenue"], 0.0) for data in sales_by_barcode.values())
+        total_revenue = sum(max(data["revenue"], 0.0) for data in abc_sales_by_barcode.values())
         if total_revenue > 0:
             sorted_by_revenue = sorted(
-                sales_by_barcode.items(),
+                abc_sales_by_barcode.items(),
                 key=lambda kv: kv[1]["revenue"],
                 reverse=True,
             )
