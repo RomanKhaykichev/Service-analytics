@@ -758,6 +758,8 @@ def _parse_int(v) -> Optional[int]:
 async def get_products_table(
     user_id: UUID = Depends(require_user),
     shop: Optional[str] = Query(default=None, description="Shop name (seller-storage) — filter by barcode set"),
+    date_from: Optional[str] = Query(default=None, description="Start date YYYY-MM-DD (filters by fact_sales.date_created)"),
+    date_to: Optional[str] = Query(default=None, description="End date YYYY-MM-DD (filters by fact_sales.date_created)"),
     db: Session = Depends(get_db)
 ):
     """
@@ -766,11 +768,38 @@ async def get_products_table(
     - sells_report (fact_sales) — Продажи, Возвраты, Выручка, Себестоимость, Комиссия, Логистика
     - seller-storage (fact_storage_snapshot) — Габаритная группа, Магазин
     Связь по штрихкоду: barcode_norm = нормализованный штрихкод (пробелы убраны).
+    
+    Фильтрация по датам:
+    - Основные метрики (продажи, выручка, прибыль и т.д.) фильтруются по date_from/date_to (по колонке date_created из fact_sales).
+    - Если date_from и date_to не указаны, берутся все данные.
+    - ABC анализ всегда считается за последние 30 дней.
     """
     try:
         import math
-        # Период для ABC анализа: последние 30 дней по дате создания заказа (date_created) из sells_report.
-        # Основные метрики (продажи, выручка, прибыль и т.д.) считаются по всем данным без ограничения по датам.
+        # Определяем диапазон дат для основных метрик
+        date_from_dt = None
+        date_to_dt = None
+        date_from_iso = None
+        date_to_iso = None
+        
+        if date_from and date_to:
+            try:
+                date_from_dt = datetime.fromisoformat(date_from.strip()).date()
+                date_to_dt = datetime.fromisoformat(date_to.strip()).date()
+            except (ValueError, TypeError):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid date_from or date_to format (use YYYY-MM-DD).",
+                )
+            if date_from_dt > date_to_dt:
+                raise HTTPException(
+                    status_code=400,
+                    detail="date_from must be less than or equal to date_to.",
+                )
+            date_from_iso = date_from_dt.isoformat()
+            date_to_iso = date_to_dt.isoformat()
+        
+        # Период для ABC анализа: всегда последние 30 дней по дате создания заказа (date_created) из sells_report.
         data_end_date = get_data_end_date(db, user_id)
         abc_date_to_iso = data_end_date.isoformat()
         abc_date_from_iso = (data_end_date - timedelta(days=29)).isoformat()
@@ -837,14 +866,26 @@ async def get_products_table(
                     "shop": _str_val(row[2]),
                 }
 
-        # Sells_report: агрегаты по barcode_norm по ВСЕМ данным (без ограничения по датам).
-        # Заказы (sales_qty) = Количество (qty) по всем статусам, кроме отмен (status=orders).
+        # Sells_report: агрегаты по barcode_norm с фильтрацией по датам (date_from/date_to).
+        # Заказы (sales_qty) = файл sells_report из колонки Количество (qty) — суммирование без фильтрации по статусам.
         # Себестоимость/Выручка/Комиссия/Логистика — только со статусом «Завершен».
-        orders_condition = get_status_sql_condition('orders')
+        # Если date_from и date_to не указаны, берутся все данные.
+        
+        # Формируем условие фильтрации по датам
+        date_filter_sql = ""
+        sales_params = {"user_id": str(user_id)}
+        if date_from_dt and date_to_dt:
+            date_filter_sql = """
+              AND fs.date_created >= CAST(:date_from AS date)
+              AND fs.date_created < CAST(:date_to AS date) + INTERVAL '1 day'
+            """
+            sales_params["date_from"] = date_from_iso
+            sales_params["date_to"] = date_to_iso
+        
         sales_query = text(f"""
             SELECT
                 fs.barcode_norm,
-                SUM(CASE WHEN ({orders_condition}) THEN COALESCE(fs.qty, 0) ELSE 0 END)::int AS sales_qty,
+                SUM(COALESCE(fs.qty, 0))::int AS sales_qty,
                 SUM(COALESCE(fs.returns_qty, 0))::int AS returns_qty,
                 SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.revenue_sum, 0) ELSE 0 END)::double precision AS revenue,
                 SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.cogs_sum * fs.qty, 0) ELSE 0 END)::double precision AS cogs,
@@ -853,9 +894,10 @@ async def get_products_table(
             FROM {qname("fact_sales")} fs
             WHERE fs.user_id = CAST(:user_id AS uuid)
               AND fs.barcode_norm IS NOT NULL
+            {date_filter_sql}
             GROUP BY fs.barcode_norm
         """)
-        sales_result = db.execute(sales_query, {"user_id": str(user_id)})
+        sales_result = db.execute(sales_query, sales_params)
         sales_by_barcode: dict = {}
         for row in sales_result.fetchall():
             bn = (row[0] or "").strip() if row[0] else ""
@@ -883,9 +925,21 @@ async def get_products_table(
                     "profit": profit_val,
                 }
 
-        # Цена и Себестоимость для таблицы: по последней дате продаж для каждого штрихкода по ВСЕМ данным.
+        # Цена и Себестоимость для таблицы: по последней дате продаж для каждого штрихкода в выбранном периоде.
         # Цена = revenue_sum / qty, Себестоимость = cogs_sum / qty на последнюю дату (только завершённые заказы).
         last_price_cogs_by_barcode: dict[str, dict[str, float]] = {}
+        
+        # Формируем условие фильтрации по датам для запроса цены и себестоимости
+        last_unit_date_filter_sql = ""
+        last_unit_params = {"user_id": str(user_id)}
+        if date_from_dt and date_to_dt:
+            last_unit_date_filter_sql = """
+              AND fs.date_created >= CAST(:date_from AS date)
+              AND fs.date_created < CAST(:date_to AS date) + INTERVAL '1 day'
+            """
+            last_unit_params["date_from"] = date_from_iso
+            last_unit_params["date_to"] = date_to_iso
+        
         last_unit_query = text(f"""
             WITH last_dates AS (
                 SELECT
@@ -895,6 +949,7 @@ async def get_products_table(
                 WHERE fs.user_id = CAST(:user_id AS uuid)
                   AND fs.barcode_norm IS NOT NULL
                   AND {_STATUS_COMPLETED_SQL}
+                  {last_unit_date_filter_sql}
                 GROUP BY fs.barcode_norm
             ),
             last_rows AS (
@@ -923,7 +978,7 @@ async def get_products_table(
             FROM last_rows
             GROUP BY barcode_norm
         """)
-        last_unit_result = db.execute(last_unit_query, {"user_id": str(user_id)})
+        last_unit_result = db.execute(last_unit_query, last_unit_params)
         for row in last_unit_result.fetchall():
             bn = (row[0] or "").strip() if row[0] else ""
             if not bn:
@@ -938,11 +993,11 @@ async def get_products_table(
         # ABC-заказы по количеству (sales_qty) за последние 30 дней:
         # A — первые ~80% суммарного qty, B — до 95%, C — остальные.
         # Для ABC анализа используем отдельный запрос с ограничением по датам.
-        orders_condition_abc = get_status_sql_condition('orders')
+        # Заказы (sales_qty) = файл sells_report из колонки Количество (qty) — суммирование без фильтрации по статусам.
         abc_sales_query = text(f"""
             SELECT
                 fs.barcode_norm,
-                SUM(CASE WHEN ({orders_condition_abc}) THEN COALESCE(fs.qty, 0) ELSE 0 END)::int AS sales_qty,
+                SUM(COALESCE(fs.qty, 0))::int AS sales_qty,
                 SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.revenue_sum, 0) ELSE 0 END)::double precision AS revenue,
                 SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.cogs_sum * fs.qty, 0) ELSE 0 END)::double precision AS cogs,
                 SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.commission_sum, 0) ELSE 0 END)::double precision AS commission,

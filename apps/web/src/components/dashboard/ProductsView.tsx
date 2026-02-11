@@ -87,9 +87,11 @@ interface ProductsViewProps {
   shop?: string | null;
   /** Пользовательский процент налога (из вкладки Сводка) для карточки товара. */
   taxPercent?: number;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
-export function ProductsView({ shop, taxPercent = 1 }: ProductsViewProps) {
+export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: ProductsViewProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [groupByCards, setGroupByCards] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductsTableItemType | null>(null);
@@ -97,9 +99,13 @@ export function ProductsView({ shop, taxPercent = 1 }: ProductsViewProps) {
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
 
   const { data: productsData, isLoading: productsLoading } = useQuery({
-    queryKey: ["products-table", shop],
+    queryKey: ["products-table", shop, dateFrom, dateTo],
     queryFn: async () => {
-      const params = buildQueryParams({ shop: shop ?? undefined });
+      const params = buildQueryParams({ 
+        shop: shop ?? undefined,
+        date_from: dateFrom ?? undefined,
+        date_to: dateTo ?? undefined,
+      });
       return apiGet<ProductsTableResponse>("/api/charts/products-table", params);
     },
     refetchOnWindowFocus: false,
