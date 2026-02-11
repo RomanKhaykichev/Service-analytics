@@ -415,12 +415,94 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
     status: "active",
   });
 
+  // Отдельный запрос для карточки товара без фильтрации по магазину
+  const { data: allProductsData } = useQuery({
+    queryKey: ["products-table-all", dateFrom, dateTo],
+    queryFn: async () => {
+      const params = buildQueryParams({ 
+        date_from: dateFrom ?? undefined,
+        date_to: dateTo ?? undefined,
+        // Не передаем shop, чтобы получить все данные без фильтрации по магазину
+      });
+      return apiGet<ProductsTableResponse>("/api/charts/products-table", params);
+    },
+    enabled: !!selectedProduct, // Запрос выполняется только когда товар выбран
+    refetchOnWindowFocus: false,
+  });
+
+  const allProducts: ProductsTableItemType[] = allProductsData?.items ?? [];
+
+  // Обработка всех товаров для карточки (без фильтрации по магазину)
+  const allAdjustedProducts: ProductsTableItemType[] = useMemo(() => {
+    if (!allProducts.length) return allProducts;
+    return allProducts.map((p) => {
+      const revenue = p.revenue ?? 0;
+      const cogs = p.cogs ?? 0;
+      const commission = p.commission ?? 0;
+      const logistics = p.logistics ?? 0;
+      const tax = revenue * (taxPercent / 100);
+      const profit = revenue - cogs - commission - logistics - tax;
+      return {
+        ...p,
+        profit,
+      };
+    });
+  }, [allProducts, taxPercent]);
+
+  // ABC-прибыль для всех товаров
+  const allAdjustedProductsWithAbc: ProductsTableItemType[] = useMemo(() => {
+    if (!allAdjustedProducts.length) return allAdjustedProducts;
+
+    const itemsForAbc = allAdjustedProducts
+      .map((p) => {
+        const key = (p.barcode || p.sku || "").trim();
+        return key ? { key, profit: p.profit } : null;
+      })
+      .filter((x): x is { key: string; profit: number } => x !== null);
+
+    const totalProfit = itemsForAbc.reduce(
+      (sum, item) => sum + Math.max(item.profit, 0),
+      0
+    );
+
+    const abcMap = new Map<string, string>();
+    if (totalProfit > 0) {
+      const sorted = [...itemsForAbc].sort((a, b) => b.profit - a.profit);
+      let cumulative = 0;
+      for (const item of sorted) {
+        const profitPos = Math.max(item.profit, 0);
+        if (profitPos <= 0) {
+          abcMap.set(item.key, "C");
+          continue;
+        }
+        cumulative += profitPos;
+        const share = (cumulative / totalProfit) * 100;
+        if (share <= 80) {
+          abcMap.set(item.key, "A");
+        } else if (share <= 95) {
+          abcMap.set(item.key, "B");
+        } else {
+          abcMap.set(item.key, "C");
+        }
+      }
+    }
+
+    return allAdjustedProducts.map((p) => {
+      const key = (p.barcode || p.sku || "").trim();
+      const abcProfit = key ? abcMap.get(key) ?? p.abc_profit : p.abc_profit;
+      return {
+        ...p,
+        abc_profit: abcProfit,
+      };
+    });
+  }, [allAdjustedProducts]);
+
   // If a product is selected, show the detail view
   if (selectedProduct) {
     // Находим все товары с тем же product_id (принадлежат к ID карточки)
-    // Используем исходные данные без группировки (adjustedProductsWithAbc), чтобы каждый товар отображался отдельной строкой по штрихкоду
+    // Используем данные без фильтрации по магазину (allAdjustedProductsWithAbc)
     const productId = selectedProduct.product_id || selectedProduct.sku || selectedProduct.barcode;
-    const productVariants = adjustedProductsWithAbc.filter(p => {
+    const productVariants = allAdjustedProductsWithAbc.filter(p => {
       const pId = p.product_id || p.sku || p.barcode;
       return pId === productId;
     });

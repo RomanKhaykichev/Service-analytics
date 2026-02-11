@@ -8,6 +8,7 @@ import logging
 import re
 from app.db import get_db, qname
 from app.deps import require_user
+from app.settings import get_settings
 from app.routes.kpi import get_data_end_date, period_range, normalize_period, resolve_date_range
 from app.utils.statuses import get_status_sql_condition
 
@@ -43,9 +44,11 @@ from app.schemas import (
     ProductsTableResponse,
     ProductsTableItem,
 )
+from app.schemas.charts import ProductCommentResponse, ProductCommentRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+settings = get_settings()
 
 
 @router.get("/charts/revenue-daily", response_model=RevenueDailyResponse)
@@ -1194,6 +1197,162 @@ async def get_products_table(
         raise
     except Exception as e:
         logger.error(f"Error in get_products_table: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get("/products/{product_id}/comment", response_model=ProductCommentResponse)
+async def get_product_comment(
+    product_id: str,
+    user_id: UUID = Depends(require_user),
+    db: Session = Depends(get_db)
+):
+    """Get comment for a product by product_id."""
+    try:
+        # Проверяем, существует ли таблица
+        check_table_query = text(f"""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = :schema 
+                AND table_name = 'product_comments'
+            )
+        """)
+        table_exists = db.execute(check_table_query, {"schema": settings.DB_SCHEMA}).scalar()
+        
+        if not table_exists:
+            # Если таблицы нет, возвращаем пустой комментарий
+            return ProductCommentResponse(product_id=product_id, comment=None)
+        
+        query = text(f"""
+            SELECT content
+            FROM {qname("product_comments")}
+            WHERE user_id = CAST(:user_id AS uuid)
+              AND product_id = :product_id
+            ORDER BY updated_at DESC
+            LIMIT 1
+        """)
+        result = db.execute(query, {"user_id": str(user_id), "product_id": product_id})
+        row = result.fetchone()
+        comment = row[0] if row else None
+        return ProductCommentResponse(product_id=product_id, comment=comment)
+    except Exception as e:
+        logger.error(f"Error in get_product_comment: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.post("/products/{product_id}/comment", response_model=ProductCommentResponse)
+async def save_product_comment(
+    product_id: str,
+    request: ProductCommentRequest,
+    user_id: UUID = Depends(require_user),
+    db: Session = Depends(get_db)
+):
+    """Save or update comment for a product by product_id."""
+    try:
+        if request.product_id != product_id:
+            raise HTTPException(status_code=400, detail="product_id mismatch")
+        
+        comment_text = request.comment.strip() if request.comment and request.comment.strip() else None
+        comment_date = datetime.now().date().isoformat()
+        
+        # Проверяем, существует ли таблица, и создаем её, если нет
+        try:
+            check_table_query = text(f"""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = :schema 
+                    AND table_name = 'product_comments'
+                )
+            """)
+            table_exists = db.execute(check_table_query, {"schema": settings.DB_SCHEMA}).scalar()
+            
+            if not table_exists:
+                # Создаем таблицу, если её нет
+                create_table_query = text(f"""
+                    CREATE TABLE {qname("product_comments")} (
+                        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                        user_id uuid NOT NULL,
+                        product_id text NOT NULL,
+                        content text,
+                        comment_date date NOT NULL,
+                        created_at timestamptz NOT NULL DEFAULT now(),
+                        updated_at timestamptz NOT NULL DEFAULT now()
+                    )
+                """)
+                db.execute(create_table_query)
+                
+                # Создаем индекс для быстрого поиска
+                create_index_query = text(f"""
+                    CREATE INDEX idx_product_comments_user_product 
+                    ON {qname("product_comments")} (user_id, product_id)
+                """)
+                db.execute(create_index_query)
+                db.commit()
+                logger.info(f"Created table {qname('product_comments')}")
+        except Exception as table_error:
+            # Если таблица уже существует или другая ошибка, продолжаем
+            logger.warning(f"Table check/create failed (may already exist): {table_error}")
+            db.rollback()
+        
+        # Проверяем, существует ли комментарий
+        check_query = text(f"""
+            SELECT id FROM {qname("product_comments")}
+            WHERE user_id = CAST(:user_id AS uuid)
+              AND product_id = :product_id
+            LIMIT 1
+        """)
+        check_result = db.execute(check_query, {"user_id": str(user_id), "product_id": product_id})
+        existing = check_result.fetchone()
+        
+        # Если комментарий пустой и записи нет, просто возвращаем успех
+        if not comment_text and not existing:
+            return ProductCommentResponse(product_id=product_id, comment=None)
+        
+        if existing:
+            # Обновляем существующий комментарий
+            if comment_text:
+                update_query = text(f"""
+                    UPDATE {qname("product_comments")}
+                    SET content = :content,
+                        comment_date = CAST(:comment_date AS date),
+                        updated_at = now()
+                    WHERE id = CAST(:id AS uuid)
+                      AND user_id = CAST(:user_id AS uuid)
+                """)
+                db.execute(update_query, {
+                    "id": existing[0],
+                    "user_id": str(user_id),
+                    "content": comment_text,
+                    "comment_date": comment_date
+                })
+            else:
+                # Удаляем комментарий, если он пустой
+                delete_query = text(f"""
+                    DELETE FROM {qname("product_comments")}
+                    WHERE id = CAST(:id AS uuid)
+                      AND user_id = CAST(:user_id AS uuid)
+                """)
+                db.execute(delete_query, {"id": existing[0], "user_id": str(user_id)})
+        else:
+            # Создаем новый комментарий
+            if comment_text:
+                insert_query = text(f"""
+                    INSERT INTO {qname("product_comments")} (user_id, product_id, content, comment_date)
+                    VALUES (CAST(:user_id AS uuid), :product_id, :content, CAST(:comment_date AS date))
+                """)
+                db.execute(insert_query, {
+                    "user_id": str(user_id),
+                    "product_id": product_id,
+                    "content": comment_text,
+                    "comment_date": comment_date
+                })
+        
+        db.commit()
+        return ProductCommentResponse(product_id=product_id, comment=comment_text)
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error in save_product_comment: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 

@@ -1,7 +1,10 @@
 import { ChevronRight, Package as PackageIcon, Palette, Ruler, Barcode, MessageSquare } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiGet, apiPost } from "@/lib/api";
+import { toast } from "sonner";
 import { ShoppingCart, Truck, Package, RotateCcw, Percent, CreditCard, DollarSign, TrendingDown, Wallet, Target, BarChart3, TrendingUp, ArrowDown, Receipt, AlertTriangle, Boxes, Warehouse, Tag, ShoppingBag } from "lucide-react";
 import { SummaryBlock } from "./SummaryBlock";
 import { RevenueDailyChart } from "./RevenueDailyChart";
@@ -52,6 +55,11 @@ interface ProductDetailViewProps {
   /** Пользовательский процент налога (из вкладки Сводка). По умолчанию 1. */
   taxPercent?: number;
 }
+interface ProductCommentResponse {
+  product_id: string;
+  comment: string | null;
+}
+
 export function ProductDetailView({
   product,
   variants = [],
@@ -59,6 +67,53 @@ export function ProductDetailView({
   taxPercent = 1,
 }: ProductDetailViewProps) {
   const [comment, setComment] = useState("");
+  const queryClient = useQueryClient();
+  
+  // Загружаем комментарий при открытии карточки
+  const { data: commentData } = useQuery({
+    queryKey: ["product-comment", product.id],
+    queryFn: async () => {
+      return apiGet<ProductCommentResponse>(`/api/products/${encodeURIComponent(product.id)}/comment`);
+    },
+    refetchOnWindowFocus: false,
+  });
+
+  // Обновляем локальное состояние комментария при загрузке данных
+  useEffect(() => {
+    if (commentData) {
+      setComment(commentData.comment || "");
+    }
+  }, [commentData]);
+
+  // Мутация для сохранения комментария
+  const saveCommentMutation = useMutation({
+    mutationFn: async (commentText: string) => {
+      const trimmedComment = commentText.trim();
+      return apiPost<ProductCommentResponse>(
+        `/api/products/${encodeURIComponent(product.id)}/comment`,
+        {
+          product_id: product.id,
+          comment: trimmedComment || null,
+        }
+      );
+    },
+    onSuccess: (data) => {
+      // Обновляем локальное состояние комментария после сохранения
+      setComment(data.comment || "");
+      queryClient.invalidateQueries({ queryKey: ["product-comment", product.id] });
+      toast.success("Комментарий сохранен");
+    },
+    onError: (error: any) => {
+      console.error("Error saving comment:", error);
+      const errorMessage = error?.message || error?.toString() || "Неизвестная ошибка";
+      toast.error(`Ошибка при сохранении комментария: ${errorMessage}`);
+    },
+  });
+
+  const handleSaveComment = () => {
+    saveCommentMutation.mutate(comment);
+  };
+
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat("ru-RU").format(price) + " сум";
   };
@@ -264,13 +319,34 @@ export function ProductDetailView({
             
             {/* Comment Block */}
             <div className="pt-4 border-t border-border">
-              <div className="flex items-center gap-2 mb-2">
-                <MessageSquare className="w-4 h-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Комментарий</span>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Комментарий</span>
+                </div>
+                <span className={`text-xs ${comment.length > 120 ? "text-destructive" : "text-muted-foreground"}`}>
+                  {comment.length}/120
+                </span>
               </div>
-              <Textarea placeholder="Оставьте комментарий к товару..." value={comment} onChange={e => setComment(e.target.value)} className="min-h-[80px] resize-none" />
-              <Button size="sm" className="mt-2" disabled={!comment.trim()}>
-                Сохранить
+              <Textarea 
+                placeholder="Оставьте комментарий к товару..." 
+                value={comment} 
+                onChange={e => {
+                  const newValue = e.target.value;
+                  if (newValue.length <= 120) {
+                    setComment(newValue);
+                  }
+                }}
+                className="min-h-[80px] resize-none" 
+                maxLength={120}
+              />
+              <Button 
+                size="sm" 
+                className="mt-2" 
+                disabled={saveCommentMutation.isPending}
+                onClick={handleSaveComment}
+              >
+                {saveCommentMutation.isPending ? "Сохранение..." : "Сохранить"}
               </Button>
             </div>
           </div>

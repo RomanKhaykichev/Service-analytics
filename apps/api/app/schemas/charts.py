@@ -194,3 +194,14 @@ class ProductsTableItem(BaseModel):
 
 class ProductsTableResponse(BaseModel):
     items: list[ProductsTableItem]
+
+
+# Product comment schemas
+class ProductCommentResponse(BaseModel):
+    product_id: str
+    comment: Optional[str] = None
+
+
+class ProductCommentRequest(BaseModel):
+    product_id: str
+    comment: Optional[str] = None
