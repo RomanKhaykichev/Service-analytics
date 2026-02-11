@@ -392,7 +392,7 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
 
   // Map API item to Product shape for ProductDetailView
   const productToDetailShape = (p: ProductsTableItemType) => ({
-    id: p.barcode || p.sku || "",
+    id: p.product_id || p.barcode || p.sku || "",
     name: p.product_name ?? "",
     article: p.sku ?? "",
     price: p.price ?? 0,
@@ -417,9 +417,18 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
 
   // If a product is selected, show the detail view
   if (selectedProduct) {
+    // Находим все товары с тем же product_id (принадлежат к ID карточки)
+    // Используем исходные данные без группировки (adjustedProductsWithAbc), чтобы каждый товар отображался отдельной строкой по штрихкоду
+    const productId = selectedProduct.product_id || selectedProduct.sku || selectedProduct.barcode;
+    const productVariants = adjustedProductsWithAbc.filter(p => {
+      const pId = p.product_id || p.sku || p.barcode;
+      return pId === productId;
+    });
+    
     return (
       <ProductDetailView
         product={productToDetailShape(selectedProduct)}
+        variants={productVariants}
         onBack={() => setSelectedProduct(null)}
         taxPercent={taxPercent}
       />

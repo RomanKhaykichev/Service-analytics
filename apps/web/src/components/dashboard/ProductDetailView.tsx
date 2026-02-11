@@ -6,12 +6,14 @@ import { ShoppingCart, Truck, Package, RotateCcw, Percent, CreditCard, DollarSig
 import { SummaryBlock } from "./SummaryBlock";
 import { RevenueDailyChart } from "./RevenueDailyChart";
 interface ProductVariant {
-  color: string;
-  size: string;
-  barcode: string;
-  sales: number;
-  stock: number;
-  dimensionGroup: "СГТ" | "МГТ" | "БГТ";
+  char1: string; // Хар-ка 1 = 3 часть из SKU
+  char2: string; // Хар-ка 2 = 4 часть из SKU
+  char3: string; // Хар-ка 3 = 5 часть из SKU
+  sales_qty: number; // Заказы
+  stock: number | null; // Остатки
+  size_group: string | null; // Габ. группа
+  barcode: string | null; // Штрихкод
+  storage_cost_per_day: number | null; // Хранение сут/сум
 }
 interface Product {
   id: string;
@@ -38,12 +40,21 @@ interface Product {
 }
 interface ProductDetailViewProps {
   product: Product;
+  variants?: Array<{
+    sku: string | null;
+    sales_qty: number;
+    stock: number | null;
+    size_group: string | null;
+    barcode: string | null;
+    storage_cost_per_day: number | null;
+  }>;
   onBack: () => void;
   /** Пользовательский процент налога (из вкладки Сводка). По умолчанию 1. */
   taxPercent?: number;
 }
 export function ProductDetailView({
   product,
+  variants = [],
   onBack,
   taxPercent = 1,
 }: ProductDetailViewProps) {
@@ -55,71 +66,34 @@ export function ProductDetailView({
     return new Intl.NumberFormat("ru-RU").format(num);
   };
 
-  // Mock data for product variants (colors, sizes, barcodes)
-  const productVariants: ProductVariant[] = [{
-    color: "Черный",
-    size: "S",
-    barcode: "4607123456001",
-    sales: 45,
-    stock: 12,
-    dimensionGroup: "СГТ"
-  }, {
-    color: "Черный",
-    size: "M",
-    barcode: "4607123456002",
-    sales: 78,
-    stock: 8,
-    dimensionGroup: "СГТ"
-  }, {
-    color: "Черный",
-    size: "L",
-    barcode: "4607123456003",
-    sales: 62,
-    stock: 15,
-    dimensionGroup: "МГТ"
-  }, {
-    color: "Белый",
-    size: "S",
-    barcode: "4607123456004",
-    sales: 34,
-    stock: 20,
-    dimensionGroup: "СГТ"
-  }, {
-    color: "Белый",
-    size: "M",
-    barcode: "4607123456005",
-    sales: 56,
-    stock: 5,
-    dimensionGroup: "СГТ"
-  }, {
-    color: "Белый",
-    size: "L",
-    barcode: "4607123456006",
-    sales: 41,
-    stock: 18,
-    dimensionGroup: "МГТ"
-  }, {
-    color: "Синий",
-    size: "M",
-    barcode: "4607123456007",
-    sales: 29,
-    stock: 25,
-    dimensionGroup: "БГТ"
-  }, {
-    color: "Синий",
-    size: "L",
-    barcode: "4607123456008",
-    sales: 23,
-    stock: 10,
-    dimensionGroup: "БГТ"
-  }];
+  // Преобразуем варианты товара в формат для таблицы
+  const productVariants: ProductVariant[] = variants.map(v => {
+    // Разбиваем SKU по дефисам
+    const skuParts = (v.sku || "").split("-").map(p => p.trim()).filter(p => p.length > 0);
+    
+    return {
+      char1: skuParts[2] || "—", // 3 часть (индекс 2)
+      char2: skuParts[3] || "—", // 4 часть (индекс 3)
+      char3: skuParts[4] || "—", // 5 часть (индекс 4)
+      sales_qty: v.sales_qty,
+      stock: v.stock,
+      size_group: v.size_group,
+      barcode: v.barcode,
+      storage_cost_per_day: v.storage_cost_per_day,
+    };
+  });
 
-  // Determine product type based on category
+  // Determine product type: первые 2 части после разбивки на дефисы
   const getProductType = () => {
-    if (product.category?.toLowerCase().includes("одежда")) return "Одежда";
-    if (product.category?.toLowerCase().includes("электроника")) return "Электроника";
-    if (product.category?.toLowerCase().includes("обувь")) return "Обувь";
-    return "Товар";
+    if (!product.article) return "—";
+    
+    // Разбиваем по дефисам
+    const parts = product.article.split("-").map(p => p.trim()).filter(p => p.length > 0);
+    if (parts.length === 0) return "—";
+    
+    // Берем первые 2 части и объединяем дефисом
+    const firstTwoParts = parts.slice(0, 2).join(" - ");
+    return firstTwoParts || "—";
   };
   const salesMetrics = [{
     icon: <ShoppingCart className="w-4 h-4" />,
@@ -307,40 +281,75 @@ export function ProductDetailView({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border">
-                    <th className="px-3 py-2 text-left text-muted-foreground font-medium">Цвет</th>
-                    <th className="px-3 py-2 text-left text-muted-foreground font-medium">Размер</th>
-                    <th className="px-3 py-2 text-right text-muted-foreground font-medium">Заказы</th>
-                    <th className="px-3 py-2 text-right text-muted-foreground font-medium">Остатки</th>
+                    <th colSpan={3} className="px-3 py-2 text-left text-muted-foreground font-medium">Параметры товара</th>
+                    <th className="px-3 py-2 text-center text-muted-foreground font-medium">Заказы</th>
+                    <th className="px-3 py-2 text-center text-muted-foreground font-medium">Остатки</th>
                     <th className="px-3 py-2 text-center text-muted-foreground font-medium">Габ. группа</th>
-                    <th className="px-3 py-2 text-left text-muted-foreground font-medium">Штрихкод</th>
+                    <th className="px-3 py-2 text-center text-muted-foreground font-medium">Штрихкод</th>
+                    <th className="px-3 py-2 text-center text-muted-foreground font-medium">
+                      <div className="flex flex-col items-center">
+                        <span>Хранение</span>
+                        <span className="text-xs">сут/сум</span>
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {productVariants.map((variant, index) => <tr key={index} className={index !== productVariants.length - 1 ? "border-b border-border/50" : ""}>
-                      <td className="px-3 py-2 text-foreground">{variant.color}</td>
-                      <td className="px-3 py-2 text-foreground">{variant.size}</td>
-                      <td className="px-3 py-2 text-right text-foreground font-medium">{variant.sales} шт</td>
-                      <td className="px-3 py-2 text-right text-foreground">{variant.stock} шт</td>
-                      <td className="px-3 py-2 text-center">
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${variant.dimensionGroup === "СГТ" ? "bg-success/20 text-success" : variant.dimensionGroup === "МГТ" ? "bg-warning/20 text-warning" : "bg-destructive/20 text-destructive"}`}>
-                          {variant.dimensionGroup}
-                        </span>
+                  {productVariants.length > 0 ? (
+                    productVariants.map((variant, index) => {
+                      return (
+                        <tr key={index} className={index !== productVariants.length - 1 ? "border-b border-border/50" : ""}>
+                          <td className="px-3 py-2 text-left text-foreground">{variant.char1}</td>
+                          <td className="px-3 py-2 text-left text-foreground">{variant.char2}</td>
+                          <td className="px-3 py-2 text-left text-foreground">{variant.char3}</td>
+                          <td className="px-3 py-2 text-center text-foreground font-medium">{formatNumber(variant.sales_qty)}</td>
+                          <td className="px-3 py-2 text-center text-foreground">{variant.stock != null ? formatNumber(variant.stock) : "—"}</td>
+                          <td className="px-3 py-2 text-center">
+                            {variant.size_group && variant.size_group !== "-" ? (
+                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                variant.size_group === "СГТ" ? "bg-success/20 text-success" : 
+                                variant.size_group === "МГТ" ? "bg-warning/20 text-warning" : 
+                                "bg-destructive/20 text-destructive"
+                              }`}>
+                                {variant.size_group}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-center text-foreground font-mono text-xs">{variant.barcode || "—"}</td>
+                          <td className="px-3 py-2 text-center text-foreground">
+                            {variant.storage_cost_per_day != null ? formatNumber(variant.storage_cost_per_day) : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={8} className="px-3 py-4 text-center text-muted-foreground">
+                        Нет вариантов товара
                       </td>
-                      <td className="px-3 py-2 text-foreground font-mono text-xs">{variant.barcode}</td>
-                    </tr>)}
+                    </tr>
+                  )}
                 </tbody>
-                <tfoot>
-                  <tr className="border-t border-border bg-muted/50">
-                    <td colSpan={2} className="px-3 py-2 text-foreground font-medium">Всего</td>
-                    <td className="px-3 py-2 text-right text-foreground font-semibold">
-                      {formatNumber(productVariants.reduce((sum, v) => sum + v.sales, 0))} шт
-                    </td>
-                    <td className="px-3 py-2 text-right text-foreground font-semibold">
-                      {formatNumber(productVariants.reduce((sum, v) => sum + v.stock, 0))} шт
-                    </td>
-                    <td colSpan={2}></td>
-                  </tr>
-                </tfoot>
+                {productVariants.length > 0 && (
+                  <tfoot>
+                    <tr className="border-t border-border bg-muted/50">
+                      <td colSpan={3} className="px-3 py-2 text-left text-foreground font-medium">Всего</td>
+                      <td className="px-3 py-2 text-center text-foreground font-semibold">
+                        {formatNumber(productVariants.reduce((sum, v) => sum + v.sales_qty, 0))}
+                      </td>
+                      <td className="px-3 py-2 text-center text-foreground font-semibold">
+                        {formatNumber(productVariants.reduce((sum, v) => sum + (v.stock ?? 0), 0))}
+                      </td>
+                      <td></td>
+                      <td></td>
+                      <td className="px-3 py-2 text-center text-foreground font-semibold">
+                        {formatNumber(productVariants.reduce((sum, v) => sum + (v.storage_cost_per_day ?? 0), 0))}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           </div>
