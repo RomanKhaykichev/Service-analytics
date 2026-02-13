@@ -306,7 +306,7 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
     toast.success(`Выгружено ${selectedData.length} товаров`);
   };
 
-  // Map API item to Product shape for ProductDetailView
+  // Map API item to Product shape for ProductDetailView (как на Сводке: те же формулы по ID карточки)
   const productToDetailShape = (p: ProductsTableItemType) => ({
     id: p.product_id || p.barcode || p.sku || "",
     name: p.product_name ?? "",
@@ -319,9 +319,11 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
     turnover: p.turnover ?? 0,
     stock: p.stock ?? 0,
     endsIn: "—",
-    costPrice: p.cogs || null,
-    uzumCommission: p.commission,
-    uzumLogistics: p.logistics,
+    costPrice: p.cogs ?? null,
+    cogsTotal: p.cogs_total ?? 0,
+    uzumCommission: p.commission ?? 0,
+    uzumLogistics: p.logistics ?? 0,
+    profit: p.profit ?? 0,
     abcOrders: p.abc_orders ?? "",
     abcProfit: p.abc_profit ?? "",
     abcRevenue: p.abc_revenue ?? "",
@@ -369,22 +371,45 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
   // ABC анализ не пересчитывается на фронтенде, чтобы не зависеть от фильтров date_from/date_to
   const allAdjustedProductsWithAbc: ProductsTableItemType[] = allAdjustedProducts;
 
-  // If a product is selected, show the detail view
+  // If a product is selected, show the detail view (данные по ID карточки: агрегируем все варианты)
   if (selectedProduct) {
-    // Находим все товары с тем же product_id (принадлежат к ID карточки)
-    // Используем данные без фильтрации по магазину (allAdjustedProductsWithAbc)
     const productId = selectedProduct.product_id || selectedProduct.sku || selectedProduct.barcode;
     const productVariants = allAdjustedProductsWithAbc.filter(p => {
       const pId = p.product_id || p.sku || p.barcode;
       return pId === productId;
     });
+    const sum = (get: (r: ProductsTableItemType) => number) =>
+      productVariants.reduce((s, r) => s + (get(r) ?? 0), 0);
+    const first = productVariants[0];
+    const aggregatedProduct: ProductsTableItemType = first
+      ? {
+          ...first,
+          product_id: first.product_id ?? first.sku ?? first.barcode ?? null,
+          product_name: first.product_name,
+          sku: first.sku,
+          price: first.price,
+          sales_qty: sum((r) => r.sales_qty),
+          returns_qty: sum((r) => r.returns_qty),
+          revenue: sum((r) => r.revenue),
+          profit: sum((r) => r.profit),
+          cogs_total: sum((r) => r.cogs_total ?? 0),
+          commission: sum((r) => r.commission ?? 0),
+          logistics: sum((r) => r.logistics ?? 0),
+          stock: productVariants.every((r) => r.stock != null)
+            ? sum((r) => r.stock ?? 0)
+            : null,
+          cogs: first.cogs,
+        }
+      : selectedProduct;
     
     return (
       <ProductDetailView
-        product={productToDetailShape(selectedProduct)}
+        product={productToDetailShape(aggregatedProduct)}
         variants={productVariants}
         onBack={() => setSelectedProduct(null)}
         taxPercent={taxPercent}
+        dateFrom={dateFrom ?? undefined}
+        dateTo={dateTo ?? undefined}
       />
     );
   }

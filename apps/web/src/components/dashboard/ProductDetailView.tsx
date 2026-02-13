@@ -1,13 +1,14 @@
-import { ChevronRight, Package as PackageIcon, Palette, Ruler, Barcode, MessageSquare } from "lucide-react";
+import { ChevronRight, Package as PackageIcon, MessageSquare } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost, buildQueryParams } from "@/lib/api";
 import { toast } from "sonner";
-import { ShoppingCart, Truck, Package, RotateCcw, Percent, CreditCard, DollarSign, TrendingDown, Wallet, Target, BarChart3, TrendingUp, ArrowDown, Receipt, AlertTriangle, Boxes, Warehouse, Tag, ShoppingBag } from "lucide-react";
+import { ShoppingCart, Truck, Package, RotateCcw, Percent, CreditCard, DollarSign, TrendingDown, Wallet, Target, BarChart3, TrendingUp, ArrowDown, Receipt, Boxes, Warehouse, Tag, ShoppingBag, Info } from "lucide-react";
 import { SummaryBlock } from "./SummaryBlock";
 import { RevenueDailyChart } from "./RevenueDailyChart";
+import { formatCurrency, formatQuantity, formatPercent, formatTrend, formatMoneyNoDecimals } from "@/lib/formatters";
 interface ProductVariant {
   char1: string; // Хар-ка 1 = 3 часть из SKU
   char2: string; // Хар-ка 2 = 4 часть из SKU
@@ -31,8 +32,12 @@ interface Product {
   stock: number;
   endsIn: string;
   costPrice: number | null;
+  /** Сумма себестоимости (cogs_sum × qty) по завершённым — для блока Расходы как на Сводке */
+  cogsTotal: number;
   uzumCommission: number;
   uzumLogistics: number;
+  /** Прибыль по формуле Сводки: выручка − расходы (в т.ч. налог с вкладки Сводка) */
+  profit: number;
   abcOrders: string;
   abcProfit: string;
   abcRevenue: string;
@@ -50,10 +55,15 @@ interface ProductDetailViewProps {
     size_group: string | null;
     barcode: string | null;
     storage_cost_per_day: number | null;
+    cogs?: number | null;
+    price?: number | null;
   }>;
   onBack: () => void;
   /** Пользовательский процент налога (из вкладки Сводка). По умолчанию 1. */
   taxPercent?: number;
+  /** Период для расчёта тренда выручки (как на Сводке: сравнение с предыдущим периодом той же длины) */
+  dateFrom?: string;
+  dateTo?: string;
 }
 interface ProductCommentResponse {
   product_id: string;
@@ -65,10 +75,62 @@ export function ProductDetailView({
   variants = [],
   onBack,
   taxPercent = 1,
+  dateFrom,
+  dateTo,
 }: ProductDetailViewProps) {
   const [comment, setComment] = useState("");
   const queryClient = useQueryClient();
-  
+
+  // Предыдущий период (та же длина, сразу перед текущим) — как на Сводке для тренда выручки
+  const prevPeriod = (() => {
+    if (!dateFrom || !dateTo) return null;
+    try {
+      const from = new Date(dateFrom);
+      const to = new Date(dateTo);
+      const days = Math.round((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+      const prevTo = new Date(from);
+      prevTo.setDate(prevTo.getDate() - 1);
+      const prevFrom = new Date(prevTo);
+      prevFrom.setDate(prevFrom.getDate() - days + 1);
+      return {
+        dateFrom: prevFrom.toISOString().slice(0, 10),
+        dateTo: prevTo.toISOString().slice(0, 10),
+      };
+    } catch {
+      return null;
+    }
+  })();
+
+  // Выручка за предыдущий период по этому товару (ID карточки) — для тренда выручки (как на Сводке)
+  const { data: prevPeriodData } = useQuery({
+    queryKey: ["products-table-prev", prevPeriod?.dateFrom, prevPeriod?.dateTo, product.id],
+    queryFn: async () => {
+      const params = buildQueryParams({
+        date_from: prevPeriod!.dateFrom,
+        date_to: prevPeriod!.dateTo,
+      });
+      const data = await apiGet<{ items: Array<{ product_id?: string; sku?: string; barcode?: string; revenue?: number }> }>(
+        "/api/charts/products-table",
+        params
+      );
+      return data?.items ?? [];
+    },
+    enabled: !!prevPeriod?.dateFrom && !!prevPeriod?.dateTo && !!product.id,
+    refetchOnWindowFocus: false,
+  });
+
+  const prevRevenue = (() => {
+    if (!prevPeriodData?.length || !product.id) return 0;
+    const productId = product.id;
+    const items = prevPeriodData.filter(
+      (p) => (p.product_id || p.sku || p.barcode) === productId
+    );
+    return items.reduce((sum, p) => sum + (p.revenue ?? 0), 0);
+  })();
+
+  const revenueTrend =
+    prevRevenue > 0 ? ((product.revenue - prevRevenue) / prevRevenue) * 100 : 0;
+
   // Загружаем комментарий при открытии карточки
   const { data: commentData } = useQuery({
     queryKey: ["product-comment", product.id],
@@ -150,126 +212,64 @@ export function ProductDetailView({
     const firstTwoParts = parts.slice(0, 2).join(" - ");
     return firstTwoParts || "—";
   };
-  const salesMetrics = [{
-    icon: <ShoppingCart className="w-4 h-4" />,
-    label: "Заказы",
-    value: `${product.sales} шт`,
-    subValue: formatPrice(product.revenue),
-    tooltip: "Общее количество заказов и их сумма"
-  }, {
-    icon: <Truck className="w-4 h-4" />,
-    label: "Доставляются",
-    value: `${Math.floor(product.sales * 0.12)} шт`,
-    subValue: formatPrice(Math.floor(product.revenue * 0.12)),
-    tooltip: "Заказы в процессе доставки"
-  }, {
-    icon: <Package className="w-4 h-4" />,
-    label: "Выкупы",
-    value: `${product.sales - product.returns} шт`,
-    subValue: formatPrice(product.revenue - product.lostRevenue),
-    tooltip: "Успешно выкупленные заказы"
-  }, {
-    icon: <RotateCcw className="w-4 h-4" />,
-    label: "Возвраты",
-    value: `${product.returns} шт`,
-    subValue: `-${formatPrice(Math.floor(product.returns * product.price))}`,
-    tooltip: "Возвращённые товары"
-  }, {
-    icon: <Percent className="w-4 h-4" />,
-    label: "Процент выкупа заказов",
-    value: `${((product.sales - product.returns) / product.sales * 100).toFixed(1)}%`,
-    tooltip: "Доля выкупленных заказов от общего числа"
-  }, {
-    icon: <CreditCard className="w-4 h-4" />,
-    label: "Средний чек",
-    value: formatPrice(product.price),
-    tooltip: "Средняя сумма одного заказа"
-  }];
-  const financeMetrics = [{
-    icon: <DollarSign className="w-4 h-4" />,
-    label: "Выручка",
-    value: formatPrice(product.revenue),
-    tooltip: "Общая выручка за период"
-  }, {
-    icon: <TrendingDown className="w-4 h-4" />,
-    label: "Расходы",
-    value: formatPrice(product.uzumCommission * product.sales + product.uzumLogistics * product.sales),
-    tooltip: "Общие расходы за период"
-  }, {
-    icon: <Wallet className="w-4 h-4" />,
-    label: "Прибыль",
-    value: formatPrice(product.revenue - (product.uzumCommission + product.uzumLogistics) * product.sales),
-    tooltip: "Чистая прибыль после всех расходов"
-  }, {
-    icon: <Target className="w-4 h-4" />,
-    label: "Рентабельность продаж",
-    value: `${((product.revenue - (product.uzumCommission + product.uzumLogistics) * product.sales) / product.revenue * 100).toFixed(1)}%`,
-    tooltip: "Отношение прибыли к выручке"
-  }, {
-    icon: <BarChart3 className="w-4 h-4" />,
-    label: "Окупаемость инвестиций",
-    value: `${(product.turnover * 10).toFixed(1)}%`,
-    tooltip: "ROI - возврат инвестиций"
-  }, {
-    icon: <TrendingUp className="w-4 h-4" />,
-    label: "Тренд выручки",
-    value: "-12%",
-    trend: "down" as const,
-    trendValue: "",
-    tooltip: "Изменение выручки относительно прошлого периода"
-  }, {
-    icon: <ArrowDown className="w-4 h-4" />,
-    label: "Упущенная выручка",
-    value: formatPrice(product.lostRevenue),
-    tooltip: "Потенциальная выручка от отменённых заказов"
-  }];
-  const expenseMetrics = [{
-    icon: <Percent className="w-4 h-4" />,
-    label: "Комиссия UZUM",
-    value: formatPrice(product.uzumCommission * product.sales),
-    tooltip: "Комиссия маркетплейса"
-  }, {
-    icon: <Truck className="w-4 h-4" />,
-    label: "Логистика UZUM",
-    value: formatPrice(product.uzumLogistics * product.sales),
-    tooltip: "Расходы на логистику"
-  }, {
-    icon: <Target className="w-4 h-4" />,
-    label: "Реклама UZUM",
-    value: formatPrice(Math.floor(product.revenue * 0.02)),
-    tooltip: "Расходы на рекламу"
-  }, {
-    icon: <AlertTriangle className="w-4 h-4" />,
-    label: "Штрафы UZUM",
-    value: "0 сум",
-    tooltip: "Штрафы от маркетплейса"
-  }, {
-    icon: <Boxes className="w-4 h-4" />,
-    label: "Себест. проданных товаров",
-    value: product.costPrice ? formatPrice(product.costPrice * product.sales) : "—",
-    tooltip: "Себестоимость проданных товаров"
-  }, {
-    icon: <Receipt className="w-4 h-4" />,
-    label: "Налог",
-    value: formatPrice(Math.floor(product.revenue * (taxPercent / 100))),
-    tooltip: `Налог = Выручка × ${taxPercent}%`
-  }];
-  const warehouseMetrics = [{
-    icon: <Warehouse className="w-4 h-4" />,
-    label: "Товаров на складах",
-    value: `${product.stock} шт`,
-    tooltip: "Общее количество товаров на складе"
-  }, {
-    icon: <Tag className="w-4 h-4" />,
-    label: "Себест. товара на складе",
-    value: product.costPrice ? formatPrice(product.costPrice * product.stock) : "—",
-    tooltip: "Общая себестоимость запасов"
-  }, {
-    icon: <ShoppingBag className="w-4 h-4" />,
-    label: "Розничная цена товаров",
-    value: formatPrice(product.price * product.stock),
-    tooltip: "Общая розничная стоимость запасов"
-  }];
+  // Блоки как на вкладке Сводка, но данные по ID карточки (агрегат по всем вариантам)
+  const completedQty = Math.max(product.sales - product.returns, 0);
+  const processingValue = 0; // цена В обработке
+  const completedValue = product.revenue; // цена Выкупы
+  const returnsValueNum = completedQty > 0 ? product.returns * (product.revenue / completedQty) : 0; // сумма возвратов (в формуле суммируется как положительное слагаемое)
+  // Цена Заказов = цена В обработке + цена Выкупы + цена Возвраты (все три суммируются; возвраты в строке отображаются с минусом)
+  const ordersValue = processingValue + completedValue + returnsValueNum;
+  const returnRate = product.sales > 0 ? (product.returns / product.sales) * 100 : 0;
+  const averageCheck = completedQty > 0 ? product.revenue / completedQty : product.sales > 0 ? product.revenue / product.sales : 0;
+  const taxAmount = product.revenue * (taxPercent / 100);
+  const totalExpenses = product.uzumCommission + product.uzumLogistics + product.cogsTotal + taxAmount + 0;
+  const salesProfitability = product.revenue > 0 ? (product.profit / product.revenue) * 100 : 0;
+  const roi = totalExpenses > 0 ? (product.profit / totalExpenses) * 100 : 0;
+  // Себест. тов. = сумма по вариантам (себестоимость за ед. × остаток), иначе product.costPrice × product.stock
+  const stockCost =
+    variants.length > 0
+      ? variants.reduce(
+          (sum, v) => sum + (v.cogs ?? 0) * (v.stock ?? 0),
+          0
+        )
+      : (product.costPrice ?? 0) * product.stock;
+  const stockRetail =
+    variants.length > 0
+      ? variants.reduce(
+          (sum, v) => sum + (v.price ?? 0) * (v.stock ?? 0),
+          0
+        )
+      : product.price * product.stock;
+
+  const salesMetrics = [
+    { icon: <ShoppingCart className="w-4 h-4" />, label: "Заказы", value: formatQuantity(product.sales), subValue: formatCurrency(ordersValue), tooltip: "Цена Заказов = цена В обработке + цена Выкупы + цена Возвраты" },
+    { icon: <Truck className="w-4 h-4" />, label: "В обработке", value: formatQuantity(0), subValue: formatCurrency(processingValue), tooltip: "Заказы в процессе обработки" },
+    { icon: <Package className="w-4 h-4" />, label: "Выкупы", value: formatQuantity(completedQty), subValue: formatCurrency(completedValue), tooltip: "Успешно выкупленные заказы" },
+    { icon: <RotateCcw className="w-4 h-4" />, label: "Возвраты", value: formatQuantity(product.returns), subValue: product.returns > 0 ? `-${formatCurrency(returnsValueNum)}` : formatCurrency(0), tooltip: "Возвращённые товары" },
+    { icon: <Percent className="w-4 h-4" />, label: "Процент возврата заказов", value: formatPercent(returnRate), tooltip: "Доля возвращённых заказов от общего числа" },
+    { icon: <CreditCard className="w-4 h-4" />, label: "Средний чек", value: formatMoneyNoDecimals(averageCheck), tooltip: "Средняя сумма одного заказа" },
+  ];
+  const financeMetrics = [
+    { icon: <DollarSign className="w-4 h-4" />, label: "Выручка", value: formatCurrency(product.revenue), tooltip: "Выручка со статусом «завершен»" },
+    { icon: <TrendingDown className="w-4 h-4" />, label: "Расходы", value: formatCurrency(totalExpenses), tooltip: "Сумма всех расходов из блока Расходы." },
+    { icon: <Wallet className="w-4 h-4" />, label: "Прибыль", value: formatCurrency(product.profit), tooltip: "Выручка минус Расходы" },
+    { icon: <Target className="w-4 h-4" />, label: "Рентабельность продаж", value: formatPercent(salesProfitability), tooltip: "Прибыль / Выручка" },
+    { icon: <BarChart3 className="w-4 h-4" />, label: "Окупаемость инвестиций", value: formatPercent(roi), tooltip: "ROI = Прибыль / Расходы × 100%" },
+    { icon: <TrendingUp className="w-4 h-4" />, label: "Тренд выручки", value: formatTrend(revenueTrend), trend: (revenueTrend >= 0 ? "up" : "down") as const, trendValue: "", tooltip: "Сравнение выручки с аналогичным предыдущим периодом (как на Сводке, по данным товара)" },
+    { icon: <ArrowDown className="w-4 h-4" />, label: "Упущенная выручка", value: formatCurrency(product.lostRevenue), tooltip: "Потенциальная выручка от товаров без остатков" },
+  ];
+  const expenseMetrics = [
+    { icon: <Percent className="w-4 h-4" />, label: "Комиссия UZUM", value: formatCurrency(product.uzumCommission), tooltip: "Комиссия маркетплейса из отчёта о продажах" },
+    { icon: <Truck className="w-4 h-4" />, label: "Логистика UZUM", value: formatCurrency(product.uzumLogistics), tooltip: "Логистический сбор из отчёта о продажах" },
+    { icon: <Boxes className="w-4 h-4" />, label: "Себест. прод. тов.", value: formatCurrency(product.cogsTotal), tooltip: "Себестоимость × количество (со статусом завершен)" },
+    { icon: <Receipt className="w-4 h-4" />, label: "Налоги", value: formatCurrency(taxAmount), tooltip: `Налог с вкладки Сводка: Выручка × ${taxPercent}%` },
+    { icon: <Info className="w-4 h-4" />, label: "Доп. расходы", value: formatCurrency(0), tooltip: "Расходы занесенные во вкладке Доп. расходы." },
+  ];
+  const warehouseMetrics = [
+    { icon: <Warehouse className="w-4 h-4" />, label: "Товаров на складе", value: formatQuantity(product.stock), tooltip: "SUM(В продаже) из left-out-report_old" },
+    { icon: <Tag className="w-4 h-4" />, label: "Себест. тов.", value: formatCurrency(stockCost), tooltip: "SUM(В продаже × Себест. (сумы)) из left-out-report_old" },
+    { icon: <ShoppingBag className="w-4 h-4" />, label: "Рознич. цена", value: formatCurrency(stockRetail), tooltip: "SUM(В продаже × Стоимость продажи (сумы)) из left-out-report_old" },
+  ];
 
   // Chart metrics for the revenue daily chart
   const chartMetrics = {
