@@ -46,6 +46,7 @@ export interface ProductsTableItemType {
   stock: number | null;
   size_group: string | null;
   cogs: number;
+  cogs_total: number;
   commission: number;
   logistics: number;
   abc_orders: string | null;
@@ -114,16 +115,16 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
   const products: ProductsTableItemType[] = productsData?.items ?? [];
 
   // Прибыль и ABC-прибыль в таблице Товары привязываем к введённому проценту налога:
-  // Прибыль = Выручка - Себестоимость - Комиссия - Логистика - (Выручка × Налог%).
+  // Прибыль = сумма revenue_sum по завершённым - сумма (cogs_sum * qty) по завершённым - сумма commission_sum по завершённым - сумма logistics_sum по завершённым - налог с учетом процента на вкладке сводка
   const adjustedProducts: ProductsTableItemType[] = useMemo(() => {
     if (!products.length) return products;
     return products.map((p) => {
       const revenue = p.revenue ?? 0;
-      const cogs = p.cogs ?? 0;
+      const cogs_total = p.cogs_total ?? 0; // Используем общую себестоимость (сумма cogs_sum * qty по завершённым)
       const commission = p.commission ?? 0;
       const logistics = p.logistics ?? 0;
       const tax = revenue * (taxPercent / 100);
-      const profit = revenue - cogs - commission - logistics - tax;
+      const profit = revenue - cogs_total - commission - logistics - tax;
       return {
         ...p,
         profit,
@@ -131,54 +132,9 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
     });
   }, [products, taxPercent]);
 
-  // ABC-прибыль: классификация A/B/C по скорректированной прибыли
-  const adjustedProductsWithAbc: ProductsTableItemType[] = useMemo(() => {
-    if (!adjustedProducts.length) return adjustedProducts;
-
-    // Готовим список (ключ, прибыль) для ABC-классификации
-    const itemsForAbc = adjustedProducts
-      .map((p) => {
-        const key = (p.barcode || p.sku || "").trim();
-        return key ? { key, profit: p.profit } : null;
-      })
-      .filter((x): x is { key: string; profit: number } => x !== null);
-
-    const totalProfit = itemsForAbc.reduce(
-      (sum, item) => sum + Math.max(item.profit, 0),
-      0
-    );
-
-    const abcMap = new Map<string, string>();
-    if (totalProfit > 0) {
-      const sorted = [...itemsForAbc].sort((a, b) => b.profit - a.profit);
-      let cumulative = 0;
-      for (const item of sorted) {
-        const profitPos = Math.max(item.profit, 0);
-        if (profitPos <= 0) {
-          abcMap.set(item.key, "C");
-          continue;
-        }
-        cumulative += profitPos;
-        const share = (cumulative / totalProfit) * 100;
-        if (share <= 80) {
-          abcMap.set(item.key, "A");
-        } else if (share <= 95) {
-          abcMap.set(item.key, "B");
-        } else {
-          abcMap.set(item.key, "C");
-        }
-      }
-    }
-
-    return adjustedProducts.map((p) => {
-      const key = (p.barcode || p.sku || "").trim();
-      const abcProfit = key ? abcMap.get(key) ?? p.abc_profit : p.abc_profit;
-      return {
-        ...p,
-        abc_profit: abcProfit,
-      };
-    });
-  }, [adjustedProducts]);
+  // ABC-прибыль: используем значения из бэкенда, рассчитанные за последние 30 дней
+  // ABC анализ не пересчитывается на фронтенде, чтобы не зависеть от фильтров date_from/date_to
+  const adjustedProductsWithAbc: ProductsTableItemType[] = adjustedProducts;
 
   // Группировка по карточкам (ID товара из left-out-report_old): одна строка на product_id, метрики суммируются
   const displayProducts: ProductsTableItemType[] = useMemo(() => {
@@ -217,6 +173,7 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
         stock: rows.every((r) => r.stock != null) ? sum((r) => r.stock ?? 0) : null,
         size_group: same((r) => r.size_group) ?? null,
         cogs: null, // При группировке по карточкам себестоимость не суммируется, отображается "—"
+        cogs_total: sum((r) => r.cogs_total ?? 0), // Суммируем общую себестоимость для расчёта прибыли
         commission: sum((r) => r.commission),
         logistics: sum((r) => r.logistics),
         barcode: rows.length > 1 ? "—" : (first.barcode ?? null),
@@ -228,51 +185,10 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
       });
     }
 
-    // Пересчёт ABC по сгруппированным метрикам
-    const totalOrders = aggregated.reduce((s, p) => s + Math.max(p.sales_qty, 0), 0);
-    const totalProfit = aggregated.reduce((s, p) => s + Math.max(p.profit, 0), 0);
-    const totalRevenue = aggregated.reduce((s, p) => s + Math.max(p.revenue, 0), 0);
-
-    const byOrders = [...aggregated].sort((a, b) => b.sales_qty - a.sales_qty);
-    let cum = 0;
-    const abcOrders: string[] = [];
-    byOrders.forEach((row, i) => {
-      cum += Math.max(row.sales_qty, 0);
-      const share = totalOrders > 0 ? (cum / totalOrders) * 100 : 0;
-      abcOrders[i] = share <= 80 ? "A" : share <= 95 ? "B" : "C";
-    });
-
-    const byProfit = [...aggregated].sort((a, b) => b.profit - a.profit);
-    cum = 0;
-    const abcProfit: string[] = [];
-    byProfit.forEach((row, i) => {
-      cum += Math.max(row.profit, 0);
-      const share = totalProfit > 0 ? (cum / totalProfit) * 100 : 0;
-      abcProfit[i] = share <= 80 ? "A" : share <= 95 ? "B" : "C";
-    });
-
-    const byRevenue = [...aggregated].sort((a, b) => b.revenue - a.revenue);
-    cum = 0;
-    const abcRevenue: string[] = [];
-    byRevenue.forEach((row, i) => {
-      cum += Math.max(row.revenue, 0);
-      const share = totalRevenue > 0 ? (cum / totalRevenue) * 100 : 0;
-      abcRevenue[i] = share <= 80 ? "A" : share <= 95 ? "B" : "C";
-    });
-
-    const orderIndex = new Map(byOrders.map((r, i) => [groupKey(r), i]));
-    const profitIndex = new Map(byProfit.map((r, i) => [groupKey(r), i]));
-    const revenueIndex = new Map(byRevenue.map((r, i) => [groupKey(r), i]));
-
-    return aggregated.map((p) => {
-      const key = groupKey(p);
-      return {
-        ...p,
-        abc_orders: orderIndex.get(key) != null ? abcOrders[orderIndex.get(key)!] : null,
-        abc_profit: profitIndex.get(key) != null ? abcProfit[profitIndex.get(key)!] : null,
-        abc_revenue: revenueIndex.get(key) != null ? abcRevenue[revenueIndex.get(key)!] : null,
-      };
-    });
+    // ABC анализ не пересчитывается при группировке по карточкам,
+    // так как ABC анализ должен быть фиксированным за последние 30 дней и не зависеть от фильтров и группировки.
+    // ABC анализ из бэкенда рассчитан по штрихкодам, а не по карточкам, поэтому оставляем null для сгруппированных карточек.
+    return aggregated;
   }, [groupByCards, adjustedProductsWithAbc]);
 
   const productId = (p: ProductsTableItemType, idx: number) =>
@@ -437,11 +353,11 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
     if (!allProducts.length) return allProducts;
     return allProducts.map((p) => {
       const revenue = p.revenue ?? 0;
-      const cogs = p.cogs ?? 0;
+      const cogs_total = p.cogs_total ?? 0; // Используем общую себестоимость (сумма cogs_sum * qty по завершённым)
       const commission = p.commission ?? 0;
       const logistics = p.logistics ?? 0;
       const tax = revenue * (taxPercent / 100);
-      const profit = revenue - cogs - commission - logistics - tax;
+      const profit = revenue - cogs_total - commission - logistics - tax;
       return {
         ...p,
         profit,
@@ -449,53 +365,9 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
     });
   }, [allProducts, taxPercent]);
 
-  // ABC-прибыль для всех товаров
-  const allAdjustedProductsWithAbc: ProductsTableItemType[] = useMemo(() => {
-    if (!allAdjustedProducts.length) return allAdjustedProducts;
-
-    const itemsForAbc = allAdjustedProducts
-      .map((p) => {
-        const key = (p.barcode || p.sku || "").trim();
-        return key ? { key, profit: p.profit } : null;
-      })
-      .filter((x): x is { key: string; profit: number } => x !== null);
-
-    const totalProfit = itemsForAbc.reduce(
-      (sum, item) => sum + Math.max(item.profit, 0),
-      0
-    );
-
-    const abcMap = new Map<string, string>();
-    if (totalProfit > 0) {
-      const sorted = [...itemsForAbc].sort((a, b) => b.profit - a.profit);
-      let cumulative = 0;
-      for (const item of sorted) {
-        const profitPos = Math.max(item.profit, 0);
-        if (profitPos <= 0) {
-          abcMap.set(item.key, "C");
-          continue;
-        }
-        cumulative += profitPos;
-        const share = (cumulative / totalProfit) * 100;
-        if (share <= 80) {
-          abcMap.set(item.key, "A");
-        } else if (share <= 95) {
-          abcMap.set(item.key, "B");
-        } else {
-          abcMap.set(item.key, "C");
-        }
-      }
-    }
-
-    return allAdjustedProducts.map((p) => {
-      const key = (p.barcode || p.sku || "").trim();
-      const abcProfit = key ? abcMap.get(key) ?? p.abc_profit : p.abc_profit;
-      return {
-        ...p,
-        abc_profit: abcProfit,
-      };
-    });
-  }, [allAdjustedProducts]);
+  // ABC-прибыль для всех товаров: используем значения из бэкенда, рассчитанные за последние 30 дней
+  // ABC анализ не пересчитывается на фронтенде, чтобы не зависеть от фильтров date_from/date_to
+  const allAdjustedProductsWithAbc: ProductsTableItemType[] = allAdjustedProducts;
 
   // If a product is selected, show the detail view
   if (selectedProduct) {

@@ -775,7 +775,7 @@ async def get_products_table(
     Фильтрация по датам:
     - Основные метрики (продажи, выручка, прибыль и т.д.) фильтруются по date_from/date_to (по колонке date_created из fact_sales).
     - Если date_from и date_to не указаны, берутся все данные.
-    - ABC анализ всегда считается за последние 30 дней.
+    - ABC анализ (ABC заказ, ABC прибыль, ABC выручка) всегда считается за последние 30 дней от последней даты в выгрузке и НЕ зависит от фильтров date_from/date_to.
     """
     try:
         import math
@@ -802,7 +802,8 @@ async def get_products_table(
             date_from_iso = date_from_dt.isoformat()
             date_to_iso = date_to_dt.isoformat()
         
-        # Период для ABC анализа: всегда последние 30 дней по дате создания заказа (date_created) из sells_report.
+        # Период для ABC анализа: всегда последние 30 дней от последней даты в выгрузке (date_created из fact_sales).
+        # ABC анализ не зависит от фильтров date_from/date_to - всегда используется период от последней даты минус 30 дней.
         data_end_date = get_data_end_date(db, user_id)
         abc_date_to_iso = data_end_date.isoformat()
         abc_date_from_iso = (data_end_date - timedelta(days=29)).isoformat()
@@ -997,6 +998,7 @@ async def get_products_table(
         # A — первые ~80% суммарного qty, B — до 95%, C — остальные.
         # Для ABC анализа используем отдельный запрос с ограничением по датам.
         # Заказы (sales_qty) = файл sells_report из колонки Количество (qty) — суммирование без фильтрации по статусам.
+        # ABC анализ всегда считается за последние 30 дней от последней даты в выгрузке (независимо от фильтров date_from/date_to).
         abc_sales_query = text(f"""
             SELECT
                 fs.barcode_norm,
@@ -1008,11 +1010,15 @@ async def get_products_table(
             FROM {qname("fact_sales")} fs
             WHERE fs.user_id = CAST(:user_id AS uuid)
               AND fs.barcode_norm IS NOT NULL
-              AND fs.date_created >= CAST(:date_from AS date)
-              AND fs.date_created < CAST(:date_to AS date) + INTERVAL '1 day'
+              AND fs.date_created >= CAST(:abc_date_from AS date)
+              AND fs.date_created < CAST(:abc_date_to AS date) + INTERVAL '1 day'
             GROUP BY fs.barcode_norm
         """)
-        abc_sales_result = db.execute(abc_sales_query, {"user_id": str(user_id), "date_from": abc_date_from_iso, "date_to": abc_date_to_iso})
+        abc_sales_result = db.execute(abc_sales_query, {
+            "user_id": str(user_id), 
+            "abc_date_from": abc_date_from_iso, 
+            "abc_date_to": abc_date_to_iso
+        })
         abc_sales_by_barcode: dict = {}
         for row in abc_sales_result.fetchall():
             bn = (row[0] or "").strip() if row[0] else ""
@@ -1183,6 +1189,7 @@ async def get_products_table(
                 stock=stock,
                 size_group=size_group or "-",
                 cogs=display_cogs,
+                cogs_total=cogs_total,
                 commission=commission,
                 logistics=logistics,
                 abc_orders=abc_orders_by_barcode.get(barcode_norm),
