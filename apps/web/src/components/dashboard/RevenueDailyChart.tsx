@@ -19,11 +19,15 @@ interface ChartComment {
 interface RevenueDailyChartProps {
   productName?: string;
   showCommentButton?: boolean;
+  /** Скрыть средний чек; на карточке товара показываем Заказы, Возвраты, Выручка, Прибыль по формулам из блоков Продажи и Финансы */
+  hideAvgCheck?: boolean;
   data?: Array<{
     date: string;
     revenue?: number | null;
     orders?: number | null;
     avgCheck?: number | null;
+    returns?: number | null;
+    profit?: number | null;
   }>;
 }
 const defaultData = [{
@@ -95,6 +99,7 @@ const defaultData = [{
 export function RevenueDailyChart({
   productName = "Товар",
   showCommentButton = false,
+  hideAvgCheck = false,
   data = defaultData
 }: RevenueDailyChartProps) {
   const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
@@ -107,18 +112,26 @@ export function RevenueDailyChart({
   // Fixed orders Y-axis configuration: domain [0, 48], ticks with step 6
   const ordersTicks = [0, 6, 12, 18, 24, 30, 36, 42, 48];
 
-  // Prepare data with clamped orders for display (max 48) but keep original for tooltip
+  const hasProductMetrics = hideAvgCheck;
+
+  // Prepare data with clamped orders/returns for display (max 48) but keep original for tooltip
   const data2 = useMemo(() => {
     return data.map((point) => {
       const ordersOriginal = Number(point.orders ?? 0);
       const ordersClamped = Math.min(ordersOriginal, 48);
+      const returnsOriginal = Number(point.returns ?? 0);
+      const returnsClamped = Math.min(returnsOriginal, 48);
       const revenueValue = Number(point.revenue ?? 0);
-      const avgCheckValue = Number(point.avgCheck ?? point.averageCheck ?? 0);
+      const profitValue = Number(point.profit ?? 0);
+      const avgCheckValue = Number(point.avgCheck ?? (point as any).averageCheck ?? 0);
       return {
         ...point,
         ordersOriginal,
         ordersClamped,
+        returnsOriginal,
+        returnsClamped,
         revenueValue,
+        profitValue,
         avgCheckValue,
       };
     });
@@ -324,32 +337,37 @@ export function RevenueDailyChart({
                   return ["—", name];
                 }
                 if (name === "Выручка" || entry?.dataKey === "revenueValue") {
-                  // Get original revenue from payload
                   const payload = entry?.payload;
-                  const revenueValue = payload?.revenueValue ?? value;
-                  return [`${revenueValue.toLocaleString("ru-RU")} сум`, "Выручка"];
+                  const v = payload?.revenueValue ?? value;
+                  return [`${v.toLocaleString("ru-RU")} сум`, "Выручка"];
+                }
+                if (name === "Прибыль" || entry?.dataKey === "profitValue") {
+                  const payload = entry?.payload;
+                  const v = payload?.profitValue ?? value;
+                  return [`${v.toLocaleString("ru-RU")} сум`, "Прибыль"];
                 }
                 if (name === "Заказы" || entry?.dataKey === "ordersClamped") {
-                  // Get original orders from payload
                   const payload = entry?.payload;
                   const ordersOriginal = payload?.ordersOriginal ?? value;
-                  if (ordersOriginal > 48) {
-                    return [`48+ (реально: ${ordersOriginal} шт)`, "Заказы"];
-                  }
+                  if (ordersOriginal > 48) return [`48+ (реально: ${ordersOriginal} шт)`, "Заказы"];
                   return [`${ordersOriginal} шт`, "Заказы"];
                 }
-                if (name === "Средний чек" || entry?.dataKey === "avgCheckValue") {
-                  // Get original avgCheck from payload and round to integer
+                if (name === "Возвраты" || entry?.dataKey === "returnsClamped") {
                   const payload = entry?.payload;
-                  const avgCheckValue = payload?.avgCheckValue ?? value;
-                  const avg = Number(avgCheckValue ?? 0);
-                  const avgRounded = Math.round(avg);
-                  return [`${avgRounded.toLocaleString("ru-RU")} сум`, "Средний чек"];
+                  const returnsOriginal = payload?.returnsOriginal ?? value;
+                  if (returnsOriginal > 48) return [`48+ (реально: ${returnsOriginal} шт)`, "Возвраты"];
+                  return [`${returnsOriginal} шт`, "Возвраты"];
+                }
+                if (name === "Средний чек" || entry?.dataKey === "avgCheckValue") {
+                  const payload = entry?.payload;
+                  const avg = Number(payload?.avgCheckValue ?? value ?? 0);
+                  return [`${Math.round(avg).toLocaleString("ru-RU")} сум`, "Средний чек"];
                 }
                 return [value, name];
               }} 
             />
             <Legend content={renderLegend} />
+            {!hideAvgCheck && (
             <Line 
               yAxisId="revenue" 
               type="monotone" 
@@ -358,11 +376,10 @@ export function RevenueDailyChart({
               stroke="hsl(var(--accent))" 
               strokeWidth={2} 
               dot={false} 
-              activeDot={{
-                r: 4
-              }} 
+              activeDot={{ r: 4 }} 
               hide={hiddenLines.has("avgCheckValue")} 
             />
+            )}
             <Line 
               yAxisId="orders" 
               type="monotone" 
@@ -371,13 +388,24 @@ export function RevenueDailyChart({
               stroke="hsl(var(--chart-4))" 
               strokeWidth={2} 
               dot={false} 
-              activeDot={{
-                r: 4
-              }} 
+              activeDot={{ r: 4 }} 
               hide={hiddenLines.has("ordersClamped")}
             >
               <LabelList content={renderOrdersLabel} />
             </Line>
+            {hasProductMetrics && (
+            <Line 
+              yAxisId="orders" 
+              type="monotone" 
+              dataKey="returnsClamped"
+              name="Возвраты"
+              stroke="hsl(var(--chart-2))" 
+              strokeWidth={2} 
+              dot={false} 
+              activeDot={{ r: 4 }} 
+              hide={hiddenLines.has("returnsClamped")} 
+            />
+            )}
             <Line 
               yAxisId="revenue" 
               type="monotone" 
@@ -386,11 +414,22 @@ export function RevenueDailyChart({
               stroke="hsl(var(--destructive))" 
               strokeWidth={2} 
               dot={false} 
-              activeDot={{
-                r: 4
-              }} 
+              activeDot={{ r: 4 }} 
               hide={hiddenLines.has("revenueValue")} 
             />
+            {hasProductMetrics && (
+            <Line 
+              yAxisId="revenue" 
+              type="monotone" 
+              dataKey="profitValue"
+              name="Прибыль"
+              stroke="hsl(var(--chart-3))" 
+              strokeWidth={2} 
+              dot={false} 
+              activeDot={{ r: 4 }} 
+              hide={hiddenLines.has("profitValue")} 
+            />
+            )}
             {/* Render comment markers */}
             {comments.map(comment => {
             const dataPoint = getDataPointForDate(comment.date);

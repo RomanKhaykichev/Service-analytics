@@ -402,6 +402,7 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
         }
       : selectedProduct;
     
+    const totalRevenue = allAdjustedProductsWithAbc.reduce((s, p) => s + (p.revenue ?? 0), 0);
     return (
       <ProductDetailView
         product={productToDetailShape(aggregatedProduct)}
@@ -410,6 +411,7 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
         taxPercent={taxPercent}
         dateFrom={dateFrom ?? undefined}
         dateTo={dateTo ?? undefined}
+        totalRevenue={totalRevenue}
       />
     );
   }

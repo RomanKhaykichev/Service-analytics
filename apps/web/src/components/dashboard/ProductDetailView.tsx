@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { ShoppingCart, Truck, Package, RotateCcw, Percent, CreditCard, DollarSign, TrendingDown, Wallet, Target, BarChart3, TrendingUp, ArrowDown, Receipt, Boxes, Warehouse, Tag, ShoppingBag, Info } from "lucide-react";
 import { SummaryBlock } from "./SummaryBlock";
 import { RevenueDailyChart } from "./RevenueDailyChart";
+import { useRevenueDaily } from "@/hooks/useRevenueDaily";
 import { formatCurrency, formatQuantity, formatPercent, formatTrend, formatMoneyNoDecimals } from "@/lib/formatters";
 interface ProductVariant {
   char1: string; // Хар-ка 1 = 3 часть из SKU
@@ -64,6 +65,8 @@ interface ProductDetailViewProps {
   /** Период для расчёта тренда выручки (как на Сводке: сравнение с предыдущим периодом той же длины) */
   dateFrom?: string;
   dateTo?: string;
+  /** Общая выручка (все товары) для расчёта «От общей выручки» = выручка по ID / общая выручка */
+  totalRevenue?: number;
 }
 interface ProductCommentResponse {
   product_id: string;
@@ -77,6 +80,7 @@ export function ProductDetailView({
   taxPercent = 1,
   dateFrom,
   dateTo,
+  totalRevenue: totalRevenueProp = 0,
 }: ProductDetailViewProps) {
   const [comment, setComment] = useState("");
   const queryClient = useQueryClient();
@@ -130,6 +134,47 @@ export function ProductDetailView({
 
   const revenueTrend =
     prevRevenue > 0 ? ((product.revenue - prevRevenue) / prevRevenue) * 100 : 0;
+
+  // Продажи по дням — данные по ID карточки; ось X = выбранный диапазон дат (dateFrom–dateTo)
+  const { points: revenueDailyPoints } = useRevenueDaily({
+    dateFrom: dateFrom ?? "",
+    dateTo: dateTo ?? "",
+    productId: product.id || null,
+  });
+  const revenueChartData = (() => {
+    if (!dateFrom || !dateTo) return undefined;
+    const from = new Date(dateFrom);
+    const to = new Date(dateTo);
+    const pointsByDate = new Map<string, { revenue: number; orders: number; avgCheck: number; returns?: number; profit?: number }>();
+    for (const p of revenueDailyPoints) {
+      const key = (p.date || "").slice(0, 10);
+      if (key) pointsByDate.set(key, {
+        revenue: p.revenue ?? 0,
+        orders: p.orders ?? 0,
+        avgCheck: p.averageCheck ?? 0,
+        returns: p.returns,
+        profit: p.profit,
+      });
+    }
+    const result: Array<{ date: string; revenue: number; orders: number; avgCheck: number; returns?: number; profit?: number }> = [];
+    const cursor = new Date(from);
+    while (cursor <= to) {
+      const key = cursor.toISOString().slice(0, 10);
+      const day = String(cursor.getDate()).padStart(2, "0");
+      const month = String(cursor.getMonth() + 1).padStart(2, "0");
+      const point = pointsByDate.get(key);
+      result.push({
+        date: `${day}.${month}`,
+        revenue: point?.revenue ?? 0,
+        orders: point?.orders ?? 0,
+        avgCheck: point?.avgCheck ?? 0,
+        returns: point?.returns,
+        profit: point?.profit,
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return result;
+  })();
 
   // Загружаем комментарий при открытии карточки
   const { data: commentData } = useQuery({
@@ -225,6 +270,7 @@ export function ProductDetailView({
   const totalExpenses = product.uzumCommission + product.uzumLogistics + product.cogsTotal + taxAmount + 0;
   const salesProfitability = product.revenue > 0 ? (product.profit / product.revenue) * 100 : 0;
   const roi = totalExpenses > 0 ? (product.profit / totalExpenses) * 100 : 0;
+  const revenueSharePercent = totalRevenueProp > 0 ? (product.revenue / totalRevenueProp) * 100 : 0;
   // Себест. тов. = сумма по вариантам (себестоимость за ед. × остаток), иначе product.costPrice × product.stock
   const stockCost =
     variants.length > 0
@@ -266,18 +312,11 @@ export function ProductDetailView({
     { icon: <Info className="w-4 h-4" />, label: "Доп. расходы", value: formatCurrency(0), tooltip: "Расходы занесенные во вкладке Доп. расходы." },
   ];
   const warehouseMetrics = [
-    { icon: <Warehouse className="w-4 h-4" />, label: "Товаров на складе", value: formatQuantity(product.stock), tooltip: "SUM(В продаже) из left-out-report_old" },
-    { icon: <Tag className="w-4 h-4" />, label: "Себест. тов.", value: formatCurrency(stockCost), tooltip: "SUM(В продаже × Себест. (сумы)) из left-out-report_old" },
-    { icon: <ShoppingBag className="w-4 h-4" />, label: "Рознич. цена", value: formatCurrency(stockRetail), tooltip: "SUM(В продаже × Стоимость продажи (сумы)) из left-out-report_old" },
+    { icon: <Warehouse className="w-4 h-4" />, label: "Товаров на складе", value: formatQuantity(product.stock), tooltip: "Общее количество на стороне маркетплейса." },
+    { icon: <Tag className="w-4 h-4" />, label: "Себест. тов.", value: formatCurrency(stockCost), tooltip: "Товар на складе × себестоимость." },
+    { icon: <ShoppingBag className="w-4 h-4" />, label: "Рознич. цена", value: formatCurrency(stockRetail), tooltip: "Потенциальная сумма к получению за все остатки." },
   ];
 
-  // Chart metrics for the revenue daily chart
-  const chartMetrics = {
-    averageCheck: formatPrice(product.price),
-    orders: product.sales,
-    revenue: formatPrice(product.revenue),
-    stockItems: product.stock
-  };
   return <div className="space-y-6">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-1 text-sm">
@@ -296,11 +335,21 @@ export function ProductDetailView({
 
       {/* Product Info Block */}
       <div className="bg-card border border-border rounded-lg p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <PackageIcon className="w-5 h-5 text-primary" />
-          <h2 className="text-lg font-semibold text-foreground">ТОВАР</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2">
+            <PackageIcon className="w-5 h-5 text-primary" />
+            <h2 className="text-lg font-semibold text-foreground">ТОВАР</h2>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-400">
+              Маржинальность: {salesProfitability.toFixed(1)}%
+            </span>
+            <span className="inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-400">
+              От общей выручки: {revenueSharePercent.toFixed(1)}%
+            </span>
+          </div>
         </div>
-        
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left Part - Product Details */}
           <div className="space-y-4">
@@ -440,30 +489,15 @@ export function ProductDetailView({
         <SummaryBlock title="СКЛАД" titleColor="text-warning" metrics={warehouseMetrics} />
       </div>
 
-      {/* Revenue Chart with Metrics */}
-      <div className="bg-card border border-border rounded-lg p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-foreground">Выручка по дням</h3>
-          <div className="flex items-center gap-6 text-sm">
-            <div className="flex flex-col items-center">
-              
-              
-            </div>
-            <div className="flex flex-col items-center">
-              
-              
-            </div>
-            <div className="flex flex-col items-center">
-              
-              
-            </div>
-            <div className="flex flex-col items-center">
-              
-              
-            </div>
-          </div>
+      {/* Продажи по дням — данные по выбранному периоду из фильтра дат */}
+      {dateFrom && dateTo ? (
+        <div className="mt-6">
+          <RevenueDailyChart data={revenueChartData} hideAvgCheck key={`${dateFrom}-${dateTo}`} />
         </div>
-        <RevenueDailyChart productName={product.name} showCommentButton={true} />
-      </div>
+      ) : (
+        <div className="mt-6 rounded-xl border border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
+          Выберите период в фильтре дат (справа от фильтра магазинов), чтобы отобразить график «Продажи по дням».
+        </div>
+      )}
     </div>;
 }

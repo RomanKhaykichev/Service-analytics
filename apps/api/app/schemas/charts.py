@@ -9,11 +9,15 @@ class RevenuePoint(BaseModel):
     revenue: float
     orders: float
     averageCheck: float
+    # По дням на карточке товара (product_id): формулы из блоков Продажи и Финансы
+    returns: Optional[float] = None  # SUM(returns_qty)
+    profit: Optional[float] = None   # выручка − cogs − commission − logistics − 1% с выручки
 
 
 class RevenueFilters(BaseModel):
     shop_id: Optional[str] = None
     shop: Optional[str] = None  # Seller-storage shop name (string) when filtering by barcode
+    product_id: Optional[str] = None  # ID карточки товара — фильтр по штрихкодам из left-out
 
 
 class RevenueDailyResponse(BaseModel):

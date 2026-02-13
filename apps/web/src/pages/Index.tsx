@@ -309,19 +309,19 @@ function Dashboard() {
       icon: <Warehouse className="w-4 h-4" />,
       label: "Товаров на складе",
       value: formatQuantity(stockQty),
-      tooltip: "SUM(В продаже) из left-out-report_old"
+      tooltip: "Общее количество на стороне маркетплейса."
     },
     {
       icon: <Tag className="w-4 h-4" />,
       label: "Себест. тов.",
       value: formatCurrency(stockCost),
-      tooltip: "SUM(В продаже × Себест. (сумы)) из left-out-report_old"
+      tooltip: "Товар на складе × себестоимость."
     },
     {
       icon: <ShoppingBag className="w-4 h-4" />,
       label: "Рознич. цена",
       value: formatCurrency(stockRetail),
-      tooltip: "SUM(В продаже × Стоимость продажи (сумы)) из left-out-report_old"
+      tooltip: "Потенциальная сумма к получению за все остатки."
     }
   ] : [];
 

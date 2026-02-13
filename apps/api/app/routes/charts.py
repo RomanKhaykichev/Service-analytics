@@ -59,17 +59,19 @@ async def get_revenue_daily(
     date_to: Optional[str] = Query(default=None, description="End date YYYY-MM-DD"),
     shop_id: Optional[str] = Query(default=None, description="Shop UUID (dim_shop)"),
     shop: Optional[str] = Query(default=None, description="Shop name (string) for seller-storage filtering by barcode"),
+    product_id: Optional[str] = Query(default=None, description="ID карточки товара — данные только по этому товару (штрихкоды из left-out)"),
     db: Session = Depends(get_db)
 ):
     """Get daily revenue chart data from fact_sales with revenue, orders, and averageCheck.
     When shop (string) is set, filter by products present in fact_storage_snapshot for that shop (barcode_norm).
+    When product_id is set, filter by barcode_norm from stg_leftout_old where ID товара = product_id.
     date_from/date_to (both set) override period; filter by fact_sales.date_created.
     """
     date_from_iso, date_to_iso, date_from, date_to_date, period_code, period_range_dict = resolve_date_range(
         date_from, date_to, period, db, user_id
     )
     shop_norm = normalize_shop(shop)
-    logger.info(f"get_revenue_daily: user_id={user_id}, period={period_code}, shop_id={shop_id}, shop={shop}, shop_norm={shop_norm}, period_range={period_range_dict}")
+    logger.info(f"get_revenue_daily: user_id={user_id}, period={period_code}, shop_id={shop_id}, shop={shop}, shop_norm={shop_norm}, product_id={product_id}, period_range={period_range_dict}")
     
     # Validate shop_id if provided (only when shop is not used)
     if shop_id and not shop:
@@ -83,8 +85,12 @@ async def get_revenue_daily(
     
     try:
         # Get status conditions
-        completed_condition = get_status_sql_condition('completed')
-        orders_condition = get_status_sql_condition('orders')  # всё кроме отмен
+        completed_condition_raw = get_status_sql_condition('completed')
+        orders_condition_raw = get_status_sql_condition('orders')  # всё кроме отмен
+        
+        # Заменяем 'status' на 'fact_sales.status' для использования в запросе с алиасом
+        completed_condition = completed_condition_raw.replace('status', 'fact_sales.status')
+        orders_condition = orders_condition_raw.replace('status', 'fact_sales.status')
         
         # Build parameters
         params = {
@@ -96,27 +102,66 @@ async def get_revenue_daily(
         shop_condition_frag, shop_params = shop_filter_condition(shop, shop_id, outer_table_alias="fact_sales")
         params.update(shop_params)
         shop_condition = f"AND {shop_condition_frag}" if shop_condition_frag else ""
+
+        # Product_id filter: только штрихкоды, принадлежащие карточке (ID товара из left-out)
+        product_id_condition = ""
+        if product_id and str(product_id).strip():
+            params["product_id"] = str(product_id).strip()
+            product_id_condition = f"""
+                AND fact_sales.barcode_norm IN (
+                    SELECT NULLIF(trim(regexp_replace(COALESCE(sl.barcode_raw, ''), '\\s+', '', 'g')), '')
+                    FROM {qname("stg_leftout_old")} sl
+                    WHERE sl.user_id = CAST(:user_id AS uuid)
+                      AND sl.upload_batch_id = (
+                          SELECT sl2.upload_batch_id FROM {qname("stg_leftout_old")} sl2
+                          WHERE sl2.user_id = CAST(:user_id AS uuid)
+                          ORDER BY sl2.upload_batch_id DESC NULLS LAST
+                          LIMIT 1
+                      )
+                      AND NULLIF(trim(sl.data->>'ID товара'), '') = :product_id
+                )
+            """
         
         # Build date_from condition
         date_from_condition = ""
         if date_from:
             params["date_from"] = date_from.isoformat()
-            date_from_condition = "AND date_created >= CAST(:date_from AS date)"
+            date_from_condition = "AND fact_sales.date_created >= CAST(:date_from AS date)"
+        
+        # На карточке товара (product_id задан): Заказы, Возвраты, Выручка, Прибыль по формулам из блоков Продажи и Финансы.
+        has_product_filter = bool(product_id and str(product_id).strip())
+        orders_agg_sql = (
+            "COALESCE(SUM(COALESCE(fact_sales.qty, 0)), 0)"
+            if has_product_filter
+            else f"COALESCE(SUM(CASE WHEN ({orders_condition}) THEN fact_sales.qty ELSE 0 END), 0)"
+        )
+        
+        if has_product_filter:
+            # Возвраты = SUM(returns_qty); Прибыль = выручка − cogs − commission − logistics − 1% с выручки
+            extra_select = f"""
+                , COALESCE(SUM(COALESCE(fact_sales.returns_qty, 0)), 0) AS returns_qty,
+                COALESCE(SUM(CASE WHEN ({completed_condition}) THEN fact_sales.cogs_sum * fact_sales.qty ELSE 0 END), 0) AS cogs,
+                COALESCE(SUM(CASE WHEN ({completed_condition}) THEN fact_sales.commission_sum ELSE 0 END), 0) AS commission,
+                COALESCE(SUM(CASE WHEN ({completed_condition}) THEN fact_sales.logistics_sum ELSE 0 END), 0) AS logistics
+            """
+        else:
+            extra_select = ""
         
         # Build query - агрегируем по d = date_created::date
-        # Use unqualified fact_sales in FROM so EXISTS correlation works (table is schema-qualified via qname in FROM)
         query = text(f"""
             SELECT 
-                date_created::date AS day,
-                COALESCE(SUM(CASE WHEN ({completed_condition}) THEN revenue_sum ELSE 0 END), 0) AS revenue,
-                COALESCE(SUM(CASE WHEN ({orders_condition}) THEN qty ELSE 0 END), 0) AS orders,
-                COALESCE(SUM(CASE WHEN ({completed_condition}) THEN qty ELSE 0 END), 0) AS completed_qty
+                fact_sales.date_created::date AS day,
+                COALESCE(SUM(CASE WHEN ({completed_condition}) THEN fact_sales.revenue_sum ELSE 0 END), 0) AS revenue,
+                {orders_agg_sql} AS orders,
+                COALESCE(SUM(CASE WHEN ({completed_condition}) THEN fact_sales.qty ELSE 0 END), 0) AS completed_qty
+                {extra_select}
             FROM {qname("fact_sales")} fact_sales
             WHERE fact_sales.user_id = CAST(:user_id AS uuid)
                 {shop_condition}
+                {product_id_condition}
                 {date_from_condition}
                 AND fact_sales.date_created < CAST(:date_to AS date) + INTERVAL '1 day'
-            GROUP BY date_created::date
+            GROUP BY fact_sales.date_created::date
             ORDER BY day ASC
         """)
         
@@ -124,7 +169,7 @@ async def get_revenue_daily(
         rows = result.fetchall()
         logger.info(f"get_revenue_daily: found {len(rows)} points, period_range={period_range_dict}")
         
-        # Extract date, revenue, orders, averageCheck from rows
+        # Extract date, revenue, orders, averageCheck; при product_id — returns, profit
         points = []
         for row in rows:
             try:
@@ -133,13 +178,22 @@ async def get_revenue_daily(
                 revenue = float(row[1]) if row[1] is not None else 0.0
                 orders = float(row[2]) if row[2] is not None else 0.0
                 completed_qty = float(row[3]) if row[3] is not None else 0.0
-                # averageCheck = revenue / completed_qty (как в KPI summary)
                 average_check = (revenue / completed_qty) if completed_qty > 0 else 0.0
+                returns_val = None
+                profit_val = None
+                if has_product_filter and len(row) >= 8:
+                    returns_val = float(row[4]) if row[4] is not None else 0.0
+                    cogs = float(row[5]) if row[5] is not None else 0.0
+                    commission = float(row[6]) if row[6] is not None else 0.0
+                    logistics = float(row[7]) if row[7] is not None else 0.0
+                    profit_val = revenue - cogs - commission - logistics - (revenue * 0.01)
                 points.append(RevenuePoint(
                     date=date_str,
                     revenue=revenue,
                     orders=orders,
-                    averageCheck=average_check
+                    averageCheck=average_check,
+                    returns=returns_val,
+                    profit=profit_val
                 ))
             except (IndexError, ValueError, TypeError) as e:
                 logger.warning(f"Error parsing row in revenue-daily: {e}, row: {row}")
@@ -153,7 +207,7 @@ async def get_revenue_daily(
                 date_from=date_from_iso or "",
                 date_to=date_to_iso
             ),
-            filters=RevenueFilters(shop_id=shop_id, shop=shop)
+            filters=RevenueFilters(shop_id=shop_id, shop=shop, product_id=product_id)
         )
     except HTTPException:
         raise
