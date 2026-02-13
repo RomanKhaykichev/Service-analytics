@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Search,
   Download,
@@ -99,6 +99,12 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
 
+  useEffect(() => {
+    if (selectedProduct) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [selectedProduct]);
+
   const { data: productsData, isLoading: productsLoading } = useQuery({
     queryKey: ["products-table", shop, dateFrom, dateTo],
     queryFn: async () => {
@@ -158,6 +164,13 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
       };
       const sum = (get: (r: ProductsTableItemType) => number) =>
         rows.reduce((s, r) => s + (get(r) ?? 0), 0);
+      // ABC: сравниваем только по штрихкодам, у которых анализ проведён (не null и не пусто); если у всех таких один класс — показываем его
+      const sameAbc = (get: (r: ProductsTableItemType) => string | null) => {
+        const values = rows.map(get).filter((v): v is string => v != null && String(v).trim() !== "");
+        if (values.length === 0) return null;
+        const firstVal = values[0];
+        return values.every((v) => v === firstVal) ? firstVal : null;
+      };
 
       aggregated.push({
         ...first,
@@ -179,15 +192,13 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
         barcode: rows.length > 1 ? "—" : (first.barcode ?? null),
         storage_cost_per_day: same((r) => r.storage_cost_per_day) ?? null,
         shop: same((r) => r.shop) ?? null,
-        abc_orders: null,
-        abc_profit: null,
-        abc_revenue: null,
+        abc_orders: sameAbc((r) => r.abc_orders),
+        abc_profit: sameAbc((r) => r.abc_profit),
+        abc_revenue: sameAbc((r) => r.abc_revenue),
       });
     }
 
-    // ABC анализ не пересчитывается при группировке по карточкам,
-    // так как ABC анализ должен быть фиксированным за последние 30 дней и не зависеть от фильтров и группировки.
-    // ABC анализ из бэкенда рассчитан по штрихкодам, а не по карточкам, поэтому оставляем null для сгруппированных карточек.
+    // ABC при группировке: показываем значение только если у всех штрихкодов с проведённым анализом один класс; штрихкоды без анализа не учитываются.
     return aggregated;
   }, [groupByCards, adjustedProductsWithAbc]);
 
@@ -622,13 +633,13 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
                     {formatValue(product.logistics)}
                   </TableCell>
                   <TableCell className="text-center">
-                    {getAbcBadge(product.abc_orders)}
+                    {getAbcBadge(product.abc_orders) ?? <span className="text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell className="text-center">
-                    {getAbcBadge(product.abc_profit)}
+                    {getAbcBadge(product.abc_profit) ?? <span className="text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell className="text-center">
-                    {getAbcBadge(product.abc_revenue)}
+                    {getAbcBadge(product.abc_revenue) ?? <span className="text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell className="text-center text-muted-foreground text-sm font-mono">
                     {product.barcode ?? "—"}

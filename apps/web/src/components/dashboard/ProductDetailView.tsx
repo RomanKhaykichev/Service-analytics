@@ -321,10 +321,6 @@ export function ProductDetailView({
       {/* Breadcrumb */}
       <nav className="flex items-center gap-1 text-sm">
         <button onClick={onBack} className="text-primary hover:text-primary/80 transition-colors font-medium">
-          Мои продажи на UZUM
-        </button>
-        <ChevronRight className="w-4 h-4 text-muted-foreground" />
-        <button onClick={onBack} className="text-muted-foreground hover:text-foreground transition-colors">
           Товары
         </button>
         <ChevronRight className="w-4 h-4 text-muted-foreground" />
