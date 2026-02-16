@@ -103,16 +103,17 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
       const penalties = p.penalties ?? 0;
       const cogs = p.cogs ?? 0;
 
-      const adjustedTaxes = revenue * (taxPercent / 100);
-      const adjustedProfit =
+      const adjustedTaxes = Math.round(revenue * (taxPercent / 100));
+      const adjustedProfit = Math.round(
         revenue -
-        commission -
-        logistics -
-        storage -
-        ads -
-        penalties -
-        cogs -
-        adjustedTaxes;
+          commission -
+          logistics -
+          storage -
+          ads -
+          penalties -
+          cogs -
+          adjustedTaxes
+      );
 
       return {
         date: formatChartDateLabel(p.date, timeGrouping),
@@ -169,16 +170,17 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
       const penalties = p.penalties ?? 0;
       const cogs = p.cogs ?? 0;
 
-      const adjustedTaxes = revenue * (taxPercent / 100);
-      const adjustedProfit =
+      const adjustedTaxes = Math.round(revenue * (taxPercent / 100));
+      const adjustedProfit = Math.round(
         revenue -
-        commission -
-        logistics -
-        storage -
-        ads -
-        penalties -
-        cogs -
-        adjustedTaxes;
+          commission -
+          logistics -
+          storage -
+          ads -
+          penalties -
+          cogs -
+          adjustedTaxes
+      );
 
       return {
         date: p.date,
@@ -310,6 +312,8 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
                   />
                   <Legend
                     wrapperStyle={{ paddingTop: "2px", paddingBottom: 0, marginBottom: 0 }}
+                    iconType="circle"
+                    iconSize={6}
                     formatter={(value) => CHART_SERIES.find((s) => s.key === value)?.label ?? value}
                   />
                   {CHART_SERIES.filter((s) => visibleSeries[s.key]).map((s) => (

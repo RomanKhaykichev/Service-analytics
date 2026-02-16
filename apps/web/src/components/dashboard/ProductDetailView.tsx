@@ -135,6 +135,25 @@ export function ProductDetailView({
   const revenueTrend =
     prevRevenue > 0 ? ((product.revenue - prevRevenue) / prevRevenue) * 100 : 0;
 
+  // Маржинальность и От общей выручки — по всей выгрузке (без привязки к фильтру по датам)
+  const { data: allTimeMetrics } = useQuery({
+    queryKey: ["product-card-all-time-metrics", product.id],
+    queryFn: async () => {
+      const params = buildQueryParams({ product_id: product.id });
+      return apiGet<{ revenue: number; profit: number; total_revenue: number }>(
+        "/api/charts/product-card-all-time-metrics",
+        params
+      );
+    },
+    enabled: !!product.id,
+    refetchOnWindowFocus: false,
+  });
+  const allTimeRevenue = allTimeMetrics?.revenue ?? 0;
+  const allTimeProfit = allTimeMetrics?.profit ?? 0;
+  const allTimeTotalRevenue = allTimeMetrics?.total_revenue ?? 0;
+  const marginPercentAllTime = allTimeRevenue > 0 ? (allTimeProfit / allTimeRevenue) * 100 : 0;
+  const revenueSharePercentAllTime = allTimeTotalRevenue > 0 ? (allTimeRevenue / allTimeTotalRevenue) * 100 : 0;
+
   // Продажи по дням — данные по ID карточки; ось X = выбранный диапазон дат (dateFrom–dateTo)
   const { points: revenueDailyPoints } = useRevenueDaily({
     dateFrom: dateFrom ?? "",
@@ -338,10 +357,10 @@ export function ProductDetailView({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-400">
-              Маржинальность: {salesProfitability.toFixed(1)}%
+              Маржинальность: {marginPercentAllTime.toFixed(1)}%
             </span>
             <span className="inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-400">
-              От общей выручки: {revenueSharePercent.toFixed(1)}%
+              От общей выручки: {revenueSharePercentAllTime.toFixed(1)}%
             </span>
           </div>
         </div>

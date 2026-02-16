@@ -14,6 +14,8 @@ from app.utils.statuses import get_status_sql_condition
 
 # SQL condition for "status = Завершен" (completed)
 _STATUS_COMPLETED_SQL = " (status ILIKE '%заверш%' OR status ILIKE '%достав%' OR status ILIKE '%получ%' OR status ILIKE '%выдан%') "
+# SQL condition for revenue: "status = Завершен" OR "status = В обработке"
+_STATUS_REVENUE_SQL = " ((status ILIKE '%заверш%' OR status ILIKE '%достав%' OR status ILIKE '%получ%' OR status ILIKE '%выдан%') OR status ILIKE '%обработ%') "
 from app.utils.metrics import get_status_conditions, get_sales_metrics_sql, get_profit_sql, get_avg_check_sql
 from app.utils.barcode import barcode_norm_sql
 from app.utils.shop_filter import normalize_shop, shop_filter_condition, storage_barcode_filter_sql
@@ -43,6 +45,7 @@ from app.schemas import (
     ShipmentRecommendationItem,
     ProductsTableResponse,
     ProductsTableItem,
+    ProductCardAllTimeMetrics,
 )
 from app.schemas.charts import ProductCommentResponse, ProductCommentRequest
 
@@ -86,10 +89,14 @@ async def get_revenue_daily(
     try:
         # Get status conditions
         completed_condition_raw = get_status_sql_condition('completed')
+        processing_condition_raw = get_status_sql_condition('processing')
         orders_condition_raw = get_status_sql_condition('orders')  # всё кроме отмен
         
         # Заменяем 'status' на 'fact_sales.status' для использования в запросе с алиасом
         completed_condition = completed_condition_raw.replace('status', 'fact_sales.status')
+        processing_condition = processing_condition_raw.replace('status', 'fact_sales.status')
+        # Условие для выручки: «Завершен» ИЛИ «В обработке»
+        revenue_condition = f"({completed_condition} OR {processing_condition})"
         orders_condition = orders_condition_raw.replace('status', 'fact_sales.status')
         
         # Build parameters
@@ -140,18 +147,23 @@ async def get_revenue_daily(
             # Возвраты = SUM(returns_qty); Прибыль = выручка − cogs − commission − logistics − 1% с выручки
             extra_select = f"""
                 , COALESCE(SUM(COALESCE(fact_sales.returns_qty, 0)), 0) AS returns_qty,
-                COALESCE(SUM(CASE WHEN ({completed_condition}) THEN fact_sales.cogs_sum * fact_sales.qty ELSE 0 END), 0) AS cogs,
+                COALESCE(SUM(CASE WHEN ({revenue_condition}) THEN fact_sales.cogs_sum * fact_sales.qty ELSE 0 END), 0) AS cogs,
                 COALESCE(SUM(CASE WHEN ({completed_condition}) THEN fact_sales.commission_sum ELSE 0 END), 0) AS commission,
                 COALESCE(SUM(CASE WHEN ({completed_condition}) THEN fact_sales.logistics_sum ELSE 0 END), 0) AS logistics
             """
         else:
-            extra_select = ""
+            # Для сводки: добавляем расходы для расчета прибыли (cogs, commission, logistics)
+            extra_select = f"""
+                , COALESCE(SUM(CASE WHEN ({revenue_condition}) THEN fact_sales.cogs_sum * fact_sales.qty ELSE 0 END), 0) AS cogs,
+                COALESCE(SUM(CASE WHEN ({completed_condition}) THEN fact_sales.commission_sum ELSE 0 END), 0) AS commission,
+                COALESCE(SUM(CASE WHEN ({completed_condition}) THEN fact_sales.logistics_sum ELSE 0 END), 0) AS logistics
+            """
         
         # Build query - агрегируем по d = date_created::date
         query = text(f"""
             SELECT 
                 fact_sales.date_created::date AS day,
-                COALESCE(SUM(CASE WHEN ({completed_condition}) THEN fact_sales.revenue_sum ELSE 0 END), 0) AS revenue,
+                COALESCE(SUM(CASE WHEN ({revenue_condition}) THEN fact_sales.revenue_sum ELSE 0 END), 0) AS revenue,
                 {orders_agg_sql} AS orders,
                 COALESCE(SUM(CASE WHEN ({completed_condition}) THEN fact_sales.qty ELSE 0 END), 0) AS completed_qty
                 {extra_select}
@@ -169,7 +181,7 @@ async def get_revenue_daily(
         rows = result.fetchall()
         logger.info(f"get_revenue_daily: found {len(rows)} points, period_range={period_range_dict}")
         
-        # Extract date, revenue, orders, averageCheck; при product_id — returns, profit
+        # Extract date, revenue, orders, averageCheck; при product_id — returns, profit; для сводки — profit
         points = []
         for row in rows:
             try:
@@ -182,10 +194,17 @@ async def get_revenue_daily(
                 returns_val = None
                 profit_val = None
                 if has_product_filter and len(row) >= 8:
+                    # Для карточки товара: returns, profit
                     returns_val = float(row[4]) if row[4] is not None else 0.0
                     cogs = float(row[5]) if row[5] is not None else 0.0
                     commission = float(row[6]) if row[6] is not None else 0.0
                     logistics = float(row[7]) if row[7] is not None else 0.0
+                    profit_val = revenue - cogs - commission - logistics - (revenue * 0.01)
+                elif not has_product_filter and len(row) >= 6:
+                    # Для сводки: profit (без returns)
+                    cogs = float(row[4]) if row[4] is not None else 0.0
+                    commission = float(row[5]) if row[5] is not None else 0.0
+                    logistics = float(row[6]) if row[6] is not None else 0.0
                     profit_val = revenue - cogs - commission - logistics - (revenue * 0.01)
                 points.append(RevenuePoint(
                     date=date_str,
@@ -945,8 +964,8 @@ async def get_products_table(
                 fs.barcode_norm,
                 SUM(COALESCE(fs.qty, 0))::int AS sales_qty,
                 SUM(COALESCE(fs.returns_qty, 0))::int AS returns_qty,
-                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.revenue_sum, 0) ELSE 0 END)::double precision AS revenue,
-                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.cogs_sum * fs.qty, 0) ELSE 0 END)::double precision AS cogs,
+                SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.revenue_sum, 0) ELSE 0 END)::double precision AS revenue,
+                SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.cogs_sum * fs.qty, 0) ELSE 0 END)::double precision AS cogs,
                 SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.commission_sum, 0) ELSE 0 END)::double precision AS commission,
                 SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.logistics_sum, 0) ELSE 0 END)::double precision AS logistics
             FROM {qname("fact_sales")} fs
@@ -984,7 +1003,7 @@ async def get_products_table(
                 }
 
         # Цена и Себестоимость для таблицы: по последней дате продаж для каждого штрихкода в выбранном периоде.
-        # Цена = revenue_sum / qty, Себестоимость = cogs_sum / qty на последнюю дату (только завершённые заказы).
+        # Цена = revenue_sum / qty, Себестоимость = cogs_sum / qty на последнюю дату (статусы «Завершен» и «В обработке»).
         last_price_cogs_by_barcode: dict[str, dict[str, float]] = {}
         
         # Формируем условие фильтрации по датам для запроса цены и себестоимости
@@ -1006,7 +1025,7 @@ async def get_products_table(
                 FROM {qname("fact_sales")} fs
                 WHERE fs.user_id = CAST(:user_id AS uuid)
                   AND fs.barcode_norm IS NOT NULL
-                  AND {_STATUS_COMPLETED_SQL}
+                  AND {_STATUS_REVENUE_SQL}
                   {last_unit_date_filter_sql}
                 GROUP BY fs.barcode_norm
             ),
@@ -1021,7 +1040,7 @@ async def get_products_table(
                   ON ld.barcode_norm = fs.barcode_norm
                  AND fs.date_created::date = ld.last_date
                 WHERE fs.user_id = CAST(:user_id AS uuid)
-                  AND {_STATUS_COMPLETED_SQL}
+                  AND {_STATUS_REVENUE_SQL}
             )
             SELECT
                 barcode_norm,
@@ -1057,8 +1076,8 @@ async def get_products_table(
             SELECT
                 fs.barcode_norm,
                 SUM(COALESCE(fs.qty, 0))::int AS sales_qty,
-                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.revenue_sum, 0) ELSE 0 END)::double precision AS revenue,
-                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.cogs_sum * fs.qty, 0) ELSE 0 END)::double precision AS cogs,
+                SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.revenue_sum, 0) ELSE 0 END)::double precision AS revenue,
+                SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.cogs_sum * fs.qty, 0) ELSE 0 END)::double precision AS cogs,
                 SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.commission_sum, 0) ELSE 0 END)::double precision AS commission,
                 SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.logistics_sum, 0) ELSE 0 END)::double precision AS logistics
             FROM {qname("fact_sales")} fs
@@ -1259,6 +1278,72 @@ async def get_products_table(
     except Exception as e:
         logger.error(f"Error in get_products_table: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get("/charts/product-card-all-time-metrics", response_model=ProductCardAllTimeMetrics)
+async def get_product_card_all_time_metrics(
+    user_id: UUID = Depends(require_user),
+    product_id: str = Query(..., description="ID карточки товара"),
+    db: Session = Depends(get_db),
+):
+    """
+    Метрики по всей выгрузке (без фильтра по датам) для карточки товара:
+    выручка и прибыль по товару, общая выручка по всем товарам.
+    Используются только для бейджей «Маржинальность» и «От общей выручки».
+    """
+    if not product_id or not str(product_id).strip():
+        raise HTTPException(status_code=400, detail="product_id is required")
+    product_id = str(product_id).strip()
+    try:
+        params = {"user_id": str(user_id), "product_id": product_id}
+        product_id_condition = f"""
+            AND fact_sales.barcode_norm IN (
+                SELECT NULLIF(trim(regexp_replace(COALESCE(sl.barcode_raw, ''), '\\s+', '', 'g')), '')
+                FROM {qname("stg_leftout_old")} sl
+                WHERE sl.user_id = CAST(:user_id AS uuid)
+                  AND sl.upload_batch_id = (
+                      SELECT sl2.upload_batch_id FROM {qname("stg_leftout_old")} sl2
+                      WHERE sl2.user_id = CAST(:user_id AS uuid)
+                      ORDER BY sl2.upload_batch_id DESC NULLS LAST
+                      LIMIT 1
+                  )
+                  AND NULLIF(trim(sl.data->>'ID товара'), '') = :product_id
+            )
+        """
+        # По товару: выручка, cogs (статусы «Завершен» и «В обработке»), commission, logistics (только завершённые), без фильтра по датам
+        product_query = text(f"""
+            SELECT
+                COALESCE(SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fact_sales.revenue_sum, 0) ELSE 0 END), 0) AS revenue,
+                COALESCE(SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fact_sales.cogs_sum * fact_sales.qty, 0) ELSE 0 END), 0) AS cogs,
+                COALESCE(SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fact_sales.commission_sum, 0) ELSE 0 END), 0) AS commission,
+                COALESCE(SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fact_sales.logistics_sum, 0) ELSE 0 END), 0) AS logistics
+            FROM {qname("fact_sales")} fact_sales
+            WHERE fact_sales.user_id = CAST(:user_id AS uuid)
+              AND fact_sales.barcode_norm IS NOT NULL
+              {product_id_condition}
+        """)
+        product_row = db.execute(product_query, params).fetchone()
+        revenue = float(product_row[0] or 0) if product_row else 0.0
+        cogs = float(product_row[1] or 0) if product_row else 0.0
+        commission = float(product_row[2] or 0) if product_row else 0.0
+        logistics = float(product_row[3] or 0) if product_row else 0.0
+        profit = revenue - cogs - commission - logistics - (revenue * 0.01)
+
+        # Общая выручка по всей выгрузке (без дат, без фильтра по товару)
+        total_query = text(f"""
+            SELECT COALESCE(SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.revenue_sum, 0) ELSE 0 END), 0) AS total_revenue
+            FROM {qname("fact_sales")} fs
+            WHERE fs.user_id = CAST(:user_id AS uuid)
+        """)
+        total_row = db.execute(total_query, {"user_id": str(user_id)}).fetchone()
+        total_revenue = float(total_row[0] or 0) if total_row else 0.0
+
+        return ProductCardAllTimeMetrics(revenue=revenue, profit=profit, total_revenue=total_revenue)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_product_card_all_time_metrics: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/products/{product_id}/comment", response_model=ProductCommentResponse)

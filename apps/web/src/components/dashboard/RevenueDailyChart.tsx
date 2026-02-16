@@ -122,7 +122,7 @@ export function RevenueDailyChart({
       const returnsOriginal = Number(point.returns ?? 0);
       const returnsClamped = Math.min(returnsOriginal, 48);
       const revenueValue = Number(point.revenue ?? 0);
-      const profitValue = Number(point.profit ?? 0);
+      const profitValue = Math.round(Number(point.profit ?? 0));
       const avgCheckValue = Number(point.avgCheck ?? (point as any).averageCheck ?? 0);
       return {
         ...point,
@@ -344,7 +344,7 @@ export function RevenueDailyChart({
                 if (name === "Прибыль" || entry?.dataKey === "profitValue") {
                   const payload = entry?.payload;
                   const v = payload?.profitValue ?? value;
-                  return [`${v.toLocaleString("ru-RU")} сум`, "Прибыль"];
+                  return [`${Math.round(v).toLocaleString("ru-RU")} сум`, "Прибыль"];
                 }
                 if (name === "Заказы" || entry?.dataKey === "ordersClamped") {
                   const payload = entry?.payload;
@@ -358,28 +358,10 @@ export function RevenueDailyChart({
                   if (returnsOriginal > 48) return [`48+ (реально: ${returnsOriginal} шт)`, "Возвраты"];
                   return [`${returnsOriginal} шт`, "Возвраты"];
                 }
-                if (name === "Средний чек" || entry?.dataKey === "avgCheckValue") {
-                  const payload = entry?.payload;
-                  const avg = Number(payload?.avgCheckValue ?? value ?? 0);
-                  return [`${Math.round(avg).toLocaleString("ru-RU")} сум`, "Средний чек"];
-                }
                 return [value, name];
               }} 
             />
             <Legend content={renderLegend} />
-            {!hideAvgCheck && (
-            <Line 
-              yAxisId="revenue" 
-              type="monotone" 
-              dataKey="avgCheckValue"
-              name="Средний чек"
-              stroke="hsl(var(--accent))" 
-              strokeWidth={2} 
-              dot={false} 
-              activeDot={{ r: 4 }} 
-              hide={hiddenLines.has("avgCheckValue")} 
-            />
-            )}
             <Line 
               yAxisId="orders" 
               type="monotone" 
@@ -417,7 +399,8 @@ export function RevenueDailyChart({
               activeDot={{ r: 4 }} 
               hide={hiddenLines.has("revenueValue")} 
             />
-            {hasProductMetrics && (
+            {/* Прибыль показывается всегда, когда есть данные (для сводки и карточки товара) */}
+            {data.some(p => p.profit !== undefined && p.profit !== null) && (
             <Line 
               yAxisId="revenue" 
               type="monotone" 

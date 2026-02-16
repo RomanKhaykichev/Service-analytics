@@ -108,7 +108,7 @@ function Dashboard() {
       date: `${day}.${month}`,
       revenue: point.revenue ?? 0,
       orders: point.orders ?? 0,
-      avgCheck: point.averageCheck ?? 0,
+      profit: point.profit ?? 0,
     };
   }) : undefined;
 
@@ -508,7 +508,7 @@ function Dashboard() {
           </div>
 
           {/* Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
             <RevenueDailyChart data={revenueChartData} />
             <UzumServicesChart points={uzumServicesPoints} loading={uzumServicesLoading} error={uzumServicesError} />
           </div>

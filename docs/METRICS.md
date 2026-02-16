@@ -44,10 +44,10 @@
 ## Блок "Финансы"
 
 ### 1. Выручка (revenue)
-- **Формула**: `SUM(revenue_sum)` где `lower(trim(status)) IN ('завершен', 'завершён')`
+- **Формула**: `SUM(revenue_sum)` где `lower(trim(status)) IN ('завершен', 'завершён') OR lower(trim(status)) = 'в обработке'`
 - **Источник**: `sells_report` → `fact_sales`
 - **Фильтры**: `period`, `shop_id`, `user_id`
-- **Примечание**: Совпадает с `completedValue`
+- **Примечание**: Выручка включает статусы «Завершен» и «В обработке»
 
 ### 2. Расходы (totalExpenses)
 - **Формула**: сумма всех расходов для расчёта чистой прибыли (см. ниже)
@@ -63,7 +63,7 @@
 ### 4. Рентабельность продаж (salesProfitability)
 - **Формула**: `(revenue / product_cost_completed) * 100`
 - **Источник**: `fact_sales` (только завершённые заказы)
-- **Примечание**: `product_cost_completed` = `SUM(cogs_sum)` где `lower(trim(status)) IN ('завершен', 'завершён')`
+- **Примечание**: `product_cost_completed` = `SUM(cogs_sum * qty)` где `lower(trim(status)) IN ('завершен', 'завершён') OR lower(trim(status)) = 'в обработке'`
 - **Важно**: В `fact_sales` поле `cogs_sum` уже является итоговой себестоимостью по строке (не единичной)
 - **Безопасное деление**: Если `product_cost_completed = 0`, возвращается `0`
 
@@ -125,10 +125,10 @@
 - **ТЗ**: `sum(Сумма (сумы))` где `Услуга ILIKE '%Штраф%'`
 
 ### 6. Себестоимость проданных товаров (productCost)
-- **productCostTotal** и **productCostCompleted**: `SUM(cogs_sum * qty)` где `lower(trim(status)) IN ('завершен', 'завершён')`
+- **productCostTotal** и **productCostCompleted**: `SUM(cogs_sum * qty)` где `lower(trim(status)) IN ('завершен', 'завершён') OR lower(trim(status)) = 'в обработке'`
 - **Источник**: `sells_report` → `fact_sales`
 - **Фильтры**: `period`, `shop_id`, `user_id`
-- **ТЗ**: файл sells_report (из колонки Себестоимость (сумы) * из колонки Количество) со статусом из колонки Статус «Завершен»
+- **ТЗ**: файл sells_report (из колонки Себестоимость (сумы) * из колонки Количество) со статусом из колонки Статус «Завершен» и «В обработке»
 
 ## Блок "Склад"
 
@@ -147,8 +147,8 @@
 - **Расчет unit_cogs**:
   - В `fact_sales` поле `cogs_sum` хранится как **итоговая себестоимость по строке (total)**, а не единичная себестоимость
   - Это подтверждается кодом импорта (`import_batch.py`, `apps/api/app/routes/imports.py`): `cogs_sum` берется напрямую из `cogs_raw` без умножения на `qty`
-  - Поэтому: `unit_cogs = SUM(cogs_sum) / NULLIF(SUM(qty), 0)` по завершённым заказам
-  - Статус учитывается как `lower(trim(status)) IN ('завершен', 'завершён')`
+  - Поэтому: `unit_cogs = SUM(cogs_sum) / NULLIF(SUM(qty), 0)` по заказам со статусами «Завершен» и «В обработке»
+  - Статус учитывается как `lower(trim(status)) IN ('завершен', 'завершён') OR lower(trim(status)) = 'в обработке'`
 - **Сопоставление товаров**:
   - Связь `fact_leftout_snapshot` и `fact_sales` по SKU и/или barcode
   - Приоритет: сначала по SKU, затем по barcode (если не найдено по SKU)

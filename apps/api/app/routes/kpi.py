@@ -286,9 +286,9 @@ def kpi_summary(
                 COALESCE(SUM(CASE WHEN {completed_status_condition} THEN commission_sum ELSE 0 END), 0) as uzum_commission,
                 -- Логистика UZUM = файл sells_report из колонки Логистический сбор со статусом «Завершен»
                 COALESCE(SUM(CASE WHEN {completed_status_condition} THEN logistics_sum ELSE 0 END), 0) as uzum_logistics,
-                -- Себест. прод. тов. = файл sells_report (из колонки Себестоимость (сумы) * из колонки Количество) со статусом из колонки Статус «Завершен»
-                COALESCE(SUM(CASE WHEN {completed_status_condition} THEN cogs_sum * qty ELSE 0 END), 0) as product_cost_total,
-                COALESCE(SUM(CASE WHEN {completed_status_condition} THEN cogs_sum * qty ELSE 0 END), 0) as product_cost_completed
+                -- Себест. прод. тов. = файл sells_report (из колонки Себестоимость (сумы) * из колонки Количество) со статусом из колонки Статус «Завершен» и «В обработке»
+                COALESCE(SUM(CASE WHEN ({completed_status_condition} OR {processing_status_condition}) THEN cogs_sum * qty ELSE 0 END), 0) as product_cost_total,
+                COALESCE(SUM(CASE WHEN ({completed_status_condition} OR {processing_status_condition}) THEN cogs_sum * qty ELSE 0 END), 0) as product_cost_completed
             FROM {qname("fact_sales")}
             WHERE {sales_where_clause}
         """)
@@ -323,7 +323,8 @@ def kpi_summary(
         average_check = (completed_value / completed_count) if completed_count > 0 else 0.0
         # Round average_check to integer (no kopecks) - as per TZ
         average_check = round(average_check) if average_check > 0 else 0.0
-        revenue = completed_value
+        # Выручка = completed_value + processing_value (статусы «Завершен» и «В обработке»)
+        revenue = completed_value + processing_value
         
         # Debug log for returns metrics
         logger.info(
@@ -490,8 +491,9 @@ def kpi_summary(
             
             prev_where_clause = " AND ".join(prev_where)
             
+            # Выручка для предыдущего периода: статусы «Завершен» и «В обработке»
             prev_revenue_query = text(f"""
-                SELECT COALESCE(SUM(CASE WHEN ({completed_condition}) THEN revenue_sum ELSE 0 END), 0)
+                SELECT COALESCE(SUM(CASE WHEN ({completed_condition} OR {processing_status_condition}) THEN revenue_sum ELSE 0 END), 0)
                 FROM {qname("fact_sales")}
                 WHERE {prev_where_clause}
             """)
@@ -517,11 +519,12 @@ def kpi_summary(
         data_end_for_cumulative = get_data_end_date(db, user_id)
         year_start = data_end_for_cumulative.replace(month=1, day=1)
         year_end = year_start.replace(year=year_start.year + 1)
+        # Накопительная выручка: статусы «Завершен» и «В обработке»
         cumulative_query = text(f"""
             SELECT COALESCE(SUM(revenue_sum), 0)
             FROM {qname("fact_sales")}
             WHERE user_id = CAST(:user_id AS uuid)
-              AND ({completed_condition})
+              AND ({completed_condition} OR {processing_status_condition})
               AND date_created >= CAST(:year_start AS date)
               AND date_created < CAST(:year_end AS date)
         """)
@@ -907,17 +910,19 @@ def get_cumulative_revenue_global(
 ):
     """
     Накопительная выручка = выручка за год, дата которого последняя в выгрузке.
-    Берётся последняя дата из fact_sales (date_created), год по ней; SUM(revenue_sum) за этот год (status завершен).
+    Берётся последняя дата из fact_sales (date_created), год по ней; SUM(revenue_sum) за этот год (статусы «Завершен» и «В обработке»).
     """
     data_end_date = get_data_end_date(db, user_id)
     year_start = data_end_date.replace(month=1, day=1)
     year_end = year_start.replace(year=year_start.year + 1)
     completed_condition = get_status_sql_condition("completed")
+    processing_condition = get_status_sql_condition("processing")
+    # Выручка: статусы «Завершен» и «В обработке»
     query = text(f"""
         SELECT COALESCE(SUM(revenue_sum), 0)
         FROM {qname("fact_sales")}
         WHERE user_id = CAST(:user_id AS uuid)
-          AND ({completed_condition})
+          AND ({completed_condition} OR {processing_condition})
           AND date_created >= CAST(:year_start AS date)
           AND date_created < CAST(:year_end AS date)
     """)

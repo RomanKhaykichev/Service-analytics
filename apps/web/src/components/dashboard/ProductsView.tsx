@@ -96,8 +96,8 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
   const [searchQuery, setSearchQuery] = useState("");
   const [groupByCards, setGroupByCards] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductsTableItemType | null>(null);
-  const [sortField, setSortField] = useState<SortField | null>(null);
-  const [sortDirection, setSortDirection] = useState<SortDirection>(null);
+  const [sortField, setSortField] = useState<SortField | null>("sales_qty");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
   useEffect(() => {
     if (selectedProduct) {
@@ -265,14 +265,35 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
     );
   });
 
+  const ABC_FIELDS: SortField[] = ["abc_orders", "abc_profit", "abc_revenue"];
+  const abcRank = (v: string | null | undefined): number => {
+    const s = (v ?? "").toString().trim().toUpperCase();
+    if (s === "A") return 1;
+    if (s === "B") return 2;
+    if (s === "C") return 3;
+    return 0; // пусто или неизвестное — в конец
+  };
+
   const sortedProducts = [...filteredProducts].sort((a, b) => {
     if (!sortField || !sortDirection) return 0;
 
     let aValue: unknown = a[sortField as keyof ProductsTableItemType];
     let bValue: unknown = b[sortField as keyof ProductsTableItemType];
 
-    if (aValue === null || aValue === undefined) aValue = sortDirection === "asc" ? Infinity : -Infinity;
-    if (bValue === null || bValue === undefined) bValue = sortDirection === "asc" ? Infinity : -Infinity;
+    const pushEmptyToEnd = sortDirection === "asc" ? Infinity : -Infinity;
+
+    if (ABC_FIELDS.includes(sortField)) {
+      const aR = abcRank(aValue as string);
+      const bR = abcRank(bValue as string);
+      if (aR === 0 && bR === 0) return 0;
+      if (aR === 0) return 1;
+      if (bR === 0) return -1;
+      if (sortDirection === "asc") return aR - bR;
+      return bR - aR;
+    }
+
+    if (aValue === null || aValue === undefined) aValue = pushEmptyToEnd;
+    if (bValue === null || bValue === undefined) bValue = pushEmptyToEnd;
 
     if (typeof aValue === "string" && typeof bValue === "string") {
       return sortDirection === "asc"
@@ -428,15 +449,15 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
   }
 
   const SortableHeader = ({ field, children, className }: { field: SortField; children: React.ReactNode; className?: string }) => (
-    <TableHead 
-      className={cn("cursor-pointer hover:bg-muted/50 select-none", className)}
-      onClick={() => handleSort(field)}
-    >
-      <div className="flex items-center gap-1">
-        {children}
-        {getSortIcon(field)}
-      </div>
-    </TableHead>
+      <TableHead 
+        className={cn("cursor-pointer select-none text-muted-foreground px-2 py-1 bg-violet-50/80 dark:bg-violet-950/30 hover:bg-violet-100/80 dark:hover:bg-violet-900/40", className)}
+        onClick={() => handleSort(field)}
+      >
+        <div className="flex items-center justify-center gap-1">
+          {children}
+          {getSortIcon(field)}
+        </div>
+      </TableHead>
   );
 
   return (
@@ -494,8 +515,8 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
         <div className="overflow-x-auto overflow-y-visible">
           <Table className="min-w-[1600px]">
             <TableHeader>
-              <TableRow className="hover:bg-transparent bg-muted/50">
-                <SortableHeader field="product_name" className="min-w-[400px] max-w-[400px] sticky left-0 bg-muted z-10 border-r-0">
+              <TableRow className="bg-violet-50/80 dark:bg-violet-950/30 border-border">
+                <SortableHeader field="product_name" className="min-w-[400px] max-w-[400px] sticky left-0 bg-violet-50 dark:bg-violet-950 z-10 border-r border-border text-center">
                   Наименование
                 </SortableHeader>
                 <SortableHeader field="price" className="text-center min-w-[100px]">
@@ -567,7 +588,7 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
                   className="cursor-pointer hover:bg-muted/50"
                   onClick={() => setSelectedProduct(product)}
                 >
-                  <TableCell className="sticky left-0 bg-card z-10 min-w-[400px] max-w-[400px] border-r-0">
+                  <TableCell className="sticky left-0 bg-gray-50 dark:bg-gray-800/60 z-10 min-w-[400px] max-w-[400px] border-r border-border pl-4">
                     <div className="flex items-center gap-3 min-w-0">
                       <span className="w-3 h-3 rounded-full border-2 border-purple-500 bg-transparent shrink-0" aria-hidden />
                       <div className="min-w-0 break-words whitespace-normal text-sm">

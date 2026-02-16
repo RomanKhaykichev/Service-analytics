@@ -11,12 +11,13 @@ def get_status_conditions() -> Dict[str, str]:
     Returns the same conditions for both KPI and Charts to ensure consistency.
     
     Returns:
-        dict with keys: 'processing', 'completed', 'cancelled'
+        dict with keys: 'processing', 'completed', 'cancelled', 'revenue'
     """
     return {
         'processing': "lower(trim(status)) = 'в обработке'",
         'completed': "lower(trim(status)) IN ('завершен', 'завершён')",
         'cancelled': "lower(trim(status)) IN ('отменен', 'отменён')",
+        'revenue': "(lower(trim(status)) IN ('завершен', 'завершён') OR lower(trim(status)) = 'в обработке')",
     }
 
 
@@ -37,13 +38,13 @@ def get_sales_metrics_sql(
         - orders_qty: Заказы = В обработке + Выкупы + Возвраты (same as KPI ordersCount)
         - buyouts_qty: SUM(qty) WHERE status='завершен' (same as KPI completedCount)
         - returns_qty: SUM(returns_qty) — колонка Возвраты из sells_report (same as KPI returnsCount)
-        - revenue_sum: SUM(revenue_sum) WHERE status='завершен' (same as KPI revenue)
+        - revenue_sum: SUM(revenue_sum) WHERE status='завершен' OR status='в обработке' (same as KPI revenue)
         - commission_sum: SUM(commission_sum) WHERE status='завершен' (same as KPI uzumCommission)
           Комиссия UZUM = файл sells_report из колонки Комиссия маркетплейса (сумы) со статусом из колонки Статус «Завершен»
         - logistics_sum: SUM(logistics_sum) WHERE status='завершен' (same as KPI uzumLogistics)
           Логистика UZUM = файл sells_report из колонки Логистический сбор со статусом «Завершен»
-        - cogs_sum: SUM(cogs_sum * qty) WHERE status='завершен' (same as KPI productCostTotal/productCostCompleted)
-          Себест. прод. тов. = файл sells_report (из колонки Себестоимость (сумы) * из колонки Количество) со статусом из колонки Статус «Завершен»
+        - cogs_sum: SUM(cogs_sum * qty) WHERE status='завершен' OR status='в обработке' (same as KPI productCostTotal/productCostCompleted)
+          Себест. прод. тов. = файл sells_report (из колонки Себестоимость (сумы) * из колонки Количество) со статусом из колонки Статус «Завершен» и «В обработке»
     """
     conditions = get_status_conditions()
     alias = f"{table_alias}." if table_alias else ""
@@ -52,10 +53,10 @@ def get_sales_metrics_sql(
         'orders_qty': f"( COALESCE(SUM(CASE WHEN ({conditions['processing']}) THEN {alias}qty ELSE 0 END), 0) + COALESCE(SUM(CASE WHEN ({conditions['completed']}) THEN {alias}qty ELSE 0 END), 0) + COALESCE(SUM(COALESCE({alias}returns_qty, 0)), 0) )",
         'buyouts_qty': f"COALESCE(SUM(CASE WHEN ({conditions['completed']}) THEN {alias}qty ELSE 0 END), 0)",
         'returns_qty': f"COALESCE(SUM(COALESCE({alias}returns_qty, 0)), 0)",
-        'revenue_sum': f"COALESCE(SUM(CASE WHEN ({conditions['completed']}) THEN {alias}revenue_sum ELSE 0 END), 0)",
+        'revenue_sum': f"COALESCE(SUM(CASE WHEN ({conditions['revenue']}) THEN {alias}revenue_sum ELSE 0 END), 0)",
         'commission_sum': f"COALESCE(SUM(CASE WHEN ({conditions['completed']}) THEN {alias}commission_sum ELSE 0 END), 0)",
         'logistics_sum': f"COALESCE(SUM(CASE WHEN ({conditions['completed']}) THEN {alias}logistics_sum ELSE 0 END), 0)",
-        'cogs_sum': f"COALESCE(SUM(CASE WHEN ({conditions['completed']}) THEN {alias}cogs_sum * {alias}qty ELSE 0 END), 0)",
+        'cogs_sum': f"COALESCE(SUM(CASE WHEN ({conditions['revenue']}) THEN {alias}cogs_sum * {alias}qty ELSE 0 END), 0)",
     }
 
 

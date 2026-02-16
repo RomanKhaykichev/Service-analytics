@@ -131,10 +131,10 @@ export function SummaryFilters({
         <Select value={store} onValueChange={onStoreChange}>
           <SelectTrigger className="w-[180px] bg-accent text-accent-foreground border-0 hover:bg-accent/90">
             <Store className="w-4 h-4 mr-2" />
-            <SelectValue placeholder="Все продажи" />
+            <SelectValue placeholder="Все магазины" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Все продажи</SelectItem>
+            <SelectItem value="all">Все магазины</SelectItem>
             {shops.map((shop) => (
               <SelectItem key={shop.shop_id} value={shop.shop_id}>
                 {shop.shop_name ?? shop.shop_id}

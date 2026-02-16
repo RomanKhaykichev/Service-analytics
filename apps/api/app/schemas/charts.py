@@ -201,6 +201,13 @@ class ProductsTableResponse(BaseModel):
     items: list[ProductsTableItem]
 
 
+class ProductCardAllTimeMetrics(BaseModel):
+    """Метрики карточки товара по всей выгрузке (без фильтра по датам): для Маржинальность и От общей выручки."""
+    revenue: float = 0.0
+    profit: float = 0.0
+    total_revenue: float = 0.0
+
+
 # Product comment schemas
 class ProductCommentResponse(BaseModel):
     product_id: str
