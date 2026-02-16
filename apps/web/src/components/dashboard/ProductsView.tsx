@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import {
   Search,
-  Download,
   Layers,
   ArrowUpDown,
   ArrowUp,
@@ -27,8 +26,6 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { ProductDetailView } from "./ProductDetailView";
-import { toast } from "sonner";
-import * as XLSX from "xlsx";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, buildQueryParams } from "@/lib/api";
 
@@ -308,36 +305,6 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
     }
   });
 
-  const handleExportXLSX = () => {
-    const selectedData = sortedProducts.map((p) => ({
-        "Наименование": p.product_name ?? "",
-        "Артикул": p.sku ?? "",
-        "Цена": p.price ?? "",
-        "Заказы": p.sales_qty,
-        "Возвраты": p.returns_qty,
-        "Выручка": p.revenue,
-        "Прибыль": p.profit,
-        "Оборачиваемость": p.turnover ?? "",
-        "Остаток": p.stock ?? "",
-        "Габаритная группа": p.size_group ?? "-",
-        "Себестоимость": p.cogs || "",
-        "Комиссия": p.commission,
-        "Логистика": p.logistics,
-        "ABC заказы": p.abc_orders ?? "",
-        "ABC прибыль": p.abc_profit ?? "",
-        "ABC выручка": p.abc_revenue ?? "",
-        "Штрихкод": p.barcode ?? "",
-        "Хранение сут/сум": p.storage_cost_per_day ?? "",
-        "Магазин": p.shop ?? "",
-      }));
-
-    const worksheet = XLSX.utils.json_to_sheet(selectedData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Товары");
-    XLSX.writeFile(workbook, `товары_${new Date().toISOString().split("T")[0]}.xlsx`);
-    toast.success(`Выгружено ${selectedData.length} товаров`);
-  };
-
   // Map API item to Product shape for ProductDetailView (как на Сводке: те же формулы по ID карточки)
   const productToDetailShape = (p: ProductsTableItemType) => ({
     id: p.product_id || p.barcode || p.sku || "",
@@ -477,16 +444,6 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
 
           <div className="flex-1" />
 
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={handleExportXLSX}
-            disabled={sortedProducts.length === 0}
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Выгрузить в XLSX
-          </Button>
-
           <Button
             variant={groupByCards ? "default" : "outline"}
             size="sm"
@@ -612,7 +569,7 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
                     {formatValue(product.revenue)}
                   </TableCell>
                   <TableCell className="text-center font-medium">
-                    {formatValue(product.profit)}
+                    {formatValue(Math.round(product.profit))}
                   </TableCell>
                   <TableCell className="text-center">
                     {product.turnover != null && product.turnover > 0 ? `${product.turnover}` : "—"}

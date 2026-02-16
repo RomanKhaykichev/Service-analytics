@@ -12,7 +12,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Package, Warehouse } from "lucide-react";
+import { Package, Warehouse, Download } from "lucide-react";
+import * as XLSX from "xlsx";
+import { toast } from "sonner";
 import { useShipmentRecommendations } from "@/hooks/useShipmentRecommendations";
 import type { ShipmentRecommendationItem } from "@/hooks/useShipmentRecommendations";
 import { apiGet } from "@/lib/api";
@@ -89,6 +91,30 @@ export function ShipmentView({
     }
   };
 
+  const handleExportXLSX = () => {
+    const rows = items.map((row) => {
+      const key = rowKey(row);
+      const recommendedDisplay =
+        key && calculatedRecommendedByKey[key] !== undefined
+          ? String(calculatedRecommendedByKey[key])
+          : row.recommended_qty;
+      return {
+        "Товар": row.product_name ?? "",
+        "Артикул": row.sku ?? "",
+        "Штрихкод": row.barcode ?? "",
+        "На складе": row.stock ?? "",
+        "Продаж в день": row.sales_per_day ?? "",
+        "Рекомендуемое кол-во": recommendedDisplay,
+        "Запланировано к отгрузке": row.to_ship ?? "",
+      };
+    });
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Рекомендации по отгрузке");
+    XLSX.writeFile(workbook, `отгрузка_${new Date().toISOString().split("T")[0]}.xlsx`);
+    toast.success(`Выгружено ${rows.length} строк`);
+  };
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -157,8 +183,17 @@ export function ShipmentView({
 
       {/* Рекомендации по отгрузке: left-out-report_old, Оборачиваемость < 60 */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle>Рекомендации по отгрузке</CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportXLSX}
+            disabled={items.length === 0}
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Выгрузить в XLSX
+          </Button>
         </CardHeader>
         <CardContent>
           <div className="rounded-md border">
