@@ -254,10 +254,10 @@ def kpi_summary(
         # Control SQL for verification (not executed, for reference):
         # Заказы = В обработке + Выкупы + Возвраты (количество и сумма)
         # В обработке: SUM(qty), SUM(revenue_sum) WHERE status='в обработке'
-        # Выкупы: SUM(qty), SUM(revenue_sum) WHERE status='завершен'
+        # Выкупы: SUM(qty), SUM(revenue_sum) WHERE status IN ('завершен', 'завершён')
         # Возвраты = файл sells_report из колонки Возвраты
         # Возвраты (сумма после /) = (колонка Возвраты * колонка Цена (сумы)) = SUM(returns_qty * price_sum)
-        # Avg check: SELECT SUM(revenue_sum)/NULLIF(SUM(qty),0) FROM fact_sales WHERE ... AND lower(trim(status))='завершен'
+        # Avg check: SELECT SUM(revenue_sum)/NULLIF(SUM(qty),0) FROM fact_sales WHERE ... AND (status IN ('завершен','завершён') OR status = 'в обработке')
         
         sales_query = text(f"""
             SELECT 
@@ -319,12 +319,13 @@ def kpi_summary(
         # Derived metrics from sales
         # Return rate: (Возвраты qty / Заказы qty) * 100, Заказы = В обработке + Выкупы + Возвраты
         return_rate = (returns_count / orders_count * 100) if orders_count > 0 else 0.0
-        # Average check: SUM(revenue_sum)/SUM(qty) WHERE status='завершен'
-        average_check = (completed_value / completed_count) if completed_count > 0 else 0.0
+        # Average check: Выручка / Количество WHERE статус IN ('завершен','завершён') OR статус = 'в обработке'
+        revenue = completed_value + processing_value
+        qty_for_avg_check = completed_count + processing_count
+        average_check = (revenue / qty_for_avg_check) if qty_for_avg_check > 0 else 0.0
         # Round average_check to integer (no kopecks) - as per TZ
         average_check = round(average_check) if average_check > 0 else 0.0
         # Выручка = completed_value + processing_value (статусы «Завершен» и «В обработке»)
-        revenue = completed_value + processing_value
         
         # Debug log for returns metrics
         logger.info(
