@@ -148,15 +148,15 @@ async def get_revenue_daily(
             extra_select = f"""
                 , COALESCE(SUM(COALESCE(fact_sales.returns_qty, 0)), 0) AS returns_qty,
                 COALESCE(SUM(CASE WHEN ({revenue_condition}) THEN fact_sales.cogs_sum * fact_sales.qty ELSE 0 END), 0) AS cogs,
-                COALESCE(SUM(CASE WHEN ({completed_condition}) THEN fact_sales.commission_sum ELSE 0 END), 0) AS commission,
-                COALESCE(SUM(CASE WHEN ({completed_condition}) THEN fact_sales.logistics_sum ELSE 0 END), 0) AS logistics
+                COALESCE(SUM(CASE WHEN ({revenue_condition}) THEN fact_sales.commission_sum ELSE 0 END), 0) AS commission,
+                COALESCE(SUM(CASE WHEN ({revenue_condition}) THEN fact_sales.logistics_sum ELSE 0 END), 0) AS logistics
             """
         else:
             # Для сводки: добавляем расходы для расчета прибыли (cogs, commission, logistics)
             extra_select = f"""
                 , COALESCE(SUM(CASE WHEN ({revenue_condition}) THEN fact_sales.cogs_sum * fact_sales.qty ELSE 0 END), 0) AS cogs,
-                COALESCE(SUM(CASE WHEN ({completed_condition}) THEN fact_sales.commission_sum ELSE 0 END), 0) AS commission,
-                COALESCE(SUM(CASE WHEN ({completed_condition}) THEN fact_sales.logistics_sum ELSE 0 END), 0) AS logistics
+                COALESCE(SUM(CASE WHEN ({revenue_condition}) THEN fact_sales.commission_sum ELSE 0 END), 0) AS commission,
+                COALESCE(SUM(CASE WHEN ({revenue_condition}) THEN fact_sales.logistics_sum ELSE 0 END), 0) AS logistics
             """
         
         # Build query - агрегируем по d = date_created::date
@@ -614,7 +614,10 @@ async def get_uzum_services_daily(
         rows_expenses = result_expenses.fetchall()
         
         # 2) Sales: commission, logistics (filterable by shop via barcode_norm)
+        # Комиссия и логистика: статусы «Завершен» и «В обработке»
         completed_condition = get_status_sql_condition('completed')
+        processing_condition = get_status_sql_condition('processing')
+        revenue_condition_sales = f"({completed_condition} OR {processing_condition})"
         params_sales = {
             "user_id": str(user_id),
             "date_from": date_from_iso,
@@ -631,7 +634,7 @@ async def get_uzum_services_daily(
                 COALESCE(SUM(logistics_sum), 0) AS logistics
             FROM {qname("fact_sales")} fact_sales
             WHERE fact_sales.user_id = CAST(:user_id AS uuid)
-                AND ({completed_condition})
+                AND ({revenue_condition_sales})
                 {shop_condition_sales}
                 AND fact_sales.date_created >= CAST(:date_from AS date)
                 AND fact_sales.date_created < CAST(:date_to AS date) + INTERVAL '1 day'
@@ -945,7 +948,7 @@ async def get_products_table(
 
         # Sells_report: агрегаты по barcode_norm с фильтрацией по датам (date_from/date_to).
         # Заказы (sales_qty) = файл sells_report из колонки Количество (qty) — суммирование без фильтрации по статусам.
-        # Себестоимость/Выручка/Комиссия/Логистика — только со статусом «Завершен».
+        # Себестоимость/Выручка/Комиссия/Логистика — со статусом «Завершен» и «В обработке».
         # Если date_from и date_to не указаны, берутся все данные.
         
         # Формируем условие фильтрации по датам
@@ -966,8 +969,8 @@ async def get_products_table(
                 SUM(COALESCE(fs.returns_qty, 0))::int AS returns_qty,
                 SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.revenue_sum, 0) ELSE 0 END)::double precision AS revenue,
                 SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.cogs_sum * fs.qty, 0) ELSE 0 END)::double precision AS cogs,
-                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.commission_sum, 0) ELSE 0 END)::double precision AS commission,
-                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.logistics_sum, 0) ELSE 0 END)::double precision AS logistics
+                SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.commission_sum, 0) ELSE 0 END)::double precision AS commission,
+                SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.logistics_sum, 0) ELSE 0 END)::double precision AS logistics
             FROM {qname("fact_sales")} fs
             WHERE fs.user_id = CAST(:user_id AS uuid)
               AND fs.barcode_norm IS NOT NULL
@@ -1078,8 +1081,8 @@ async def get_products_table(
                 SUM(COALESCE(fs.qty, 0))::int AS sales_qty,
                 SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.revenue_sum, 0) ELSE 0 END)::double precision AS revenue,
                 SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.cogs_sum * fs.qty, 0) ELSE 0 END)::double precision AS cogs,
-                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.commission_sum, 0) ELSE 0 END)::double precision AS commission,
-                SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fs.logistics_sum, 0) ELSE 0 END)::double precision AS logistics
+                SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.commission_sum, 0) ELSE 0 END)::double precision AS commission,
+                SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.logistics_sum, 0) ELSE 0 END)::double precision AS logistics
             FROM {qname("fact_sales")} fs
             WHERE fs.user_id = CAST(:user_id AS uuid)
               AND fs.barcode_norm IS NOT NULL
@@ -1310,13 +1313,13 @@ async def get_product_card_all_time_metrics(
                   AND NULLIF(trim(sl.data->>'ID товара'), '') = :product_id
             )
         """
-        # По товару: выручка, cogs (статусы «Завершен» и «В обработке»), commission, logistics (только завершённые), без фильтра по датам
+        # По товару: выручка, cogs, commission, logistics (статусы «Завершен» и «В обработке»), без фильтра по датам
         product_query = text(f"""
             SELECT
                 COALESCE(SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fact_sales.revenue_sum, 0) ELSE 0 END), 0) AS revenue,
                 COALESCE(SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fact_sales.cogs_sum * fact_sales.qty, 0) ELSE 0 END), 0) AS cogs,
-                COALESCE(SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fact_sales.commission_sum, 0) ELSE 0 END), 0) AS commission,
-                COALESCE(SUM(CASE WHEN {_STATUS_COMPLETED_SQL} THEN COALESCE(fact_sales.logistics_sum, 0) ELSE 0 END), 0) AS logistics
+                COALESCE(SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fact_sales.commission_sum, 0) ELSE 0 END), 0) AS commission,
+                COALESCE(SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fact_sales.logistics_sum, 0) ELSE 0 END), 0) AS logistics
             FROM {qname("fact_sales")} fact_sales
             WHERE fact_sales.user_id = CAST(:user_id AS uuid)
               AND fact_sales.barcode_norm IS NOT NULL

@@ -281,11 +281,11 @@ def kpi_summary(
                 COALESCE(SUM(COALESCE(returns_qty, 0) * COALESCE(price_sum, 0)), 0) as returns_value,
                 -- returns_value_completed: для совместимости API (равно returns_value)
                 COALESCE(SUM(COALESCE(returns_qty, 0) * COALESCE(price_sum, 0)), 0) as returns_value_completed,
-                -- uzumCommission/uzumLogistics: только completed
-                -- Комиссия UZUM = файл sells_report из колонки Комиссия маркетплейса (сумы) со статусом из колонки Статус «Завершен»
-                COALESCE(SUM(CASE WHEN {completed_status_condition} THEN commission_sum ELSE 0 END), 0) as uzum_commission,
-                -- Логистика UZUM = файл sells_report из колонки Логистический сбор со статусом «Завершен»
-                COALESCE(SUM(CASE WHEN {completed_status_condition} THEN logistics_sum ELSE 0 END), 0) as uzum_logistics,
+                -- uzumCommission/uzumLogistics: «Завершен» и «В обработке»
+                -- Комиссия UZUM = файл sells_report из колонки Комиссия маркетплейса (сумы) со статусом из колонки Статус «Завершен» и «В обработке»
+                COALESCE(SUM(CASE WHEN ({completed_status_condition} OR {processing_status_condition}) THEN commission_sum ELSE 0 END), 0) as uzum_commission,
+                -- Логистика UZUM = файл sells_report из колонки Логистический сбор со статусом «Завершен» и «В обработке»
+                COALESCE(SUM(CASE WHEN ({completed_status_condition} OR {processing_status_condition}) THEN logistics_sum ELSE 0 END), 0) as uzum_logistics,
                 -- Себест. прод. тов. = файл sells_report (из колонки Себестоимость (сумы) * из колонки Количество) со статусом из колонки Статус «Завершен» и «В обработке»
                 COALESCE(SUM(CASE WHEN ({completed_status_condition} OR {processing_status_condition}) THEN cogs_sum * qty ELSE 0 END), 0) as product_cost_total,
                 COALESCE(SUM(CASE WHEN ({completed_status_condition} OR {processing_status_condition}) THEN cogs_sum * qty ELSE 0 END), 0) as product_cost_completed

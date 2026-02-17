@@ -95,16 +95,16 @@
 ## Блок "Расходы"
 
 ### 1. Комиссия UZUM (uzumCommission)
-- **Формула**: `SUM(commission_sum)` где `lower(trim(status)) IN ('завершен', 'завершён')`
+- **Формула**: `SUM(commission_sum)` где `lower(trim(status)) IN ('завершен', 'завершён') OR lower(trim(status)) = 'в обработке'`
 - **Источник**: `sells_report` → `fact_sales`
 - **Фильтры**: `period`, `shop_id`, `user_id`
-- **ТЗ**: файл sells_report из колонки Комиссия маркетплейса (сумы) со статусом из колонки Статус «Завершен»
+- **ТЗ**: файл sells_report из колонки Комиссия маркетплейса (сумы) со статусом из колонки Статус «Завершен» и «В обработке»
 
 ### 2. Логистика UZUM (uzumLogistics)
-- **Формула**: `SUM(logistics_sum)` где `lower(trim(status)) IN ('завершен', 'завершён')`
+- **Формула**: `SUM(logistics_sum)` где `lower(trim(status)) IN ('завершен', 'завершён') OR lower(trim(status)) = 'в обработке'`
 - **Источник**: `sells_report` → `fact_sales`
 - **Фильтры**: `period`, `shop_id`, `user_id`
-- **ТЗ**: файл sells_report из колонки Логистический сбор со статусом из колонки Статус «Завершен»
+- **ТЗ**: файл sells_report из колонки Логистический сбор со статусом из колонки Статус «Завершен» и «В обработке»
 
 ### 3. Реклама UZUM (uzumAds)
 - **Формула**: `SUM(cost_sum)` где `source ILIKE '%маркетинг%' OR source ILIKE '%marketing%'` И `operation_type ILIKE '%оплат%' OR operation_type ILIKE '%payment%'`
