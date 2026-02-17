@@ -150,6 +150,7 @@ def kpi_summary(
     date_to: Optional[str] = Query(default=None, description="End date YYYY-MM-DD"),
     shop_id: Optional[str] = None,
     shop: Optional[str] = Query(default=None, description="Shop name (string) for seller-storage filtering"),
+    name: Optional[str] = Query(default=None, description="Product name (Наименование) — filter extra expenses by product name"),
     user_id: UUID = Depends(require_user),
     db: Session = Depends(get_db)
 ):
@@ -416,6 +417,29 @@ def kpi_summary(
             manual_shop_filter = "AND upper(regexp_replace(trim(COALESCE(ds.shop_name, '')), '\\s+', ' ', 'g')) = :shop_norm"
         elif shop_id:
             manual_shop_filter = "AND e.shop_id = CAST(:shop_id AS uuid)"
+        
+        # Filter by product name (Наименование) if provided
+        manual_name_filter = ""
+        if name and name.strip():
+            manual_expenses_params["name"] = name.strip()
+            # Check if name column exists before filtering (use same check as in extra_expenses.py)
+            try:
+                has_name_column_check = db.execute(
+                    text(f"""
+                        SELECT column_name
+                        FROM information_schema.columns
+                        WHERE table_schema = :schema 
+                          AND table_name = 'manual_expenses'
+                          AND column_name = 'name'
+                    """),
+                    {"schema": settings.DB_SCHEMA}
+                ).fetchone()
+                if has_name_column_check:
+                    manual_name_filter = "AND e.name = :name"
+            except Exception as e:
+                logger.warning(f"Error checking name column in kpi_summary: {e}")
+                # If check fails, don't filter by name
+        
         manual_expenses_query = text(f"""
             SELECT COALESCE(SUM(e.amount_sum), 0) AS extra_sum
             FROM {qname("manual_expenses")} e
@@ -425,11 +449,12 @@ def kpi_summary(
               {date_from_filter}
               AND e.expense_date <= CAST(:date_to AS date)
               {manual_shop_filter}
+              {manual_name_filter}
         """)
         manual_expenses_result = db.execute(manual_expenses_query, manual_expenses_params)
         manual_expenses_row = manual_expenses_result.fetchone()
         extra_expenses = float(manual_expenses_row[0] or 0) if manual_expenses_row else 0.0
-        logger.info(f"extra_expenses: period={period_code}, date_to={date_to_iso}, shop_norm={shop_norm}, shop_id={shop_id}, value={extra_expenses}")
+        logger.info(f"extra_expenses: period={period_code}, date_to={date_to_iso}, shop_norm={shop_norm}, shop_id={shop_id}, name={name}, value={extra_expenses}")
         
         # C) Total expenses, profit, ratios
         # ЧИСТАЯ ПРИБЫЛЬ = Выручка - Себестоимость - Комиссия – Логистика – Хранение – Реклама – Штрафы - Налог 1% - Доп. расходы
