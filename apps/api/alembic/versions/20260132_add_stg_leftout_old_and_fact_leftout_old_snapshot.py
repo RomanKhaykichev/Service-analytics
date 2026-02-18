@@ -43,6 +43,11 @@ def upgrade() -> None:
             available_to_ship_raw text
         )
     """))
+    # In case table was created by leftout_old_tables (no barcode_norm), ensure column exists
+    op.execute(text(f"""
+        ALTER TABLE {SCHEMA}.stg_leftout_old
+        ADD COLUMN IF NOT EXISTS barcode_norm text
+    """))
     op.execute(text(f"""
         CREATE INDEX IF NOT EXISTS ix_stg_leftout_old_user_batch_barcode_norm
         ON {SCHEMA}.stg_leftout_old (user_id, upload_batch_id, barcode_norm)

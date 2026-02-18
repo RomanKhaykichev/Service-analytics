@@ -5,14 +5,32 @@ Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host "Service Analytics API - Running Migrations" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 
-# Change to API directory (where alembic.ini is located)
+# API directory = parent of scripts (where alembic.ini and alembic/ live)
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$apiDir = Join-Path $scriptDir ".."
+$apiDir = (Resolve-Path (Join-Path $scriptDir "..")).Path
 Set-Location $apiDir
+Write-Host "Working directory: $apiDir" -ForegroundColor Gray
 
-# Run migrations
-Write-Host "Running: python -m alembic upgrade head" -ForegroundColor Yellow
-python -m alembic upgrade head
+# Activate venv in apps/api if it exists
+$venvPath = Join-Path $apiDir ".venv"
+if (Test-Path $venvPath) {
+    $activateScript = Join-Path $venvPath "Scripts\Activate.ps1"
+    if (Test-Path $activateScript) {
+        Write-Host "Activating virtual environment..." -ForegroundColor Yellow
+        & $activateScript
+    }
+}
+
+# Run alembic: use venv's alembic.exe if available, else PATH; config + CWD = apiDir
+$configPath = Join-Path $apiDir "alembic.ini"
+$alembicExe = Join-Path $venvPath "Scripts\alembic.exe"
+Write-Host "Config: $configPath" -ForegroundColor Gray
+Write-Host "Running migrations..." -ForegroundColor Yellow
+if (Test-Path $alembicExe) {
+    & $alembicExe -c $configPath upgrade head
+} else {
+    alembic -c $configPath upgrade head
+}
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "==========================================" -ForegroundColor Green

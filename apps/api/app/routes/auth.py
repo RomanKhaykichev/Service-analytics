@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone
 from uuid import UUID
 from app.db import get_db
@@ -12,6 +13,7 @@ from app.schemas.auth import (
     LoginRequest,
     RefreshRequest,
     LogoutRequest,
+    UpdateProfileRequest,
     AuthResponse,
     TokenResponse,
     UserResponse,
@@ -61,6 +63,7 @@ async def register(
     # Create user
     user = User(
         email=request.email,
+        full_name=request.full_name or None,
         is_active=True
     )
     db.add(user)
@@ -289,13 +292,106 @@ async def get_current_user(
     """
     Get current authenticated user.
     Requires Bearer access token or X-User-Id header (dev mode).
+    In dev mode, if user does not exist, creates a minimal user so profile can be edited.
     """
-    
+    from app.settings import get_settings
+    settings = get_settings()
+
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+        if settings.APP_ENV.lower() in ("dev", "development") and str(user_id) == settings.DEFAULT_DEV_USER_ID:
+            user = User(id=user_id, email="dev@example.com", full_name="Dev User", is_active=True)
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+
+    return UserResponse.model_validate(user)
+
+
+@router.patch("/me", response_model=UserResponse)
+async def update_profile(
+    request: UpdateProfileRequest,
+    user_id: UUID = Depends(require_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Update current user profile (full_name, email, phone).
+    If email is changed, auth identity identifier is updated so login continues to work.
+    In dev mode, if user does not exist, creates them so profile save works.
+    """
+    from app.settings import get_settings
+    settings = get_settings()
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        if settings.APP_ENV.lower() in ("dev", "development"):
+            user = User(
+                id=user_id,
+                email=request.email or "dev@example.com",
+                full_name=request.full_name or "Dev User",
+                phone=request.phone,
+                is_active=True,
+            )
+            db.add(user)
+            db.flush()
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
     
+    if request.full_name is not None:
+        user.full_name = (request.full_name.strip() or None) if request.full_name else None
+    
+    if request.email is not None:
+        new_email = (request.email.strip() or None) if request.email else None
+        if new_email and new_email != (user.email or ""):
+            existing = db.query(User).filter(User.email == new_email, User.id != user_id).first()
+            if existing:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="User with this email already exists"
+                )
+            auth_identity = db.query(AuthIdentity).filter(
+                and_(
+                    AuthIdentity.user_id == user_id,
+                    AuthIdentity.provider == AuthProvider.EMAIL_PASSWORD
+                )
+            ).first()
+            if auth_identity:
+                auth_identity.identifier = new_email
+        user.email = new_email
+
+    if request.phone is not None:
+        new_phone = (request.phone.strip() or None) if request.phone else None
+        if new_phone and new_phone != (user.phone or ""):
+            existing = db.query(User).filter(User.phone == new_phone, User.id != user_id).first()
+            if existing:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="User with this phone already exists"
+                )
+        user.phone = new_phone
+
+    try:
+        db.commit()
+        db.refresh(user)
+    except IntegrityError as e:
+        db.rollback()
+        err_msg = str(e.orig) if getattr(e, "orig", None) else str(e)
+        if "email" in err_msg.lower() or "unique" in err_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email or phone already used by another account"
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Data conflict. Check that email and phone are unique."
+        )
+
     return UserResponse.model_validate(user)
