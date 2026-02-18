@@ -20,6 +20,7 @@ import { useStorageShops } from "@/hooks/useStorageShops";
 import { useRevenueDaily } from "@/hooks/useRevenueDaily";
 import { useStockCurrent } from "@/hooks/useStockCurrent";
 import { useUzumServicesDaily } from "@/hooks/useUzumServicesDaily";
+import { useSalesDateRange } from "@/hooks/useSalesDateRange";
 import { formatCurrency, formatQuantity, formatPercent, formatTrend, formatMoneyNoDecimals } from "@/lib/formatters";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
@@ -57,6 +58,9 @@ function Dashboard() {
   const { metrics, loading, error } = useDashboardMetrics(dateFrom, dateTo, undefined, selectedShop);
   const { cumulativeRevenue: cumulativeRevenueGlobal, cumulativeRevenueYear } = useCumulativeRevenueGlobal();
   const shopId = null;  // Не используем shop_id для seller-storage метрик
+  
+  // Диапазон дат из fact_sales (sells_report "Дата создания")
+  const { minDate: salesMinDate, maxDate: salesMaxDate } = useSalesDateRange();
 
   // Пользовательский процент для налога (по умолчанию 1%)
   const [taxPercentInput, setTaxPercentInput] = useState("1");
@@ -330,9 +334,25 @@ function Dashboard() {
       {/* Header with title and actions */}
       <div className="flex flex-col gap-4 mb-6">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <h1 className="text-xl font-semibold text-foreground">Мои продажи на</h1>
-            <span className="px-3 py-1.5 bg-primary/10 text-primary font-semibold rounded-lg">UZUM</span>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl font-semibold text-foreground">Мои продажи на</h1>
+              <span className="px-3 py-1.5 bg-primary/10 text-primary font-semibold rounded-lg">UZUM</span>
+            </div>
+            {salesMinDate && salesMaxDate && (() => {
+              const formatDate = (dateStr: string) => {
+                const date = new Date(dateStr);
+                const day = String(date.getDate()).padStart(2, "0");
+                const month = String(date.getMonth() + 1).padStart(2, "0");
+                const year = date.getFullYear();
+                return `${day}.${month}.${year}`;
+              };
+              return (
+                <div className="text-xs text-muted-foreground/80 pl-1">
+                  от <span className="font-medium">{formatDate(salesMinDate)}</span> до <span className="font-medium">{formatDate(salesMaxDate)}</span>
+                </div>
+              );
+            })()}
           </div>
           
           {/* Center - Compact Revenue Progress Bar (all tabs) */}

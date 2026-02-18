@@ -10,6 +10,7 @@ import { SummaryBlock } from "./SummaryBlock";
 import { RevenueDailyChart } from "./RevenueDailyChart";
 import { useRevenueDaily } from "@/hooks/useRevenueDaily";
 import { formatCurrency, formatQuantity, formatPercent, formatTrend, formatMoneyNoDecimals } from "@/lib/formatters";
+import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
 interface ProductVariant {
   char1: string; // Хар-ка 1 = 3 часть из SKU
   char2: string; // Хар-ка 2 = 4 часть из SKU
@@ -285,8 +286,24 @@ export function ProductDetailView({
   const ordersValue = processingValue + completedValue + returnsValueNum;
   const returnRate = product.sales > 0 ? (product.returns / product.sales) * 100 : 0;
   const averageCheck = completedQty > 0 ? product.revenue / completedQty : product.sales > 0 ? product.revenue / product.sales : 0;
+  // Доп. расходы для этого товара (по наименованию) — как на вкладке Сводка с учетом ID карточки
+  const { data: productExtraExpensesData } = useQuery({
+    queryKey: ["kpiSummary-product-extra", dateFrom, dateTo, product.name],
+    queryFn: async () => {
+      const params = buildQueryParams({ 
+        date_from: dateFrom ?? undefined, 
+        date_to: dateTo ?? undefined,
+        name: product.name ?? undefined
+      });
+      return apiGet<{ extraExpenses: number }>("/api/kpi/summary", params);
+    },
+    enabled: !!dateFrom && !!dateTo && !!product.name,
+    refetchOnWindowFocus: false,
+  });
+  const productExtraExpenses = productExtraExpensesData?.extraExpenses ?? 0;
+
   const taxAmount = product.revenue * (taxPercent / 100);
-  const totalExpenses = product.uzumCommission + product.uzumLogistics + product.cogsTotal + taxAmount + 0;
+  const totalExpenses = product.uzumCommission + product.uzumLogistics + product.cogsTotal + taxAmount + productExtraExpenses;
   const salesProfitability = product.revenue > 0 ? (product.profit / product.revenue) * 100 : 0;
   const roi = totalExpenses > 0 ? (product.profit / totalExpenses) * 100 : 0;
   const revenueSharePercent = totalRevenueProp > 0 ? (product.revenue / totalRevenueProp) * 100 : 0;
@@ -328,7 +345,7 @@ export function ProductDetailView({
     { icon: <Truck className="w-4 h-4" />, label: "Логистика UZUM", value: formatCurrency(product.uzumLogistics), tooltip: "Логистический сбор из отчёта о продажах" },
     { icon: <Boxes className="w-4 h-4" />, label: "Себест. прод. тов.", value: formatCurrency(product.cogsTotal), tooltip: "Себестоимость × количество (со статусом завершен)" },
     { icon: <Receipt className="w-4 h-4" />, label: "Налоги", value: formatCurrency(taxAmount), tooltip: `Налог с вкладки Сводка: Выручка × ${taxPercent}%` },
-    { icon: <Info className="w-4 h-4" />, label: "Доп. расходы", value: formatCurrency(0), tooltip: "Расходы занесенные во вкладке Доп. расходы." },
+    { icon: <Info className="w-4 h-4" />, label: "Доп. расходы", value: formatCurrency(productExtraExpenses), tooltip: "Расходы занесенные во вкладке Доп. расходы для этого товара (по наименованию)." },
   ];
   const warehouseMetrics = [
     { icon: <Warehouse className="w-4 h-4" />, label: "Товаров на складе", value: formatQuantity(product.stock), tooltip: "Общее количество на стороне маркетплейса." },

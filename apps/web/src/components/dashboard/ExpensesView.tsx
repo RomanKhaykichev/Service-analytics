@@ -51,6 +51,12 @@ import { apiGet, apiPost, apiPut, apiDelete, buildQueryParams } from "@/lib/api"
 import { useStorageShops } from "@/hooks/useStorageShops";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface ExtraExpense {
   id: number;
@@ -59,6 +65,7 @@ interface ExtraExpense {
   shop_id: string | null;
   shop_name: string | null;
   category: string | null;
+  name: string | null;
   comment: string | null;
   created_at: string;
   updated_at: string;
@@ -89,6 +96,10 @@ interface ExtraExpensesResponse {
   total: number;
 }
 
+interface ProductNamesResponse {
+  names: string[];
+}
+
 interface ExpensesViewProps {
   /** Не передавать — вкладка Доп. расходы показывает все данные без фильтров по дате и магазину */
   dateFrom?: string;
@@ -113,8 +124,32 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
     type: "",
     amount: "",
     shop_id: "",
+    name: "",
     comment: "",
   });
+
+  // Format number with spaces as thousands separator
+  const formatAmount = (value: string): string => {
+    // Remove all non-digit characters except decimal point
+    const numericValue = value.replace(/[^\d.]/g, '');
+    if (!numericValue) return '';
+    
+    // Split by decimal point if exists
+    const parts = numericValue.split('.');
+    const integerPart = parts[0];
+    const decimalPart = parts[1];
+    
+    // Add spaces every 3 digits from right to left
+    const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    
+    // Combine with decimal part if exists
+    return decimalPart !== undefined ? `${formattedInteger}.${decimalPart}` : formattedInteger;
+  };
+
+  // Parse formatted amount back to number string (remove spaces)
+  const parseAmount = (value: string): string => {
+    return value.replace(/\s/g, '');
+  };
 
   const noFilters = dateFrom == null || dateTo == null;
   const extraExpensesQueryKey = ['extraExpenses', noFilters ? 'all' : dateFrom, noFilters ? null : dateTo, shop];
@@ -125,7 +160,10 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
       const params = noFilters
         ? { period: "all" }
         : buildQueryParams({ date_from: dateFrom, date_to: dateTo, shop });
-      return await apiGet<ExtraExpensesResponse>("/api/extra-expenses", params);
+      const response = await apiGet<ExtraExpensesResponse>("/api/extra-expenses", params);
+      console.log("Fetched expenses:", response);
+      console.log("First expense name:", response?.expenses?.[0]?.name);
+      return response;
     },
     enabled: true,
     retry: 1,
@@ -133,6 +171,44 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
   });
 
   const expenses = expensesData?.expenses || [];
+  console.log("Current expenses list, first expense:", expenses[0]);
+  console.log("First expense name:", expenses[0]?.name);
+
+  // Ensure name column exists in database on component mount
+  useEffect(() => {
+    const ensureNameColumn = async () => {
+      try {
+        const result = await apiGet<{ status: string; message: string; has_name?: boolean }>("/api/extra-expenses/ensure-name-column");
+        console.log("Name column check result:", result);
+        if (result.status === "created") {
+          // Refetch expenses after column creation
+          queryClient.invalidateQueries({ queryKey: ['extraExpenses'] });
+        }
+      } catch (error) {
+        console.error("Failed to ensure name column:", error);
+      }
+    };
+    ensureNameColumn();
+  }, [queryClient]);
+
+  // Fetch product names for autocomplete - filter by shop_id if selected
+  const { data: productNamesData } = useQuery({
+    queryKey: ['productNames', newExpense.shop_id || null],
+    queryFn: async () => {
+      const params = newExpense.shop_id && newExpense.shop_id.trim() && newExpense.shop_id !== "__none__"
+        ? { shop_id: newExpense.shop_id }
+        : {};
+      console.log("Fetching product names with params:", params);
+      const result = await apiGet<ProductNamesResponse>("/api/extra-expenses/product-names", params);
+      console.log("Product names result:", result);
+      return result;
+    },
+    enabled: true,
+    retry: 1,
+    refetchOnWindowFocus: false,
+  });
+
+  const productNames = productNamesData?.names || [];
 
   // Create expense mutation
   const createMutation = useMutation({
@@ -141,11 +217,14 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
       amount_sum: number;
       shop?: string | null;
       category?: string | null;
+      name?: string | null;
       comment?: string | null;
     }) => {
       return await apiPost<ExtraExpense>("/api/extra-expenses", expense);
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      console.log("Expense created successfully, response:", data);
+      console.log("Created expense name:", data?.name);
       // Invalidate and refetch expenses list to show new row immediately
       queryClient.invalidateQueries({ queryKey: ['extraExpenses'] });
       queryClient.refetchQueries({ queryKey: extraExpensesQueryKey });
@@ -160,6 +239,7 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
         type: "",
         amount: "",
         shop_id: "",
+        name: "",
         comment: "",
       });
     },
@@ -179,6 +259,7 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
       amount_sum?: number;
       shop_id?: string | null;
       category?: string | null;
+      name?: string | null;
       comment?: string | null;
     }>}) => {
       return await apiPut<ExtraExpense>(`/api/extra-expenses/${id}`, expense);
@@ -197,6 +278,7 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
         type: "",
         amount: "",
         shop_id: "",
+        name: "",
         comment: "",
       });
     },
@@ -268,24 +350,30 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
       return;
     }
 
+    console.log("Saving expense, name value:", newExpense.name);
+
     if (editingExpense) {
       const expenseData = {
         expense_date: format(newExpense.date, "yyyy-MM-dd"),
-        amount_sum: Number(newExpense.amount),
+        amount_sum: Number(parseAmount(newExpense.amount)) || 0,
         shop_id: newExpense.shop_id || null,
         category: newExpense.type,
+        name: newExpense.name && newExpense.name.trim() ? newExpense.name.trim() : null,
         comment: newExpense.comment || null,
       };
+      console.log("Update expense data:", expenseData);
       updateMutation.mutate({ id: editingExpense.id, expense: expenseData });
     } else {
       // При создании отправляем shop (название из seller-storage); бэкенд резолвит в shop_id
       const expenseData = {
         expense_date: format(newExpense.date, "yyyy-MM-dd"),
-        amount_sum: Number(newExpense.amount),
+        amount_sum: Number(parseAmount(newExpense.amount)) || 0,
         shop: newExpense.shop_id || null,
         category: newExpense.type,
+        name: newExpense.name && newExpense.name.trim() ? newExpense.name.trim() : null,
         comment: newExpense.comment || null,
       };
+      console.log("Create expense data:", expenseData);
       createMutation.mutate(expenseData);
     }
   };
@@ -297,6 +385,7 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
       type: expense.category || "",
       amount: expense.amount_sum.toString(),
       shop_id: expense.shop_id || "",
+      name: expense.name || "",
       comment: expense.comment || "",
     });
     setIsDialogOpen(true);
@@ -367,6 +456,7 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
         type: "",
         amount: "",
         shop_id: "",
+        name: "",
         comment: "",
       });
     } catch (error) {
@@ -431,9 +521,10 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
             <Table>
               <TableHeader className="sticky top-0 z-10 [&_tr]:bg-violet-50/80 [&_tr]:dark:bg-violet-950/30 [&_th]:bg-violet-50/80 [&_th]:dark:bg-violet-950/30">
                 <TableRow className="bg-violet-50/80 dark:bg-violet-950/30 border-border">
-                  <SortableHeader column="expense_date">Дата</SortableHeader>
-                  <SortableHeader column="category">Тип</SortableHeader>
-                  <SortableHeader column="amount_sum">Сумма</SortableHeader>
+                  <SortableHeader column="expense_date" className="w-auto whitespace-nowrap">Дата</SortableHeader>
+                  <SortableHeader column="category" className="w-auto whitespace-nowrap">Тип</SortableHeader>
+                  <SortableHeader column="amount_sum" className="w-auto whitespace-nowrap">Сумма</SortableHeader>
+                  <SortableHeader column="name">Наименование</SortableHeader>
                   <SortableHeader column="shop_name">Магазин</SortableHeader>
                   <TableHead className="bg-violet-50/80 dark:bg-violet-950/30">Комментарий</TableHead>
                   <TableHead className="w-[100px] bg-violet-50/80 dark:bg-violet-950/30">Действия</TableHead>
@@ -442,13 +533,13 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
               <TableBody>
                 {expensesLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       Загрузка...
                     </TableCell>
                   </TableRow>
                 ) : sortedExpenses.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       Нет добавленных расходов
                     </TableCell>
                   </TableRow>
@@ -458,17 +549,37 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
                       <TableCell>
                         {format(new Date(expense.expense_date), "dd.MM.yyyy", { locale: ru })}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="whitespace-nowrap">
                         <span className="px-2 py-1 rounded-md bg-muted text-sm">
                           {expense.category || "—"}
                         </span>
                       </TableCell>
-                      <TableCell className="font-medium text-destructive">
-                        -{expense.amount_sum.toLocaleString("ru-RU")} сум
+                      <TableCell className="font-medium text-destructive whitespace-nowrap">
+                        -{expense.amount_sum.toLocaleString("ru-RU")}
                       </TableCell>
-                      <TableCell>{expense.shop_name || "—"}</TableCell>
-                      <TableCell className="max-w-[200px] truncate">
-                        {expense.comment || "—"}
+                      <TableCell className="break-words">
+                        {expense.name && expense.name.trim() ? expense.name : "—"}
+                      </TableCell>
+                      <TableCell>
+                        {expense.shop_name && expense.shop_name.trim() ? expense.shop_name : "—"}
+                      </TableCell>
+                      <TableCell className="max-w-[200px]">
+                        {expense.comment && expense.comment.trim() ? (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="truncate cursor-help">
+                                  {expense.comment}
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-[400px] break-words">
+                                <p>{expense.comment}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : (
+                          "—"
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -595,12 +706,16 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
                   <div className="grid gap-2">
                     <Label>Сумма</Label>
                     <Input
-                      type="number"
+                      type="text"
                       placeholder="0"
-                      value={newExpense.amount}
-                      onChange={(e) =>
-                        setNewExpense({ ...newExpense, amount: e.target.value })
-                      }
+                      value={formatAmount(newExpense.amount)}
+                      onChange={(e) => {
+                        const rawValue = parseAmount(e.target.value);
+                        // Allow only numbers and decimal point
+                        if (rawValue === '' || /^\d*\.?\d*$/.test(rawValue)) {
+                          setNewExpense({ ...newExpense, amount: rawValue });
+                        }
+                      }}
                     />
                   </div>
 
@@ -641,6 +756,36 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
                               <SelectItem value="__empty__" disabled>Нет доступных магазинов (загрузите seller-storage)</SelectItem>
                             ) : null}
                           </>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Name: product name from left-out-report_old with dropdown selection */}
+                  <div className="grid gap-2">
+                    <Label>Наименование</Label>
+                    <Select
+                      value={newExpense.name === "" || newExpense.name == null ? "__none__" : newExpense.name}
+                      onValueChange={(value) => {
+                        if (value === "__loading__" || value === "__empty__") return;
+                        setNewExpense({ ...newExpense, name: value === "__none__" ? "" : value });
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Выберите наименование (опционально)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Не выбрано</SelectItem>
+                        {productNames.length > 0 ? (
+                          productNames.map((name) => (
+                            <SelectItem key={name} value={name}>
+                              {name}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="__empty__" disabled>
+                            Нет доступных наименований (загрузите left-out-report_old)
+                          </SelectItem>
                         )}
                       </SelectContent>
                     </Select>
