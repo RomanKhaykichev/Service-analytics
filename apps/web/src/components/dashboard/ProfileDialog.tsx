@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { toast } from "sonner";
+import { apiGet, apiPatch } from "@/lib/api";
 
 interface ProfileDialogProps {
   open: boolean;
@@ -20,8 +21,10 @@ interface ProfileDialogProps {
 }
 
 export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
   const { t } = useLanguage();
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -34,45 +37,51 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
     if (open && user) {
       loadProfile();
     }
-  }, [open, user]);
+  }, [open, user?.id]);
 
   const loadProfile = async () => {
     if (!user) return;
-    
-    // TODO: Load profile from backend API
-    // For now, load from localStorage
-    const storedPhone = localStorage.getItem(`profile_phone_${user.id}`);
-    if (storedPhone) {
-      setPhone(storedPhone);
+    setFullName(user.full_name ?? user.user_metadata?.full_name ?? "");
+    setEmail(user.email ?? "");
+    setPhone(user.phone ?? "");
+    try {
+      const data = await apiGet<{ full_name?: string | null; email?: string | null; phone?: string | null }>("/api/auth/me");
+      setFullName(data.full_name ?? "");
+      setEmail(data.email ?? "");
+      setPhone(data.phone ?? "");
+    } catch {
+      // Keep values from context
     }
   };
 
-  const handleSavePhone = async () => {
+  const handleSaveProfile = async () => {
     if (!user) return;
-    
     setLoading(true);
-    
-    // TODO: Save profile to backend API
-    // For now, save to localStorage
     try {
-      localStorage.setItem(`profile_phone_${user.id}`, phone);
-      toast.success("Телефон сохранён");
-    } catch (error) {
-      toast.error("Ошибка сохранения телефона");
+      await apiPatch("/api/auth/me", {
+        full_name: fullName.trim() || null,
+        email: email.trim() || null,
+        phone: phone.trim() || null,
+      });
+      await refreshProfile();
+      toast.success("Данные аккаунта сохранены");
+    } catch (err) {
+      let message = "Ошибка сохранения";
+      if (err instanceof Error) {
+        try {
+          const parsed = JSON.parse(err.message);
+          const d = parsed.detail;
+          if (typeof d === "string") message = d;
+          else if (Array.isArray(d) && d.length) message = d.map((x: { msg?: string }) => x?.msg).filter(Boolean).join(". ") || err.message;
+          else if (d?.msg) message = d.msg;
+        } catch {
+          message = err.message;
+        }
+      }
+      toast.error(message);
     } finally {
       setLoading(false);
     }
-  };
-
-  const getUserName = () => {
-    if (user?.user_metadata?.full_name) {
-      return user.user_metadata.full_name;
-    }
-    return "Пользователь";
-  };
-
-  const getUserEmail = () => {
-    return user?.email || "email@example.com";
   };
 
   return (
@@ -92,42 +101,53 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
             
             <div className="space-y-3">
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">{t('profile.name')}</Label>
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50">
-                  <User className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm">{getUserName()}</span>
+                <Label htmlFor="profile-name" className="text-xs text-muted-foreground">{t('profile.name')}</Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="profile-name"
+                    type="text"
+                    placeholder="Имя"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="pl-10"
+                  />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">{t('profile.email')}</Label>
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50">
-                  <span className="text-sm">{getUserEmail()}</span>
-                </div>
+                <Label htmlFor="profile-email" className="text-xs text-muted-foreground">{t('profile.email')}</Label>
+                <Input
+                  id="profile-email"
+                  type="email"
+                  placeholder="email@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
               </div>
 
               <div className="space-y-1">
-                <Label htmlFor="phone" className="text-xs text-muted-foreground">{t('profile.phone')}</Label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input
-                      id="phone"
-                      placeholder="+998 90 123 45 67"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                  <Button 
-                    size="sm" 
-                    onClick={handleSavePhone}
-                    disabled={loading}
-                  >
-                    {loading ? "..." : t('profile.save')}
-                  </Button>
+                <Label htmlFor="profile-phone" className="text-xs text-muted-foreground">{t('profile.phone')}</Label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="profile-phone"
+                    type="tel"
+                    placeholder="+998 90 123 45 67"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="pl-10"
+                  />
                 </div>
               </div>
+
+              <Button
+                className="w-full"
+                onClick={handleSaveProfile}
+                disabled={loading}
+              >
+                {loading ? "..." : t('profile.save')}
+              </Button>
             </div>
           </div>
 

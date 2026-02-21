@@ -30,77 +30,11 @@ interface RevenueDailyChartProps {
     profit?: number | null;
   }>;
 }
-const defaultData = [{
-  date: "01.12",
-  avgCheck: 350,
-  orders: 220,
-  revenue: 77000
-}, {
-  date: "02.12",
-  avgCheck: 320,
-  orders: 245,
-  revenue: 78400
-}, {
-  date: "03.12",
-  avgCheck: 280,
-  orders: 210,
-  revenue: 58800
-}, {
-  date: "04.12",
-  avgCheck: 340,
-  orders: 280,
-  revenue: 95200
-}, {
-  date: "05.12",
-  avgCheck: 360,
-  orders: 320,
-  revenue: 115200
-}, {
-  date: "06.12",
-  avgCheck: 310,
-  orders: 290,
-  revenue: 89900
-}, {
-  date: "07.12",
-  avgCheck: 290,
-  orders: 250,
-  revenue: 72500
-}, {
-  date: "08.12",
-  avgCheck: 330,
-  orders: 310,
-  revenue: 102300
-}, {
-  date: "09.12",
-  avgCheck: 350,
-  orders: 340,
-  revenue: 119000
-}, {
-  date: "10.12",
-  avgCheck: 320,
-  orders: 280,
-  revenue: 89600
-}, {
-  date: "11.12",
-  avgCheck: 340,
-  orders: 350,
-  revenue: 119000
-}, {
-  date: "12.12",
-  avgCheck: 380,
-  orders: 380,
-  revenue: 144400
-}, {
-  date: "13.12",
-  avgCheck: 400,
-  orders: 410,
-  revenue: 164000
-}];
 export function RevenueDailyChart({
   productName = "Товар",
   showCommentButton = false,
   hideAvgCheck = false,
-  data = defaultData
+  data
 }: RevenueDailyChartProps) {
   const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
   const [comments, setComments] = useState<ChartComment[]>([]);
@@ -109,6 +43,9 @@ export function RevenueDailyChart({
   const [commentText, setCommentText] = useState("");
   const [editingComment, setEditingComment] = useState<ChartComment | null>(null);
 
+  const chartData = data && data.length > 0 ? data : [];
+  const hasData = chartData.length > 0;
+
   // Fixed orders Y-axis configuration: domain [0, 48], ticks with step 6
   const ordersTicks = [0, 6, 12, 18, 24, 30, 36, 42, 48];
 
@@ -116,7 +53,7 @@ export function RevenueDailyChart({
 
   // Prepare data with clamped orders/returns for display (max 48) but keep original for tooltip
   const data2 = useMemo(() => {
-    return data.map((point) => {
+    return chartData.map((point) => {
       const ordersOriginal = Number(point.orders ?? 0);
       const ordersClamped = Math.min(ordersOriginal, 48);
       const returnsOriginal = Number(point.returns ?? 0);
@@ -135,7 +72,7 @@ export function RevenueDailyChart({
         avgCheckValue,
       };
     });
-  }, [data]);
+  }, [chartData]);
 
   // Custom label for orders > 48
   const renderOrdersLabel = (props: any) => {
@@ -273,6 +210,7 @@ export function RevenueDailyChart({
       </div>
       
       <div className="h-72">
+        {hasData ? (
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data2}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -400,7 +338,7 @@ export function RevenueDailyChart({
               hide={hiddenLines.has("revenueValue")} 
             />
             {/* Прибыль показывается всегда, когда есть данные (для сводки и карточки товара) */}
-            {data.some(p => p.profit !== undefined && p.profit !== null) && (
+            {chartData.some(p => p.profit !== undefined && p.profit !== null) && (
             <Line 
               yAxisId="revenue" 
               type="monotone" 
@@ -444,6 +382,11 @@ export function RevenueDailyChart({
           })}
           </LineChart>
         </ResponsiveContainer>
+        ) : (
+          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+            Нет данных
+          </div>
+        )}
       </div>
 
       {/* Comment Dialog */}

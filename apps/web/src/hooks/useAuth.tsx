@@ -1,9 +1,12 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
+import { apiGet } from '@/lib/api';
 
 // Simple user interface (replaces Supabase User)
 interface User {
   id: string;
   email?: string;
+  full_name?: string;
+  phone?: string;
   user_metadata?: {
     full_name?: string;
   };
@@ -16,6 +19,8 @@ interface AuthContextType {
   signUp: (email: string, password: string, fullName?: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  /** Refresh user from API (GET /auth/me). Updates header/profile after profile edit. */
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -97,6 +102,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
   };
 
+  const refreshProfile = async () => {
+    try {
+      const data = await apiGet<{ id: string; email?: string | null; full_name?: string | null; phone?: string | null }>('/api/auth/me');
+      const nextUser: User = {
+        id: data.id,
+        email: data.email ?? undefined,
+        full_name: data.full_name ?? undefined,
+        phone: data.phone ?? undefined,
+        user_metadata: data.full_name ? { full_name: data.full_name } : undefined,
+      };
+      setUser(nextUser);
+      setSession({ user: nextUser });
+    } catch {
+      // Ignore (e.g. no backend or 401)
+    }
+  };
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -105,6 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUp,
       signIn,
       signOut,
+      refreshProfile,
     }}>
       {children}
     </AuthContext.Provider>

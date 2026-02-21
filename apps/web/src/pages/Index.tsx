@@ -140,40 +140,40 @@ function Dashboard() {
       label: "Заказы",
       value: formatQuantity(metrics.ordersCount),
       subValue: formatCurrency(metrics.ordersValue),
-      tooltip: "Общее количество заказов и их сумма"
+      tooltip: "Общее кол-во заказов за выбранный период."
     },
     {
       icon: <Truck className="w-4 h-4" />,
       label: "В обработке",
       value: formatQuantity(metrics.processingCount),
       subValue: formatCurrency(metrics.processingValue),
-      tooltip: "Заказы в процессе обработки"
+      tooltip: "Заказы по которым ожидается оплата."
     },
     {
       icon: <Package className="w-4 h-4" />,
       label: "Выкупы",
       value: formatQuantity(metrics.completedCount),
       subValue: formatCurrency(metrics.completedValue),
-      tooltip: "Успешно выкупленные заказы"
+      tooltip: "Заказы которые клиент забрал, и прошло 10 дней."
     },
     {
       icon: <RotateCcw className="w-4 h-4" />,
       label: "Возвраты",
       value: formatQuantity(metrics.returnsCount),
       subValue: metrics.returnsValue > 0 ? `-${formatCurrency(metrics.returnsValue)}` : formatCurrency(0),
-      tooltip: "Возвращённые товары"
+      tooltip: "Заказы которые клиент вернул или отменил."
     },
     {
       icon: <Percent className="w-4 h-4" />,
       label: "Процент возврата заказов",
       value: formatPercent(metrics?.returnRate),
-      tooltip: "Доля возвращённых заказов от общего числа"
+      tooltip: "Отношение отменённых заказов к выкупленным заказам, выраженное в процентах."
     },
     {
       icon: <CreditCard className="w-4 h-4" />,
       label: "Средний чек",
       value: formatMoneyNoDecimals(metrics.averageCheck),
-      tooltip: "Средняя сумма одного заказа"
+      tooltip: "Средняя стоимость заказа за период."
     }
   ] : [];
 
@@ -182,31 +182,31 @@ function Dashboard() {
       icon: <DollarSign className="w-4 h-4" />,
       label: "Выручка",
       value: formatCurrency(metrics.revenue),
-      tooltip: "Выручка со статусом «завершен»"
+      tooltip: "Общая сумма денег, полученная вами от реализации товаров."
     },
     {
       icon: <TrendingDown className="w-4 h-4" />,
       label: "Расходы",
       value: formatCurrency(adjustedTotalExpenses),
-      tooltip: "Сумма всех расходов из блока Расходы."
+      tooltip: "Сумма всех расходов, представленных во вкладке «Расходы» (услуги UZUM не учитываются)."
     },
     {
       icon: <Wallet className="w-4 h-4" />,
       label: "Прибыль",
       value: formatCurrency(adjustedProfit),
-      tooltip: "Выручка минус Расходы"
+      tooltip: "Выручка – Расходы."
     },
     {
       icon: <Target className="w-4 h-4" />,
       label: "Рентабельность продаж",
       value: formatPercent(adjustedSalesProfitability),
-      tooltip: "Выручка / Себестоимость (завершённые заказы)"
+      tooltip: "(Прибыль / Выручка) × 100. Показывает, какая часть выручки является прибылью."
     },
     {
       icon: <BarChart3 className="w-4 h-4" />,
       label: "Окупаемость инвестиций",
       value: formatPercent(adjustedRoi),
-      tooltip: "ROI = (Выручка - Себестоимость) / Себестоимость × 100%"
+      tooltip: "(Прибыль / себестоимость товаров) × 100. Показывает, насколько выгодно вложение денег."
     },
     {
       icon: <TrendingUp className="w-4 h-4" />,
@@ -214,13 +214,13 @@ function Dashboard() {
       value: formatTrend(metrics.revenueTrend),
       trend: (metrics.revenueTrend ?? 0) >= 0 ? "up" as const : "down" as const,
       trendValue: "",
-      tooltip: "Сравнение выручки с аналогичным предыдущим периодом"
+      tooltip: "Сравнение выручки за выбранный текущий период с выручкой за аналогичный период ранее."
     },
     {
       icon: <ArrowDown className="w-4 h-4" />,
       label: "Упущенная выручка",
       value: formatCurrency(metrics.lostRevenue),
-      tooltip: "Потенциальная выручка от товаров без остатков (avg продаж × цена × 15 дней)"
+      tooltip: "Потенциальная потеря выручки за период из-за отсутствия товаров на складе = (кол-во дней без товара) × (средняя выручка за день) для всех товаров."
     }
   ] : [];
 
@@ -230,19 +230,19 @@ function Dashboard() {
       icon: <Percent className="w-4 h-4" />,
       label: "Комиссия UZUM",
       value: formatCurrency(metrics.uzumCommission),
-      tooltip: "Комиссия маркетплейса из отчёта о продажах"
+      tooltip: ""
     },
     {
       icon: <Truck className="w-4 h-4" />,
       label: "Логистика UZUM",
       value: formatCurrency(metrics.uzumLogistics),
-      tooltip: "Логистический сбор из отчёта о продажах"
+      tooltip: ""
     },
     {
       icon: <Boxes className="w-4 h-4" />,
       label: "Себест. прод. тов.",
       value: formatCurrency(metrics.productCost),
-      tooltip: "Себестоимость × количество (со статусом завершен)"
+      tooltip: ""
     },
     {
       icon: <Receipt className="w-4 h-4" />,
@@ -262,13 +262,13 @@ function Dashboard() {
         </div>
       ),
       value: formatCurrency((metrics.revenue ?? 0) * (taxPercent / 100)),
-      tooltip: "Налог = Выручка × указанный процент (завершённые заказы)"
+      tooltip: ""
     },
     {
       icon: <Info className="w-4 h-4" />,
       label: "Доп. расходы",
       value: formatCurrency(metrics.extraExpenses),
-      tooltip: "Расходы занесенные во вкладке Доп. расходы."
+      tooltip: "Расходы, указанные вами во вкладке «Доп. расходы»."
     }
   ] : [];
 
@@ -279,19 +279,19 @@ function Dashboard() {
       icon: <Warehouse className="w-4 h-4" />,
       label: "Хранение UZUM",
       value: formatCurrency(metrics.uzumStorage),
-      tooltip: "Оплата за услуги хранения"
+      tooltip: "Стоимость платного хранения товаров за выбранный период."
     },
     {
       icon: <Target className="w-4 h-4" />,
       label: "Реклама UZUM",
       value: formatCurrency(metrics.uzumAds),
-      tooltip: "Расходы на маркетинг (источник = маркетинг, тип = оплата)"
+      tooltip: "Стоимость маркетинговых кампаний (БУСТ в топ) за выбранный период."
     },
     {
       icon: <AlertTriangle className="w-4 h-4" />,
       label: "Штрафы UZUM",
       value: formatCurrency(metrics.uzumFines),
-      tooltip: "Штрафы (услуга содержит слово ШТРАФ)"
+      tooltip: "Начисленные штрафы за выбранный период."
     }
   ] : [];
 
@@ -313,19 +313,19 @@ function Dashboard() {
       icon: <Warehouse className="w-4 h-4" />,
       label: "Товаров на складе",
       value: formatQuantity(stockQty),
-      tooltip: "Общее количество на стороне маркетплейса."
+      tooltip: "Кол-во товаров, хранящихся на складе UZUM для продажи по FBO."
     },
     {
       icon: <Tag className="w-4 h-4" />,
       label: "Себест. тов.",
       value: formatCurrency(stockCost),
-      tooltip: "Товар на складе × себестоимость."
+      tooltip: ""
     },
     {
       icon: <ShoppingBag className="w-4 h-4" />,
       label: "Рознич. цена",
       value: formatCurrency(stockRetail),
-      tooltip: "Потенциальная сумма к получению за все остатки."
+      tooltip: "Стоимость товаров, хранящихся на складе UZUM, при продаже их по ценам маркетплейса."
     }
   ] : [];
 
@@ -379,37 +379,33 @@ function Dashboard() {
             compact 
           />
         </div>
-
-        {/* Filters: скрыты на Доп. расходы и По месячно; на Отгрузка — только магазин (без периода) */}
-        <div className="flex items-center justify-end gap-4 min-h-10">
-          {activeTab === "expenses" || activeTab === "monthly" ? (
-            <div className="min-h-10" aria-hidden />
-          ) : (
-            <SummaryFilters 
-              dateFrom={dateFrom}
-              dateTo={dateTo}
-              onDateRangeChange={setDateRange}
-              store={store}
-              onStoreChange={setStore}
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-              showStoreFilter={activeTab !== "daily"}
-              showViewMode={activeTab === "daily"}
-              showPeriodFilter={activeTab !== "shipment"}
-              shops={shops}
-              minDate={minDate ?? undefined}
-              maxDate={maxDate ?? undefined}
-              boundsLoading={boundsLoading}
-              defaultDateFrom={defaultDateFrom ?? undefined}
-              defaultDateTo={defaultDateTo ?? undefined}
-            />
-          )}
-        </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex items-center justify-between gap-4">
+      {/* Tabs и фильтры на одном уровне */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-24">
         <SummaryTabs activeTab={activeTab} onTabChange={setActiveTab} />
+        {activeTab !== "expenses" && activeTab !== "monthly" ? (
+          <SummaryFilters 
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onDateRangeChange={setDateRange}
+            store={store}
+            onStoreChange={setStore}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            showStoreFilter={activeTab !== "daily"}
+            showViewMode={activeTab === "daily"}
+            showPeriodFilter={activeTab !== "shipment"}
+            shops={shops}
+            minDate={minDate ?? undefined}
+            maxDate={maxDate ?? undefined}
+            boundsLoading={boundsLoading}
+            defaultDateFrom={defaultDateFrom ?? undefined}
+            defaultDateTo={defaultDateTo ?? undefined}
+          />
+        ) : (
+          <div className="min-h-10" aria-hidden />
+        )}
       </div>
 
       {/* Content based on active tab */}

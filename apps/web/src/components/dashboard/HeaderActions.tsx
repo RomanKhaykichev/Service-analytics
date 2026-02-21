@@ -14,12 +14,23 @@ import { PricingDialog } from "./PricingDialog";
 import { ProfileDialog } from "./ProfileDialog";
 import { LanguageDialog } from "./LanguageDialog";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/hooks/useAuth";
+
+function getUserDisplayName(user: { full_name?: string; user_metadata?: { full_name?: string }; email?: string } | null): string {
+  if (!user) return "Пользователь";
+  if (user.full_name) return user.full_name;
+  if (user.user_metadata?.full_name) return user.user_metadata.full_name;
+  if (user.email) return user.email;
+  return "Пользователь";
+}
 
 export function HeaderActions() {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [pricingOpen, setPricingOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
+  const displayName = getUserDisplayName(user);
 
   return (
     <div className="flex items-center gap-6">
@@ -57,7 +68,7 @@ export function HeaderActions() {
           <Button variant="ghost" className="gap-2 px-3">
             <User className="w-5 h-5" />
             <div className="flex flex-col items-start text-left">
-              <span className="text-sm font-medium">Иван Петров</span>
+              <span className="text-sm font-medium">{displayName}</span>
               <span className="text-xs text-muted-foreground">до 15.02.2025</span>
             </div>
             <ChevronDown className="w-4 h-4 ml-1" />

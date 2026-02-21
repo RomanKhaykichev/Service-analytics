@@ -35,15 +35,19 @@ export function getDevUserId(): string {
     return envUserId;
   }
   
-  // Try localStorage
-  const stored = localStorage.getItem("dev_user_id");
+  // Try localStorage (dev_user_id or user_id from auth so both flows use same id)
+  const stored = localStorage.getItem("dev_user_id") ?? localStorage.getItem("user_id");
   if (stored) {
+    if (!localStorage.getItem("dev_user_id")) {
+      localStorage.setItem("dev_user_id", stored);
+    }
     return stored;
   }
-  
-  // Default fallback
-  const defaultUserId = "aa841699-dac6-45a1-b376-9c462719315d";
+
+  // Default fallback (must match backend DEFAULT_DEV_USER_ID so dev user exists)
+  const defaultUserId = "00000000-0000-0000-0000-000000000001";
   localStorage.setItem("dev_user_id", defaultUserId);
+  localStorage.setItem("user_id", defaultUserId);
   return defaultUserId;
 }
 
@@ -168,15 +172,9 @@ export async function apiPost<T>(path: string, body: any): Promise<T> {
   } catch (error) {
     // Handle network errors (CORS, connection refused, etc.)
     if (error instanceof TypeError && error.message === "Failed to fetch") {
-      console.error("Network error:", {
-        url,
-        baseUrl,
-        path,
-        error: error.message
-      });
-      const apiUrl = getApiBaseUrl();
+      const apiUrl = getApiBaseUrl() || "http://127.0.0.1:8000";
       throw new Error(
-        `Не удалось подключиться к серверу. Проверьте, что API запущен на ${apiUrl} и CORS настроен правильно.`
+        `Не удалось подключиться к серверу. Запустите API: откройте терминал в папке apps/api и выполните: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 (адрес: ${apiUrl})`
       );
     }
     throw error;
@@ -215,9 +213,43 @@ export async function apiPut<T>(path: string, body: any): Promise<T> {
         path,
         error: error.message
       });
-      const apiUrl = getApiBaseUrl();
+      const apiUrl = getApiBaseUrl() || "http://127.0.0.1:8000";
       throw new Error(
-        `Не удалось подключиться к серверу. Проверьте, что API запущен на ${apiUrl} и CORS настроен правильно.`
+        `Не удалось подключиться к серверу. Запустите API: откройте терминал в папке apps/api и выполните: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 (адрес: ${apiUrl})`
+      );
+    }
+    throw error;
+  }
+}
+
+/**
+ * Make PATCH request to API
+ */
+export async function apiPatch<T>(path: string, body: any): Promise<T> {
+  const baseUrl = getApiBaseUrl();
+  const url = buildUrl(baseUrl, path);
+  
+  try {
+    const response = await fetch(url, {
+      method: "PATCH",
+      headers: {
+        "X-User-Id": getDevUserId(),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof TypeError && error.message === "Failed to fetch") {
+      const apiUrl = getApiBaseUrl() || "http://127.0.0.1:8000";
+      throw new Error(
+        `Не удалось подключиться к серверу. Запустите API: откройте терминал в папке apps/api и выполните: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 (адрес: ${apiUrl})`
       );
     }
     throw error;
@@ -254,9 +286,9 @@ export async function apiDelete<T>(path: string): Promise<T> {
         path,
         error: error.message
       });
-      const apiUrl = getApiBaseUrl();
+      const apiUrl = getApiBaseUrl() || "http://127.0.0.1:8000";
       throw new Error(
-        `Не удалось подключиться к серверу. Проверьте, что API запущен на ${apiUrl} и CORS настроен правильно.`
+        `Не удалось подключиться к серверу. Запустите API: откройте терминал в папке apps/api и выполните: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 (адрес: ${apiUrl})`
       );
     }
     throw error;

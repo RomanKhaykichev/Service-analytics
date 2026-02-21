@@ -37,7 +37,6 @@ interface ProductMapping {
 
 const reportTypes = [
   { id: "sales", label: "Отчет по продажам", hint: "sells-report" },
-  { id: "inventory", label: "Отчет по остаткам", hint: "left-out-report" },
   { id: "expenses", label: "Отчет по услугам", hint: "expenses-report" },
   { id: "storage", label: "Отчет по хранению", hint: "seller-storage-report" },
   { id: "inventory_old", label: "Остатки (старый формат)", hint: "left-out-report_old" },

@@ -324,33 +324,33 @@ export function ProductDetailView({
       : product.price * product.stock;
 
   const salesMetrics = [
-    { icon: <ShoppingCart className="w-4 h-4" />, label: "Заказы", value: formatQuantity(product.sales), subValue: formatCurrency(ordersValue), tooltip: "Цена Заказов = цена В обработке + цена Выкупы + цена Возвраты" },
-    { icon: <Truck className="w-4 h-4" />, label: "В обработке", value: formatQuantity(0), subValue: formatCurrency(processingValue), tooltip: "Заказы в процессе обработки" },
-    { icon: <Package className="w-4 h-4" />, label: "Выкупы", value: formatQuantity(completedQty), subValue: formatCurrency(completedValue), tooltip: "Успешно выкупленные заказы" },
-    { icon: <RotateCcw className="w-4 h-4" />, label: "Возвраты", value: formatQuantity(product.returns), subValue: product.returns > 0 ? `-${formatCurrency(returnsValueNum)}` : formatCurrency(0), tooltip: "Возвращённые товары" },
-    { icon: <Percent className="w-4 h-4" />, label: "Процент возврата заказов", value: formatPercent(returnRate), tooltip: "Доля возвращённых заказов от общего числа" },
-    { icon: <CreditCard className="w-4 h-4" />, label: "Средний чек", value: formatMoneyNoDecimals(averageCheck), tooltip: "Средняя сумма одного заказа" },
+    { icon: <ShoppingCart className="w-4 h-4" />, label: "Заказы", value: formatQuantity(product.sales), subValue: formatCurrency(ordersValue), tooltip: "Общее кол-во заказов за выбранный период." },
+    { icon: <Truck className="w-4 h-4" />, label: "В обработке", value: formatQuantity(0), subValue: formatCurrency(processingValue), tooltip: "Заказы по которым ожидается оплата." },
+    { icon: <Package className="w-4 h-4" />, label: "Выкупы", value: formatQuantity(completedQty), subValue: formatCurrency(completedValue), tooltip: "Заказы которые клиент забрал, и прошло 10 дней." },
+    { icon: <RotateCcw className="w-4 h-4" />, label: "Возвраты", value: formatQuantity(product.returns), subValue: product.returns > 0 ? `-${formatCurrency(returnsValueNum)}` : formatCurrency(0), tooltip: "Заказы которые клиент вернул или отменил." },
+    { icon: <Percent className="w-4 h-4" />, label: "Процент возврата заказов", value: formatPercent(returnRate), tooltip: "Отношение отменённых заказов к выкупленным заказам, выраженное в процентах." },
+    { icon: <CreditCard className="w-4 h-4" />, label: "Средний чек", value: formatMoneyNoDecimals(averageCheck), tooltip: "Средняя стоимость заказа за период." },
   ];
   const financeMetrics = [
-    { icon: <DollarSign className="w-4 h-4" />, label: "Выручка", value: formatCurrency(product.revenue), tooltip: "Выручка со статусом «завершен»" },
-    { icon: <TrendingDown className="w-4 h-4" />, label: "Расходы", value: formatCurrency(totalExpenses), tooltip: "Сумма всех расходов из блока Расходы." },
-    { icon: <Wallet className="w-4 h-4" />, label: "Прибыль", value: formatCurrency(product.profit), tooltip: "Выручка минус Расходы" },
-    { icon: <Target className="w-4 h-4" />, label: "Рентабельность продаж", value: formatPercent(salesProfitability), tooltip: "Прибыль / Выручка" },
-    { icon: <BarChart3 className="w-4 h-4" />, label: "Окупаемость инвестиций", value: formatPercent(roi), tooltip: "ROI = Прибыль / Расходы × 100%" },
-    { icon: <TrendingUp className="w-4 h-4" />, label: "Тренд выручки", value: formatTrend(revenueTrend), trend: (revenueTrend >= 0 ? "up" : "down") as const, trendValue: "", tooltip: "Сравнение выручки с аналогичным предыдущим периодом (как на Сводке, по данным товара)" },
-    { icon: <ArrowDown className="w-4 h-4" />, label: "Упущенная выручка", value: formatCurrency(product.lostRevenue), tooltip: "Потенциальная выручка от товаров без остатков" },
+    { icon: <DollarSign className="w-4 h-4" />, label: "Выручка", value: formatCurrency(product.revenue), tooltip: "Общая сумма денег, полученная вами от реализации товаров." },
+    { icon: <TrendingDown className="w-4 h-4" />, label: "Расходы", value: formatCurrency(totalExpenses), tooltip: "Сумма всех расходов, представленных во вкладке «Расходы» (услуги UZUM не учитываются)." },
+    { icon: <Wallet className="w-4 h-4" />, label: "Прибыль", value: formatCurrency(product.profit), tooltip: "Выручка – Расходы." },
+    { icon: <Target className="w-4 h-4" />, label: "Рентабельность продаж", value: formatPercent(salesProfitability), tooltip: "(Прибыль / Выручка) × 100. Показывает, какая часть выручки является прибылью." },
+    { icon: <BarChart3 className="w-4 h-4" />, label: "Окупаемость инвестиций", value: formatPercent(roi), tooltip: "(Прибыль / себестоимость товаров) × 100. Показывает, насколько выгодно вложение денег." },
+    { icon: <TrendingUp className="w-4 h-4" />, label: "Тренд выручки", value: formatTrend(revenueTrend), trend: (revenueTrend >= 0 ? "up" : "down") as const, trendValue: "", tooltip: "Сравнение выручки за выбранный текущий период с выручкой за аналогичный период ранее." },
+    { icon: <ArrowDown className="w-4 h-4" />, label: "Упущенная выручка", value: formatCurrency(product.lostRevenue), tooltip: "Потенциальная потеря выручки за период из-за отсутствия товаров на складе = (кол-во дней без товара) × (средняя выручка за день) для всех товаров." },
   ];
   const expenseMetrics = [
-    { icon: <Percent className="w-4 h-4" />, label: "Комиссия UZUM", value: formatCurrency(product.uzumCommission), tooltip: "Комиссия маркетплейса из отчёта о продажах" },
-    { icon: <Truck className="w-4 h-4" />, label: "Логистика UZUM", value: formatCurrency(product.uzumLogistics), tooltip: "Логистический сбор из отчёта о продажах" },
-    { icon: <Boxes className="w-4 h-4" />, label: "Себест. прод. тов.", value: formatCurrency(product.cogsTotal), tooltip: "Себестоимость × количество (со статусом завершен)" },
-    { icon: <Receipt className="w-4 h-4" />, label: "Налоги", value: formatCurrency(taxAmount), tooltip: `Налог с вкладки Сводка: Выручка × ${taxPercent}%` },
-    { icon: <Info className="w-4 h-4" />, label: "Доп. расходы", value: formatCurrency(productExtraExpenses), tooltip: "Расходы занесенные во вкладке Доп. расходы для этого товара (по наименованию)." },
+    { icon: <Percent className="w-4 h-4" />, label: "Комиссия UZUM", value: formatCurrency(product.uzumCommission), tooltip: "" },
+    { icon: <Truck className="w-4 h-4" />, label: "Логистика UZUM", value: formatCurrency(product.uzumLogistics), tooltip: "" },
+    { icon: <Boxes className="w-4 h-4" />, label: "Себест. прод. тов.", value: formatCurrency(product.cogsTotal), tooltip: "" },
+    { icon: <Receipt className="w-4 h-4" />, label: "Налоги", value: formatCurrency(taxAmount), tooltip: "" },
+    { icon: <Info className="w-4 h-4" />, label: "Доп. расходы", value: formatCurrency(productExtraExpenses), tooltip: "Расходы, указанные вами во вкладке «Доп. расходы»." },
   ];
   const warehouseMetrics = [
-    { icon: <Warehouse className="w-4 h-4" />, label: "Товаров на складе", value: formatQuantity(product.stock), tooltip: "Общее количество на стороне маркетплейса." },
-    { icon: <Tag className="w-4 h-4" />, label: "Себест. тов.", value: formatCurrency(stockCost), tooltip: "Товар на складе × себестоимость." },
-    { icon: <ShoppingBag className="w-4 h-4" />, label: "Рознич. цена", value: formatCurrency(stockRetail), tooltip: "Потенциальная сумма к получению за все остатки." },
+    { icon: <Warehouse className="w-4 h-4" />, label: "Товаров на складе", value: formatQuantity(product.stock), tooltip: "Кол-во товаров, хранящихся на складе UZUM для продажи по FBO." },
+    { icon: <Tag className="w-4 h-4" />, label: "Себест. тов.", value: formatCurrency(stockCost), tooltip: "" },
+    { icon: <ShoppingBag className="w-4 h-4" />, label: "Рознич. цена", value: formatCurrency(stockRetail), tooltip: "Стоимость товаров, хранящихся на складе UZUM, при продаже их по ценам маркетплейса." },
   ];
 
   return <div className="space-y-6">
