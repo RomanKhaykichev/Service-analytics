@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   Select,
   SelectContent,
@@ -81,14 +82,14 @@ interface Expense {
   comment: string;
 }
 
-const expenseTypes = [
-  "Самовыкуп",
-  "Зарплата",
-  "Внешняя реклама",
-  "Своя логистика",
-  "Упаковка",
-  "Аренда",
-  "Прочее",
+const expenseTypeOptions: { value: string; labelKey: string }[] = [
+  { value: "Самовыкуп", labelKey: "expense.typeSelfBuy" },
+  { value: "Зарплата", labelKey: "expense.typeSalary" },
+  { value: "Внешняя реклама", labelKey: "expense.typeExternalAds" },
+  { value: "Своя логистика", labelKey: "expense.typeOwnLogistics" },
+  { value: "Упаковка", labelKey: "expense.typePackaging" },
+  { value: "Аренда", labelKey: "expense.typeRent" },
+  { value: "Прочее", labelKey: "expense.typeOther" },
 ];
 
 interface ExtraExpensesResponse {
@@ -108,6 +109,7 @@ interface ExpensesViewProps {
 }
 
 export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProps) {
+  const { t } = useLanguage();
   const { shops, loading: shopsLoading } = useStorageShops();
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -487,23 +489,23 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
               <Info className="h-5 w-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div className="space-y-2">
-              <h3 className="font-semibold text-foreground">Как это работает?</h3>
+              <h3 className="font-semibold text-foreground">{t('expense.howItWorks')}</h3>
               <ul className="text-sm text-muted-foreground space-y-1.5">
                 <li className="flex items-start gap-2">
                   <span className="text-blue-600 dark:text-blue-400">•</span>
-                  <span>Здесь можно вручную добавить любые дополнительные расходы, которые не передаются по выгрузке в отчетах или через API из маркетплейса</span>
+                  <span>{t('expense.howItWorks1')}</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-blue-600 dark:text-blue-400">•</span>
-                  <span>Примеры расходов - самовыкупы, зарплата, внешняя реклама, своя логистика и т.д.</span>
+                  <span>{t('expense.howItWorks2')}</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-blue-600 dark:text-blue-400">•</span>
-                  <span>Расходы будут учитываться во всех отчетах с финансами для выбранной даты и магазина/товара (если указаны)</span>
+                  <span>{t('expense.howItWorks3')}</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-blue-600 dark:text-blue-400">•</span>
-                  <span className="text-muted-foreground/80 italic">Если не указаны — расходы будут добавлены в месячный отчет в общем</span>
+                  <span className="text-muted-foreground/80 italic">{t('expense.howItWorks4')}</span>
                 </li>
               </ul>
             </div>
@@ -521,26 +523,26 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
             <Table>
               <TableHeader className="sticky top-0 z-10 [&_tr]:bg-violet-50/80 [&_tr]:dark:bg-violet-950/30 [&_th]:bg-violet-50/80 [&_th]:dark:bg-violet-950/30">
                 <TableRow className="bg-violet-50/80 dark:bg-violet-950/30 border-border">
-                  <SortableHeader column="expense_date" className="w-auto whitespace-nowrap">Дата</SortableHeader>
-                  <SortableHeader column="category" className="w-auto whitespace-nowrap">Тип</SortableHeader>
-                  <SortableHeader column="amount_sum" className="w-auto whitespace-nowrap">Сумма</SortableHeader>
-                  <SortableHeader column="name">Наименование</SortableHeader>
-                  <SortableHeader column="shop_name">Магазин</SortableHeader>
-                  <TableHead className="bg-violet-50/80 dark:bg-violet-950/30">Комментарий</TableHead>
-                  <TableHead className="w-[100px] bg-violet-50/80 dark:bg-violet-950/30">Действия</TableHead>
+                  <SortableHeader column="expense_date" className="w-auto whitespace-nowrap">{t('expense.date')}</SortableHeader>
+                  <SortableHeader column="category" className="w-auto whitespace-nowrap">{t('expense.type')}</SortableHeader>
+                  <SortableHeader column="amount_sum" className="w-auto whitespace-nowrap">{t('expense.amount')}</SortableHeader>
+                  <SortableHeader column="name">{t('table.productName')}</SortableHeader>
+                  <SortableHeader column="shop_name">{t('table.shop')}</SortableHeader>
+                  <TableHead className="bg-violet-50/80 dark:bg-violet-950/30">{t('product.comment')}</TableHead>
+                  <TableHead className="w-[100px] bg-violet-50/80 dark:bg-violet-950/30">{t('expense.actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {expensesLoading ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      Загрузка...
+                      {t('expense.loading')}
                     </TableCell>
                   </TableRow>
                 ) : sortedExpenses.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      Нет добавленных расходов
+                      {t('expense.noExpensesAdded')}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -617,7 +619,7 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
                   type="button"
                 >
                   <Plus className="h-4 w-4 mr-2" />
-                  Добавить расход
+                  {t('expense.addExpense')}
                 </Button>
               </DialogTrigger>
               <DialogContent 
@@ -631,15 +633,15 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
                 }}
               >
                 <DialogHeader>
-                  <DialogTitle>{editingExpense ? "Редактировать расход" : "Добавить расход"}</DialogTitle>
+                  <DialogTitle>{editingExpense ? t('expense.editExpense') : t('expense.addExpense')}</DialogTitle>
                   <DialogDescription>
-                    {editingExpense ? "Измените данные расхода" : "Заполните форму для добавления нового расхода"}
+                    {editingExpense ? t('expense.editDesc') : t('expense.addDesc')}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   {/* Date */}
                   <div className="grid gap-2">
-                    <Label>Дата</Label>
+                    <Label>{t('expense.date')}</Label>
                     <Popover 
                       open={calendarOpen} 
                       onOpenChange={setCalendarOpen}
@@ -655,7 +657,7 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
                           <CalendarIcon className="mr-2 h-4 w-4" />
                           {newExpense.date
                             ? format(newExpense.date, "dd.MM.yyyy", { locale: ru })
-                            : "Выберите дату"}
+                            : t('expense.selectDate')}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent 
@@ -682,7 +684,7 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
 
                   {/* Type */}
                   <div className="grid gap-2">
-                    <Label>Тип расхода</Label>
+                    <Label>{t('expense.typeLabel')}</Label>
                     <Select
                       value={newExpense.type}
                       onValueChange={(value) =>
@@ -690,12 +692,12 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
                       }
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Выберите тип" />
+                        <SelectValue placeholder={t('expense.selectType')} />
                       </SelectTrigger>
                       <SelectContent>
-                        {expenseTypes.map((type) => (
-                          <SelectItem key={type} value={type}>
-                            {type}
+                        {expenseTypeOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {t(opt.labelKey)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -704,7 +706,7 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
 
                   {/* Amount */}
                   <div className="grid gap-2">
-                    <Label>Сумма</Label>
+                    <Label>{t('expense.amount')}</Label>
                     <Input
                       type="text"
                       placeholder="0"
@@ -721,7 +723,7 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
 
                   {/* Shop: список из seller-storage (колонка «Магазин»); при редактировании добавляем текущий магазин в опции */}
                   <div className="grid gap-2">
-                    <Label>Магазин</Label>
+                    <Label>{t('table.shop')}</Label>
                     <Select
                       value={
                         shopsLoading
@@ -734,14 +736,14 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
                       }}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Выберите магазин (опционально)" />
+                        <SelectValue placeholder={t('expense.selectShopOptional')} />
                       </SelectTrigger>
                       <SelectContent>
                         {shopsLoading ? (
-                          <SelectItem value="__loading__" disabled>Загрузка...</SelectItem>
+                          <SelectItem value="__loading__" disabled>{t('expense.loading')}</SelectItem>
                         ) : (
                           <>
-                            <SelectItem value="__none__">Не выбран</SelectItem>
+                            <SelectItem value="__none__">{t('expense.notSelected')}</SelectItem>
                             {(shops ?? []).filter((s) => s?.shop_id != null && String(s.shop_id).trim() !== "").map((shop) => (
                               <SelectItem key={String(shop.shop_id)} value={String(shop.shop_id)}>
                                 {shop.shop_name ?? shop.shop_id ?? ""}
@@ -753,7 +755,7 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
                               </SelectItem>
                             )}
                             {(shops ?? []).length === 0 && !editingExpense?.shop_id ? (
-                              <SelectItem value="__empty__" disabled>Нет доступных магазинов (загрузите seller-storage)</SelectItem>
+                              <SelectItem value="__empty__" disabled>{t('expense.noShopsAvailable')}</SelectItem>
                             ) : null}
                           </>
                         )}
@@ -763,7 +765,7 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
 
                   {/* Name: product name from left-out-report_old with dropdown selection */}
                   <div className="grid gap-2">
-                    <Label>Наименование</Label>
+                    <Label>{t('table.productName')}</Label>
                     <Select
                       value={newExpense.name === "" || newExpense.name == null ? "__none__" : newExpense.name}
                       onValueChange={(value) => {
@@ -772,10 +774,10 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
                       }}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Выберите наименование (опционально)" />
+                        <SelectValue placeholder={t('expense.selectNameOptional')} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__none__">Не выбрано</SelectItem>
+                        <SelectItem value="__none__">{t('expense.notSelectedItem')}</SelectItem>
                         {productNames.length > 0 ? (
                           productNames.map((name) => (
                             <SelectItem key={name} value={name}>
@@ -784,7 +786,7 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
                           ))
                         ) : (
                           <SelectItem value="__empty__" disabled>
-                            Нет доступных наименований (загрузите left-out-report_old)
+                            {t('expense.noNamesAvailable')}
                           </SelectItem>
                         )}
                       </SelectContent>
@@ -793,9 +795,9 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
 
                   {/* Comment */}
                   <div className="grid gap-2">
-                    <Label>Комментарий</Label>
+                    <Label>{t('product.comment')}</Label>
                     <Textarea
-                      placeholder="Добавьте комментарий (опционально)"
+                      placeholder={t('expense.commentOptional')}
                       value={newExpense.comment}
                       onChange={(e) =>
                         setNewExpense({ ...newExpense, comment: e.target.value })
@@ -810,13 +812,13 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
                     onClick={handleDialogClose}
                     disabled={createMutation.isPending || updateMutation.isPending}
                   >
-                    Отмена
+                    {t('action.cancel')}
                   </Button>
                   <Button 
                     onClick={handleSaveExpense}
                     disabled={createMutation.isPending || updateMutation.isPending}
                   >
-                    {editingExpense ? "Сохранить" : "Добавить"}
+                    {editingExpense ? t('expense.save') : t('expense.add')}
                   </Button>
                 </div>
               </DialogContent>

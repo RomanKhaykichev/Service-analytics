@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { CalendarIcon } from "lucide-react";
 import { formatNumber, formatCurrency, formatMoneyNoDecimals } from "@/lib/formatters";
+import { useLanguage } from "@/contexts/LanguageContext";
 interface ChartComment {
   id: string;
   date: string;
@@ -36,6 +37,7 @@ export function RevenueDailyChart({
   hideAvgCheck = false,
   data
 }: RevenueDailyChartProps) {
+  const { t } = useLanguage();
   const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
   const [comments, setComments] = useState<ChartComment[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -195,7 +197,7 @@ export function RevenueDailyChart({
   };
   return <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-base font-semibold text-foreground">Продажи по дням</h3>
+        <h3 className="text-base font-semibold text-foreground">{t('chart.salesByDay')}</h3>
         {showCommentButton && (
           <Button
             variant="outline"
@@ -204,7 +206,7 @@ export function RevenueDailyChart({
             className="flex items-center gap-2"
           >
             <MessageSquarePlus className="h-4 w-4" />
-            Добавить комментарий
+            {t('chart.addComment')}
           </Button>
         )}
       </div>
@@ -234,7 +236,7 @@ export function RevenueDailyChart({
                 stroke: "hsl(var(--border))"
               }} 
               label={{
-                value: "Заказы, шт",
+                value: t('chart.ordersPcs'),
                 angle: -90,
                 position: "insideLeft",
                 style: {
@@ -255,7 +257,7 @@ export function RevenueDailyChart({
               }} 
               tickFormatter={(value) => (value / 1_000_000).toFixed(1)}
               label={{
-                value: "Выручка, млн сум",
+                value: t('chart.revenueMlnSum'),
                 angle: 90,
                 position: "insideRight",
                 style: {
@@ -274,27 +276,29 @@ export function RevenueDailyChart({
                 if (value === null || value === undefined || Number.isNaN(value)) {
                   return ["—", name];
                 }
-                if (name === "Выручка" || entry?.dataKey === "revenueValue") {
+                if (entry?.dataKey === "revenueValue") {
                   const payload = entry?.payload;
                   const v = payload?.revenueValue ?? value;
-                  return [`${v.toLocaleString("ru-RU")} сум`, "Выручка"];
+                  return [`${v.toLocaleString("ru-RU")} сум`, t('summary.finance.revenue')];
                 }
-                if (name === "Прибыль" || entry?.dataKey === "profitValue") {
+                if (entry?.dataKey === "profitValue") {
                   const payload = entry?.payload;
                   const v = payload?.profitValue ?? value;
-                  return [`${Math.round(v).toLocaleString("ru-RU")} сум`, "Прибыль"];
+                  return [`${Math.round(v).toLocaleString("ru-RU")} сум`, t('summary.finance.profit')];
                 }
-                if (name === "Заказы" || entry?.dataKey === "ordersClamped") {
+                if (entry?.dataKey === "ordersClamped") {
                   const payload = entry?.payload;
                   const ordersOriginal = payload?.ordersOriginal ?? value;
-                  if (ordersOriginal > 48) return [`48+ (реально: ${ordersOriginal} шт)`, "Заказы"];
-                  return [`${ordersOriginal} шт`, "Заказы"];
+                  const pcs = t('common.pieces');
+                  if (ordersOriginal > 48) return [`48+ (${t('chart.reallyOrders')}: ${ordersOriginal} ${pcs})`, t('summary.sales.orders')];
+                  return [`${ordersOriginal} ${pcs}`, t('summary.sales.orders')];
                 }
-                if (name === "Возвраты" || entry?.dataKey === "returnsClamped") {
+                if (entry?.dataKey === "returnsClamped") {
                   const payload = entry?.payload;
                   const returnsOriginal = payload?.returnsOriginal ?? value;
-                  if (returnsOriginal > 48) return [`48+ (реально: ${returnsOriginal} шт)`, "Возвраты"];
-                  return [`${returnsOriginal} шт`, "Возвраты"];
+                  const pcs = t('common.pieces');
+                  if (returnsOriginal > 48) return [`48+ (${t('chart.reallyOrders')}: ${returnsOriginal} ${pcs})`, t('summary.sales.returns')];
+                  return [`${returnsOriginal} ${pcs}`, t('summary.sales.returns')];
                 }
                 return [value, name];
               }} 
@@ -304,7 +308,7 @@ export function RevenueDailyChart({
               yAxisId="orders" 
               type="monotone" 
               dataKey="ordersClamped"
-              name="Заказы"
+              name={t('summary.sales.orders')}
               stroke="hsl(var(--chart-4))" 
               strokeWidth={2} 
               dot={false} 
@@ -318,7 +322,7 @@ export function RevenueDailyChart({
               yAxisId="orders" 
               type="monotone" 
               dataKey="returnsClamped"
-              name="Возвраты"
+              name={t('summary.sales.returns')}
               stroke="hsl(var(--chart-2))" 
               strokeWidth={2} 
               dot={false} 
@@ -330,7 +334,7 @@ export function RevenueDailyChart({
               yAxisId="revenue" 
               type="monotone" 
               dataKey="revenueValue"
-              name="Выручка"
+              name={t('summary.finance.revenue')}
               stroke="hsl(var(--destructive))" 
               strokeWidth={2} 
               dot={false} 
@@ -343,7 +347,7 @@ export function RevenueDailyChart({
               yAxisId="revenue" 
               type="monotone" 
               dataKey="profitValue"
-              name="Прибыль"
+              name={t('summary.finance.profit')}
               stroke="hsl(var(--chart-3))" 
               strokeWidth={2} 
               dot={false} 
@@ -384,7 +388,7 @@ export function RevenueDailyChart({
         </ResponsiveContainer>
         ) : (
           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-            Нет данных
+            {t('chart.noData')}
           </div>
         )}
       </div>
@@ -398,14 +402,14 @@ export function RevenueDailyChart({
           
           <div className="space-y-4 py-4">
             <div>
-              <p className="text-sm text-muted-foreground mb-2">Дата</p>
+              <p className="text-sm text-muted-foreground mb-2">{t('chart.date')}</p>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !selectedDate && "text-muted-foreground")}>
                     <CalendarIcon className="mr-2 h-4 w-4" />
                     {selectedDate ? format(selectedDate, "PPP", {
                     locale: ru
-                  }) : <span>Выберите дату</span>}
+                  }) : <span>{t('chart.selectDate')}</span>}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -416,9 +420,9 @@ export function RevenueDailyChart({
             
             <div>
               <p className="text-sm text-muted-foreground mb-2">
-                Комментарий ({commentText.length}/200)
+                {t('chart.comment')} ({commentText.length}/200)
               </p>
-              <Textarea placeholder="Введите комментарий..." value={commentText} onChange={e => {
+              <Textarea placeholder={t('product.commentPlaceholder')} value={commentText} onChange={e => {
               if (e.target.value.length <= 200) {
                 setCommentText(e.target.value);
               }
@@ -428,10 +432,10 @@ export function RevenueDailyChart({
           
           <DialogFooter className="flex justify-between w-full">
             <Button variant="destructive" onClick={handleDelete}>
-              Удалить
+              {t('chart.delete')}
             </Button>
             <Button onClick={handleSave} disabled={!selectedDate || !commentText.trim()}>
-              Готово
+              {t('chart.done')}
             </Button>
           </DialogFooter>
         </DialogContent>

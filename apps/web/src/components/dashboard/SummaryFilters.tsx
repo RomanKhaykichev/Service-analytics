@@ -22,6 +22,7 @@ import {
 import { isValidRange } from "@/lib/dateRange";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface Shop {
   shop_id: string;
@@ -74,6 +75,7 @@ export function SummaryFilters({
   defaultDateFrom,
   defaultDateTo,
 }: SummaryFiltersProps) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [draftFrom, setDraftFrom] = useState(dateFrom);
   const [draftTo, setDraftTo] = useState(dateTo);
@@ -88,7 +90,7 @@ export function SummaryFilters({
   const displayLabel =
     dateFrom && dateTo
       ? `${format(new Date(dateFrom), "dd.MM.yyyy", { locale: ru })} – ${format(new Date(dateTo), "dd.MM.yyyy", { locale: ru })}`
-      : "Период";
+      : t('filter.period');
 
   const handleOpen = (isOpen: boolean) => {
     if (isOpen) {
@@ -166,10 +168,10 @@ export function SummaryFilters({
         <Select value={store} onValueChange={onStoreChange}>
           <SelectTrigger className="w-[180px] bg-accent text-accent-foreground border-0 hover:bg-accent/90">
             <Store className="w-4 h-4 mr-2" />
-            <SelectValue placeholder="Все магазины" />
+            <SelectValue placeholder={t('filter.allStores')} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Все магазины</SelectItem>
+            <SelectItem value="all">{t('filter.allStores')}</SelectItem>
             {shops.map((shop) => (
               <SelectItem key={shop.shop_id} value={shop.shop_id}>
                 {shop.shop_name ?? shop.shop_id}
@@ -188,7 +190,7 @@ export function SummaryFilters({
               <span className="inline-block">{periodButton}</span>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Нет данных sells-report</p>
+              <p>{t('filter.noSellsData')}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -200,7 +202,7 @@ export function SummaryFilters({
           <PopoverContent className="w-auto p-4" align="start">
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-xs text-muted-foreground">Быстрый период</div>
+                <div className="text-xs text-muted-foreground">{t('filter.quickPeriod')}</div>
                 <div className="flex items-center gap-2">
                   <Button
                     size="sm"
@@ -229,7 +231,7 @@ export function SummaryFilters({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Label htmlFor="period-from" className="text-xs w-8 shrink-0">От</Label>
+                <Label htmlFor="period-from" className="text-xs w-8 shrink-0">{t('filter.from')}</Label>
                 <Input
                   id="period-from"
                   type="date"
@@ -241,7 +243,7 @@ export function SummaryFilters({
                 />
               </div>
               <div className="flex items-center gap-2">
-                <Label htmlFor="period-to" className="text-xs w-8 shrink-0">До</Label>
+                <Label htmlFor="period-to" className="text-xs w-8 shrink-0">{t('filter.to')}</Label>
                 <Input
                   id="period-to"
                   type="date"
@@ -255,16 +257,16 @@ export function SummaryFilters({
               {!canApply && draftFrom && draftTo && (
                 <p className="text-xs text-destructive">
                   {draftFrom > draftTo
-                    ? "Дата «От» не может быть позже «До»"
-                    : "Выберите даты в диапазоне данных"}
+                    ? t('filter.dateErrorOrder')
+                    : t('filter.dateErrorRange')}
                 </p>
               )}
               <div className="flex items-center gap-2 pt-2">
                 <Button size="sm" onClick={handleApply} disabled={!canApply}>
-                  Применить
+                  {t('filter.apply')}
                 </Button>
                 <Button size="sm" variant="outline" onClick={handleReset}>
-                  Сбросить
+                  {t('filter.reset')}
                 </Button>
               </div>
             </div>
@@ -283,17 +285,17 @@ export function SummaryFilters({
             )}
           >
             <BarChart3 className="w-4 h-4 mr-2 shrink-0" />
-            <SelectValue placeholder="По дням" />
+            <SelectValue placeholder={t('filter.viewDay')} />
           </SelectTrigger>
           <SelectContent className="min-w-[160px]">
             <SelectItem value="day" className="font-normal">
-              По дням
+              {t('filter.viewDay')}
             </SelectItem>
             <SelectItem value="week" className="font-normal">
-              По неделям
+              {t('filter.viewWeek')}
             </SelectItem>
             <SelectItem value="month" className="font-normal">
-              По месяцам
+              {t('filter.viewMonth')}
             </SelectItem>
           </SelectContent>
         </Select>

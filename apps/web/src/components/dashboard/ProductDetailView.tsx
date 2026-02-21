@@ -11,6 +11,7 @@ import { RevenueDailyChart } from "./RevenueDailyChart";
 import { useRevenueDaily } from "@/hooks/useRevenueDaily";
 import { formatCurrency, formatQuantity, formatPercent, formatTrend, formatMoneyNoDecimals } from "@/lib/formatters";
 import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
+import { useLanguage } from "@/contexts/LanguageContext";
 interface ProductVariant {
   char1: string; // Хар-ка 1 = 3 часть из SKU
   char2: string; // Хар-ка 2 = 4 часть из SKU
@@ -233,7 +234,7 @@ export function ProductDetailView({
     onError: (error: any) => {
       console.error("Error saving comment:", error);
       const errorMessage = error?.message || error?.toString() || "Неизвестная ошибка";
-      toast.error(`Ошибка при сохранении комментария: ${errorMessage}`);
+      toast.error(t('product.saveCommentError').replace('{0}', errorMessage));
     },
   });
 
@@ -323,41 +324,42 @@ export function ProductDetailView({
         )
       : product.price * product.stock;
 
+  const { t } = useLanguage();
   const salesMetrics = [
-    { icon: <ShoppingCart className="w-4 h-4" />, label: "Заказы", value: formatQuantity(product.sales), subValue: formatCurrency(ordersValue), tooltip: "Общее кол-во заказов за выбранный период." },
-    { icon: <Truck className="w-4 h-4" />, label: "В обработке", value: formatQuantity(0), subValue: formatCurrency(processingValue), tooltip: "Заказы по которым ожидается оплата." },
-    { icon: <Package className="w-4 h-4" />, label: "Выкупы", value: formatQuantity(completedQty), subValue: formatCurrency(completedValue), tooltip: "Заказы которые клиент забрал, и прошло 10 дней." },
-    { icon: <RotateCcw className="w-4 h-4" />, label: "Возвраты", value: formatQuantity(product.returns), subValue: product.returns > 0 ? `-${formatCurrency(returnsValueNum)}` : formatCurrency(0), tooltip: "Заказы которые клиент вернул или отменил." },
-    { icon: <Percent className="w-4 h-4" />, label: "Процент возврата заказов", value: formatPercent(returnRate), tooltip: "Отношение отменённых заказов к выкупленным заказам, выраженное в процентах." },
-    { icon: <CreditCard className="w-4 h-4" />, label: "Средний чек", value: formatMoneyNoDecimals(averageCheck), tooltip: "Средняя стоимость заказа за период." },
+    { icon: <ShoppingCart className="w-4 h-4" />, label: t('summary.sales.orders'), value: formatQuantity(product.sales), subValue: formatCurrency(ordersValue), tooltip: t('summary.sales.ordersTooltip') },
+    { icon: <Truck className="w-4 h-4" />, label: t('summary.sales.processing'), value: formatQuantity(0), subValue: formatCurrency(processingValue), tooltip: t('summary.sales.processingTooltip') },
+    { icon: <Package className="w-4 h-4" />, label: t('summary.sales.completed'), value: formatQuantity(completedQty), subValue: formatCurrency(completedValue), tooltip: t('summary.sales.completedTooltip') },
+    { icon: <RotateCcw className="w-4 h-4" />, label: t('summary.sales.returns'), value: formatQuantity(product.returns), subValue: product.returns > 0 ? `-${formatCurrency(returnsValueNum)}` : formatCurrency(0), tooltip: t('summary.sales.returnsTooltip') },
+    { icon: <Percent className="w-4 h-4" />, label: t('summary.sales.returnRate'), value: formatPercent(returnRate), tooltip: t('summary.sales.returnRateTooltip') },
+    { icon: <CreditCard className="w-4 h-4" />, label: t('summary.sales.averageCheck'), value: formatMoneyNoDecimals(averageCheck), tooltip: t('summary.sales.averageCheckTooltip') },
   ];
   const financeMetrics = [
-    { icon: <DollarSign className="w-4 h-4" />, label: "Выручка", value: formatCurrency(product.revenue), tooltip: "Общая сумма денег, полученная вами от реализации товаров." },
-    { icon: <TrendingDown className="w-4 h-4" />, label: "Расходы", value: formatCurrency(totalExpenses), tooltip: "Сумма всех расходов, представленных во вкладке «Расходы» (услуги UZUM не учитываются)." },
-    { icon: <Wallet className="w-4 h-4" />, label: "Прибыль", value: formatCurrency(product.profit), tooltip: "Выручка – Расходы." },
-    { icon: <Target className="w-4 h-4" />, label: "Рентабельность продаж", value: formatPercent(salesProfitability), tooltip: "(Прибыль / Выручка) × 100. Показывает, какая часть выручки является прибылью." },
-    { icon: <BarChart3 className="w-4 h-4" />, label: "Окупаемость инвестиций", value: formatPercent(roi), tooltip: "(Прибыль / себестоимость товаров) × 100. Показывает, насколько выгодно вложение денег." },
-    { icon: <TrendingUp className="w-4 h-4" />, label: "Тренд выручки", value: formatTrend(revenueTrend), trend: (revenueTrend >= 0 ? "up" : "down") as const, trendValue: "", tooltip: "Сравнение выручки за выбранный текущий период с выручкой за аналогичный период ранее." },
-    { icon: <ArrowDown className="w-4 h-4" />, label: "Упущенная выручка", value: formatCurrency(product.lostRevenue), tooltip: "Потенциальная потеря выручки за период из-за отсутствия товаров на складе = (кол-во дней без товара) × (средняя выручка за день) для всех товаров." },
+    { icon: <DollarSign className="w-4 h-4" />, label: t('summary.finance.revenue'), value: formatCurrency(product.revenue), tooltip: t('summary.finance.revenueTooltip') },
+    { icon: <TrendingDown className="w-4 h-4" />, label: t('summary.finance.expenses'), value: formatCurrency(totalExpenses), tooltip: t('summary.finance.expensesTooltip') },
+    { icon: <Wallet className="w-4 h-4" />, label: t('summary.finance.profit'), value: formatCurrency(product.profit), tooltip: t('summary.finance.profitTooltip') },
+    { icon: <Target className="w-4 h-4" />, label: t('summary.finance.salesProfitability'), value: formatPercent(salesProfitability), tooltip: t('summary.finance.salesProfitabilityTooltip') },
+    { icon: <BarChart3 className="w-4 h-4" />, label: t('summary.finance.roi'), value: formatPercent(roi), tooltip: t('summary.finance.roiTooltip') },
+    { icon: <TrendingUp className="w-4 h-4" />, label: t('summary.finance.revenueTrend'), value: formatTrend(revenueTrend), trend: (revenueTrend >= 0 ? "up" : "down") as const, trendValue: "", tooltip: t('summary.finance.revenueTrendTooltip') },
+    { icon: <ArrowDown className="w-4 h-4" />, label: t('summary.finance.lostRevenue'), value: formatCurrency(product.lostRevenue), tooltip: t('summary.finance.lostRevenueTooltip') },
   ];
   const expenseMetrics = [
-    { icon: <Percent className="w-4 h-4" />, label: "Комиссия UZUM", value: formatCurrency(product.uzumCommission), tooltip: "" },
-    { icon: <Truck className="w-4 h-4" />, label: "Логистика UZUM", value: formatCurrency(product.uzumLogistics), tooltip: "" },
-    { icon: <Boxes className="w-4 h-4" />, label: "Себест. прод. тов.", value: formatCurrency(product.cogsTotal), tooltip: "" },
-    { icon: <Receipt className="w-4 h-4" />, label: "Налоги", value: formatCurrency(taxAmount), tooltip: "" },
-    { icon: <Info className="w-4 h-4" />, label: "Доп. расходы", value: formatCurrency(productExtraExpenses), tooltip: "Расходы, указанные вами во вкладке «Доп. расходы»." },
+    { icon: <Percent className="w-4 h-4" />, label: t('summary.expense.commissionUzum'), value: formatCurrency(product.uzumCommission), tooltip: "" },
+    { icon: <Truck className="w-4 h-4" />, label: t('summary.expense.logisticsUzum'), value: formatCurrency(product.uzumLogistics), tooltip: "" },
+    { icon: <Boxes className="w-4 h-4" />, label: t('summary.expense.productCost'), value: formatCurrency(product.cogsTotal), tooltip: "" },
+    { icon: <Receipt className="w-4 h-4" />, label: t('summary.expense.taxes'), value: formatCurrency(taxAmount), tooltip: "" },
+    { icon: <Info className="w-4 h-4" />, label: t('summary.expense.extraExpenses'), value: formatCurrency(productExtraExpenses), tooltip: t('summary.expense.extraExpensesTooltip') },
   ];
   const warehouseMetrics = [
-    { icon: <Warehouse className="w-4 h-4" />, label: "Товаров на складе", value: formatQuantity(product.stock), tooltip: "Кол-во товаров, хранящихся на складе UZUM для продажи по FBO." },
-    { icon: <Tag className="w-4 h-4" />, label: "Себест. тов.", value: formatCurrency(stockCost), tooltip: "" },
-    { icon: <ShoppingBag className="w-4 h-4" />, label: "Рознич. цена", value: formatCurrency(stockRetail), tooltip: "Стоимость товаров, хранящихся на складе UZUM, при продаже их по ценам маркетплейса." },
+    { icon: <Warehouse className="w-4 h-4" />, label: t('summary.warehouse.stock'), value: formatQuantity(product.stock), tooltip: t('summary.warehouse.stockTooltip') },
+    { icon: <Tag className="w-4 h-4" />, label: t('summary.warehouse.cost'), value: formatCurrency(stockCost), tooltip: "" },
+    { icon: <ShoppingBag className="w-4 h-4" />, label: t('summary.warehouse.retailPrice'), value: formatCurrency(stockRetail), tooltip: t('summary.warehouse.retailPriceTooltip') },
   ];
 
   return <div className="space-y-6">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-1 text-sm">
         <button onClick={onBack} className="text-primary hover:text-primary/80 transition-colors font-medium">
-          Товары
+          {t('product.products')}
         </button>
         <ChevronRight className="w-4 h-4 text-muted-foreground" />
         <span className="text-foreground font-medium truncate max-w-[300px]">
@@ -370,14 +372,14 @@ export function ProductDetailView({
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-2">
             <PackageIcon className="w-5 h-5 text-primary" />
-            <h2 className="text-lg font-semibold text-foreground">ТОВАР</h2>
+            <h2 className="text-lg font-semibold text-foreground">{t('product.productTitle')}</h2>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-400">
-              Маржинальность: {marginPercentAllTime.toFixed(1)}%
+              {t('product.marginality')}: {marginPercentAllTime.toFixed(1)}%
             </span>
             <span className="inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-400">
-              От общей выручки: {revenueSharePercentAllTime.toFixed(1)}%
+              {t('product.revenueShare')}: {revenueSharePercentAllTime.toFixed(1)}%
             </span>
           </div>
         </div>
@@ -386,15 +388,15 @@ export function ProductDetailView({
           {/* Left Part - Product Details */}
           <div className="space-y-4">
             <div>
-              <span className="text-sm text-muted-foreground">Название</span>
+              <span className="text-sm text-muted-foreground">{t('product.name')}</span>
               <p className="text-foreground font-medium">{product.name}</p>
             </div>
             <div>
-              <span className="text-sm text-muted-foreground">Тип товара</span>
+              <span className="text-sm text-muted-foreground">{t('product.productType')}</span>
               <p className="text-foreground font-medium">{getProductType()}</p>
             </div>
             <div>
-              <span className="text-sm text-muted-foreground">ID товара</span>
+              <span className="text-sm text-muted-foreground">{t('product.productId')}</span>
               <p className="text-foreground font-medium font-mono">{product.id}</p>
             </div>
             
@@ -403,14 +405,14 @@ export function ProductDetailView({
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <MessageSquare className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Комментарий</span>
+                  <span className="text-sm text-muted-foreground">{t('product.comment')}</span>
                 </div>
                 <span className={`text-xs ${comment.length > 120 ? "text-destructive" : "text-muted-foreground"}`}>
                   {comment.length}/120
                 </span>
               </div>
               <Textarea 
-                placeholder="Оставьте комментарий к товару..." 
+                placeholder={t('product.commentPlaceholder')} 
                 value={comment} 
                 onChange={e => {
                   const newValue = e.target.value;
@@ -427,7 +429,7 @@ export function ProductDetailView({
                 disabled={saveCommentMutation.isPending}
                 onClick={handleSaveComment}
               >
-                {saveCommentMutation.isPending ? "Сохранение..." : "Сохранить"}
+                {saveCommentMutation.isPending ? t('product.saving') : t('product.save')}
               </Button>
             </div>
           </div>
@@ -438,15 +440,15 @@ export function ProductDetailView({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border">
-                    <th colSpan={3} className="px-3 py-2 text-left text-muted-foreground font-medium">Параметры товара</th>
-                    <th className="px-3 py-2 text-center text-muted-foreground font-medium">Заказы</th>
-                    <th className="px-3 py-2 text-center text-muted-foreground font-medium">Остатки</th>
-                    <th className="px-3 py-2 text-center text-muted-foreground font-medium">Габ. группа</th>
-                    <th className="px-3 py-2 text-center text-muted-foreground font-medium">Штрихкод</th>
+                    <th colSpan={3} className="px-3 py-2 text-left text-muted-foreground font-medium">{t('product.params')}</th>
+                    <th className="px-3 py-2 text-center text-muted-foreground font-medium">{t('product.orders')}</th>
+                    <th className="px-3 py-2 text-center text-muted-foreground font-medium">{t('product.stock')}</th>
+                    <th className="px-3 py-2 text-center text-muted-foreground font-medium">{t('product.sizeGroup')}</th>
+                    <th className="px-3 py-2 text-center text-muted-foreground font-medium">{t('product.barcode')}</th>
                     <th className="px-3 py-2 text-center text-muted-foreground font-medium">
                       <div className="flex flex-col items-center">
-                        <span>Хранение</span>
-                        <span className="text-xs">сут/сум</span>
+                        <span>{t('product.storage')}</span>
+                        <span className="text-xs">{t('product.storageDaySum')}</span>
                       </div>
                     </th>
                   </tr>
@@ -484,7 +486,7 @@ export function ProductDetailView({
                   ) : (
                     <tr>
                       <td colSpan={8} className="px-3 py-4 text-center text-muted-foreground">
-                        Нет вариантов товара
+                        {t('product.noVariants')}
                       </td>
                     </tr>
                   )}
@@ -492,7 +494,7 @@ export function ProductDetailView({
                 {productVariants.length > 0 && (
                   <tfoot>
                     <tr className="border-t border-border bg-muted/50">
-                      <td colSpan={3} className="px-3 py-2 text-left text-foreground font-medium">Всего</td>
+                      <td colSpan={3} className="px-3 py-2 text-left text-foreground font-medium">{t('product.total')}</td>
                       <td className="px-3 py-2 text-center text-foreground font-semibold">
                         {formatNumber(productVariants.reduce((sum, v) => sum + v.sales_qty, 0))}
                       </td>
@@ -515,10 +517,10 @@ export function ProductDetailView({
 
       {/* 4 KPI Blocks */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <SummaryBlock title="ПРОДАЖИ" titleColor="text-chart-4" metrics={salesMetrics} />
-        <SummaryBlock title="ФИНАНСЫ" titleColor="text-warning" metrics={financeMetrics} />
-        <SummaryBlock title="РАСХОДЫ" titleColor="text-destructive" metrics={expenseMetrics} />
-        <SummaryBlock title="СКЛАД" titleColor="text-warning" metrics={warehouseMetrics} />
+        <SummaryBlock title={t('summary.blockSales')} titleColor="text-chart-4" metrics={salesMetrics} />
+        <SummaryBlock title={t('summary.blockFinances')} titleColor="text-warning" metrics={financeMetrics} />
+        <SummaryBlock title={t('summary.blockExpenses')} titleColor="text-destructive" metrics={expenseMetrics} />
+        <SummaryBlock title={t('summary.blockWarehouse')} titleColor="text-warning" metrics={warehouseMetrics} />
       </div>
 
       {/* Продажи по дням — данные по выбранному периоду из фильтра дат */}
@@ -528,7 +530,7 @@ export function ProductDetailView({
         </div>
       ) : (
         <div className="mt-6 rounded-xl border border-border bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-          Выберите период в фильтре дат (справа от фильтра магазинов), чтобы отобразить график «Продажи по дням».
+          {t('product.selectPeriod')}
         </div>
       )}
     </div>;

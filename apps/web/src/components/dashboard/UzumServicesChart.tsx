@@ -10,6 +10,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { formatCurrency } from "@/lib/formatters";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface UzumServicesChartProps {
   points?: Array<{
@@ -25,7 +26,13 @@ interface UzumServicesChartProps {
 }
 
 export function UzumServicesChart({ points, loading, error }: UzumServicesChartProps) {
+  const { t } = useLanguage();
   const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
+  const seriesLabels: Record<string, string> = {
+    storage: t('summary.uzum.storage'),
+    ads: t('summary.uzum.ads'),
+    fines: t('summary.uzum.fines'),
+  };
 
   // Format value in thousands (75000 -> 75 or 75.5) - for Y axis
   const formatThousands = (value: number): string => {
@@ -40,7 +47,7 @@ export function UzumServicesChart({ points, loading, error }: UzumServicesChartP
   // Format full value in sum with thousand separators (51200 -> "51 200 сум")
   const formatFullSum = (value: number): string => {
     const rounded = Math.round(value);
-    return `${rounded.toLocaleString("ru-RU")} сум`;
+    return `${rounded.toLocaleString("ru-RU")} ${t('common.sum')}`;
   };
 
   // Normalize points: convert YYYY-MM-DD to DD.MM format and ensure numbers
@@ -91,9 +98,7 @@ export function UzumServicesChart({ points, loading, error }: UzumServicesChartP
               style={{ backgroundColor: entry.color }}
             />
             <span className="text-xs text-muted-foreground">
-              {entry.dataKey === "storage" && "Хранение"}
-              {entry.dataKey === "ads" && "Реклама"}
-              {entry.dataKey === "fines" && "Штрафы"}
+              {seriesLabels[entry.dataKey] ?? entry.dataKey}
             </span>
           </button>
         ))}
@@ -105,7 +110,7 @@ export function UzumServicesChart({ points, loading, error }: UzumServicesChartP
   if (error) {
     return (
       <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
-        <h3 className="font-semibold text-foreground mb-4">Услуги UZUM</h3>
+        <h3 className="font-semibold text-foreground mb-4">{t('summary.blockUzumServices')}</h3>
         <div className="h-72 flex items-center justify-center">
           <p className="text-muted-foreground">Не удалось загрузить данные</p>
         </div>
@@ -117,7 +122,7 @@ export function UzumServicesChart({ points, loading, error }: UzumServicesChartP
   if (!loading && data.length === 0) {
     return (
       <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
-        <h3 className="font-semibold text-foreground mb-4">Услуги UZUM</h3>
+        <h3 className="font-semibold text-foreground mb-4">{t('summary.blockUzumServices')}</h3>
         <div className="h-72 flex items-center justify-center">
           <p className="text-muted-foreground">Нет данных за выбранный период</p>
         </div>
@@ -129,7 +134,7 @@ export function UzumServicesChart({ points, loading, error }: UzumServicesChartP
   if (loading) {
     return (
       <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
-        <h3 className="font-semibold text-foreground mb-4">Услуги UZUM</h3>
+        <h3 className="font-semibold text-foreground mb-4">{t('summary.blockUzumServices')}</h3>
         <div className="h-72 flex items-center justify-center">
           <p className="text-muted-foreground">Загрузка...</p>
         </div>
@@ -139,7 +144,7 @@ export function UzumServicesChart({ points, loading, error }: UzumServicesChartP
 
   return (
     <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
-      <h3 className="font-semibold text-foreground mb-4">Услуги UZUM</h3>
+      <h3 className="font-semibold text-foreground mb-4">{t('summary.blockUzumServices')}</h3>
       <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data}>
@@ -154,7 +159,7 @@ export function UzumServicesChart({ points, loading, error }: UzumServicesChartP
               axisLine={{ stroke: "hsl(var(--border))" }}
               tickFormatter={(value) => formatThousands(value)}
               label={{
-                value: "Затраты, тыс сум",
+                value: t('chart.costsThousandSum'),
                 angle: -90,
                 position: "insideLeft",
                 style: { fill: "hsl(var(--muted-foreground))", fontSize: 11 },
@@ -168,16 +173,15 @@ export function UzumServicesChart({ points, loading, error }: UzumServicesChartP
               }}
               formatter={(value: number, name: string) => {
                 const formattedValue = formatFullSum(value);
-                if (name === "storage") return [formattedValue, "Хранение"];
-                if (name === "ads") return [formattedValue, "Реклама"];
-                if (name === "fines") return [formattedValue, "Штрафы"];
-                return [formattedValue, name];
+                const label = seriesLabels[name] ?? name;
+                return [formattedValue, label];
               }}
             />
             <Legend content={renderLegend} />
             <Line
               type="monotone"
               dataKey="storage"
+              name="storage"
               stroke="hsl(var(--chart-1))"
               strokeWidth={2}
               dot={false}

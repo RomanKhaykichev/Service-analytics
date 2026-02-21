@@ -16,16 +16,16 @@ const tabsData = [
 ];
 
 export function SummaryTabs({ activeTab, onTabChange }: SummaryTabsProps) {
-  const { t, language } = useLanguage();
+  const { t } = useLanguage();
   
   const getTabLabel = (id: string) => {
     switch (id) {
       case "summary": return t('tabs.summary');
       case "daily": return t('tabs.daily');
       case "products": return t('tabs.products');
-      case "expenses": return language === 'uz' ? "Qo'shimcha xarajatlar" : "Доп. расходы";
-      case "shipment": return language === 'uz' ? "Yuklash" : "Отгрузка";
-      case "monthly": return language === 'uz' ? "Oylik" : "По месячно";
+      case "expenses": return t('tabs.expensesExtra');
+      case "shipment": return t('tabs.shipmentLabel');
+      case "monthly": return t('tabs.monthly');
       default: return id;
     }
   };

@@ -20,6 +20,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 // TODO: Replace supabase with backend API calls
 import { toast } from "sonner";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface UploadedFile {
   name: string;
@@ -36,13 +37,14 @@ interface ProductMapping {
 }
 
 const reportTypes = [
-  { id: "sales", label: "Отчет по продажам", hint: "sells-report" },
-  { id: "expenses", label: "Отчет по услугам", hint: "expenses-report" },
-  { id: "storage", label: "Отчет по хранению", hint: "seller-storage-report" },
-  { id: "inventory_old", label: "Остатки (старый формат)", hint: "left-out-report_old" },
+  { id: "sales", labelKey: "report.salesReport", hint: "sells-report" },
+  { id: "expenses", labelKey: "report.expensesReport", hint: "expenses-report" },
+  { id: "storage", labelKey: "report.storageReport", hint: "seller-storage-report" },
+  { id: "inventory_old", labelKey: "report.inventoryOld", hint: "left-out-report_old" },
 ];
 
 export function ReportUploadDialog() {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, UploadedFile>>({});
   const [adIds, setAdIds] = useState<Record<string, string>>({});
@@ -270,18 +272,18 @@ export function ReportUploadDialog() {
         <div className="flex flex-col items-end">
           <Button className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 px-4">
             <Upload className="w-4 h-4" />
-            <span className="hidden sm:inline">Загрузить отчеты</span>
+            <span className="hidden sm:inline">{t('report.uploadButton')}</span>
           </Button>
           {lastUploadDate && (
             <span className="text-xs text-muted-foreground mt-1">
-              Последняя загрузка: {lastUploadDate}
+              {t('report.lastUpload')}: {lastUploadDate}
             </span>
           )}
         </div>
       </DialogTrigger>
       <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col bg-card border-border">
         <DialogHeader className="flex-shrink-0">
-          <DialogTitle className="text-xl font-semibold">Загрузка отчетов UZUM</DialogTitle>
+          <DialogTitle className="text-xl font-semibold">{t('report.uploadTitle')}</DialogTitle>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto pr-2 -mr-2 min-h-0">
@@ -290,11 +292,11 @@ export function ReportUploadDialog() {
           <div className="flex items-start gap-2">
             <Info className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
             <div className="text-xs text-foreground">
-              <p className="font-semibold mb-1.5 text-sm">Как это работает?</p>
+              <p className="font-semibold mb-1.5 text-sm">{t('report.howItWorks')}</p>
               <ul className="text-muted-foreground leading-tight space-y-1 list-disc list-inside">
-                <li>Загрузите отчёты <span className="font-semibold text-primary">XLSX</span> из личного кабинета UZUM</li>
-                <li>Система автоматически распознает тип отчёта и импортирует данные</li>
-                <li className="text-warning font-medium">ВАЖНО: Все отчёты должны быть за один период</li>
+                <li>{t('report.bullet1')}</li>
+                <li>{t('report.bullet2')}</li>
+                <li className="text-warning font-medium">{t('report.bullet3')}</li>
               </ul>
             </div>
           </div>
@@ -304,7 +306,7 @@ export function ReportUploadDialog() {
         {uploading && (
           <div className="mt-3">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-muted-foreground">Загрузка отчётов...</span>
+              <span className="text-sm text-muted-foreground">{t('report.uploadingReports')}</span>
               <span className="text-sm font-medium">{Math.round(uploadProgress)}%</span>
             </div>
             <Progress value={uploadProgress} className="h-2" />
@@ -324,7 +326,7 @@ export function ReportUploadDialog() {
                 className="border border-border rounded-lg p-2 bg-muted/30"
               >
                 <div className="flex items-center justify-between mb-1.5">
-                  <h4 className="font-medium text-sm text-foreground">{report.label}</h4>
+                  <h4 className="font-medium text-sm text-foreground">{t(report.labelKey)}</h4>
                   <div className="flex items-center gap-1.5">
                     {fileData && getFileStatusIcon(fileData.status)}
                     {hasFile && !isUploading && (
@@ -373,7 +375,7 @@ export function ReportUploadDialog() {
                       </div>
                       {fileData.status === 'success' && fileData.rowsImported !== undefined && (
                         <span className="text-[10px] text-green-600 leading-tight">
-                          Импортировано: {fileData.rowsImported} строк
+                          {t('report.importedRows').replace('{0}', String(fileData.rowsImported))}
                         </span>
                       )}
                       {fileData.status === 'error' && fileData.error && (
@@ -386,7 +388,7 @@ export function ReportUploadDialog() {
                     <>
                       <Upload className="w-5 h-5 text-muted-foreground mb-1" />
                       <span className="text-xs text-muted-foreground text-center leading-tight">
-                        Перетащите файл или нажмите
+                        {t('report.dragOrClick')}
                       </span>
                     </>
                   )}
@@ -395,7 +397,7 @@ export function ReportUploadDialog() {
                   <span className="font-mono">{report.hint}.xlsx</span>
                   {report.id === "inventory_old" && (
                     <span className="block mt-0.5 text-amber-600 dark:text-amber-500">
-                      Принимается только left-out-report_old
+                      {t('report.onlyLeftout')}
                     </span>
                   )}
                 </p>
@@ -411,9 +413,9 @@ export function ReportUploadDialog() {
               <div className="flex items-start gap-3">
                 <Info className="w-5 h-5 text-muted-foreground mt-0.5 flex-shrink-0" />
                 <div className="text-sm text-foreground">
-                  <p className="font-semibold mb-2">Связь товаров с рекламой</p>
+                  <p className="font-semibold mb-2">{t('report.productAdLink')}</p>
                   <p className="text-muted-foreground leading-relaxed">
-                    Укажите ID рекламных кампаний для точного расчёта затрат на продвижение каждого товара.
+                    {t('report.adLinkDesc')}
                   </p>
                 </div>
               </div>
@@ -423,9 +425,9 @@ export function ReportUploadDialog() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/30">
-                    <TableHead className="font-semibold text-foreground">ID товара</TableHead>
-                    <TableHead className="font-semibold text-foreground">Название</TableHead>
-                    <TableHead className="font-semibold text-foreground">ID рекламы</TableHead>
+                    <TableHead className="font-semibold text-foreground">{t('product.productId')}</TableHead>
+                    <TableHead className="font-semibold text-foreground">{t('product.name')}</TableHead>
+                    <TableHead className="font-semibold text-foreground">{t('report.adId')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -439,7 +441,7 @@ export function ReportUploadDialog() {
                       </TableCell>
                       <TableCell>
                         <Input
-                          placeholder="Введите ID рекламы"
+                          placeholder={t('report.enterAdId')}
                           value={adIds[product.id] || ""}
                           onChange={(e) => handleAdIdChange(product.id, e.target.value)}
                           className="h-8 bg-background"
@@ -466,16 +468,16 @@ export function ReportUploadDialog() {
           </div>
           <div className="flex gap-3">
             <Button variant="outline" onClick={() => setOpen(false)} disabled={uploading}>
-              Закрыть
+              {t('report.close')}
             </Button>
             <Button onClick={handleSave} disabled={uploading}>
               {uploading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Загрузка...
+                  {t('report.uploadingReports')}
                 </>
               ) : (
-                'Загрузить'
+                t('report.upload')
               )}
             </Button>
           </div>

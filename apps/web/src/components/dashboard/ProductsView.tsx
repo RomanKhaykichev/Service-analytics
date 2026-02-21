@@ -25,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { ProductDetailView } from "./ProductDetailView";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, buildQueryParams } from "@/lib/api";
@@ -90,6 +91,7 @@ interface ProductsViewProps {
 }
 
 export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: ProductsViewProps) {
+  const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [groupByCards, setGroupByCards] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductsTableItemType | null>(null);
@@ -435,7 +437,7 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              placeholder="Поиск по названию, артикулу..."
+              placeholder={t('search.byNameArticle')}
               className="pl-10 bg-background"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -451,7 +453,7 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
             onClick={() => setGroupByCards((prev) => !prev)}
           >
             <Layers className="w-4 h-4 mr-2" />
-            Сгруппировать по карточкам
+            {t('products.groupByCards')}
           </Button>
         </div>
 
@@ -474,58 +476,58 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
             <TableHeader>
               <TableRow className="bg-violet-50/80 dark:bg-violet-950/30 border-border">
                 <SortableHeader field="product_name" className="min-w-[400px] max-w-[400px] sticky left-0 bg-violet-50 dark:bg-violet-950 z-10 border-r border-border text-center">
-                  Наименование
+                  {t('table.productName')}
                 </SortableHeader>
                 <SortableHeader field="price" className="text-center min-w-[100px]">
-                  Цена
+                  {t('table.price')}
                 </SortableHeader>
                 <SortableHeader field="sales_qty" className="text-center min-w-[80px]">
-                  Заказы
+                  {t('summary.sales.orders')}
                 </SortableHeader>
                 <SortableHeader field="returns_qty" className="text-center min-w-[80px]">
-                  Возвраты
+                  {t('summary.sales.returns')}
                 </SortableHeader>
                 <SortableHeader field="revenue" className="text-center min-w-[120px]">
-                  Выручка
+                  {t('summary.finance.revenue')}
                 </SortableHeader>
                 <SortableHeader field="profit" className="text-center min-w-[120px]">
-                  Прибыль
+                  {t('summary.finance.profit')}
                 </SortableHeader>
                 <SortableHeader field="turnover" className="text-center min-w-[100px] whitespace-nowrap">
-                  Оборач-ть
+                  {t('table.turnover')}
                 </SortableHeader>
                 <SortableHeader field="stock" className="text-center min-w-[80px]">
-                  Остаток
+                  {t('table.stock')}
                 </SortableHeader>
                 <SortableHeader field="size_group" className="text-center min-w-[100px]">
-                  Габаритная группа
+                  {t('table.sizeGroup')}
                 </SortableHeader>
                 <SortableHeader field="cogs" className="text-center min-w-[120px]">
-                  Себестоимость
+                  {t('table.costPrice')}
                 </SortableHeader>
                 <SortableHeader field="commission" className="text-center min-w-[100px]">
-                  Комиссия
+                  {t('summary.expense.commissionUzum')}
                 </SortableHeader>
                 <SortableHeader field="logistics" className="text-center min-w-[100px]">
-                  Логистика
+                  {t('summary.expense.logisticsUzum')}
                 </SortableHeader>
                 <SortableHeader field="abc_orders" className="text-center min-w-[80px]">
-                  ABC заказы
+                  {t('table.abcOrders')}
                 </SortableHeader>
                 <SortableHeader field="abc_profit" className="text-center min-w-[80px]">
-                  ABC прибыль
+                  {t('table.abcProfit')}
                 </SortableHeader>
                 <SortableHeader field="abc_revenue" className="text-center min-w-[80px]">
-                  ABC выручка
+                  {t('table.abcRevenue')}
                 </SortableHeader>
                 <SortableHeader field="barcode" className="text-center min-w-[130px]">
-                  Штрихкод
+                  {t('product.barcode')}
                 </SortableHeader>
                 <SortableHeader field="storage_cost_per_day" className="text-center min-w-[100px]">
-                  Хранение сут/сум
+                  {t('table.storagePerDay')}
                 </SortableHeader>
                 <SortableHeader field="shop" className="text-center min-w-[120px]">
-                  Магазин
+                  {t('table.shop')}
                 </SortableHeader>
               </TableRow>
             </TableHeader>
@@ -533,7 +535,7 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
               {sortedProducts.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={18} className="text-center text-muted-foreground py-8">
-                    Нет данных. Загрузите left-out-report_old и sells_report.
+                    {t('table.noDataProducts')}
                   </TableCell>
                 </TableRow>
               ) : (

@@ -9,33 +9,46 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMonthlyKpi, type MonthlyKpiItem } from "@/hooks/useMonthlyKpi";
 import { formatCurrency, formatNumber } from "@/lib/formatters";
+import { useLanguage } from "@/contexts/LanguageContext";
 
-const MONTH_LABELS = [
-  "Янв", "Фев", "Мар", "Апр", "Май", "Июн",
-  "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек",
+const MONTH_KEYS = [
+  "monthly.jan", "monthly.feb", "monthly.mar", "monthly.apr", "monthly.may", "monthly.jun",
+  "monthly.jul", "monthly.aug", "monthly.sep", "monthly.oct", "monthly.nov", "monthly.dec",
 ];
 
 type RowFormat = "quantityNoUnit" | "currency";
 
+const ROW_LABEL_KEYS: Record<string, string> = {
+  ordersCount: "monthly.totalSold",
+  revenue: "monthly.revenue",
+  productCost: "monthly.cost",
+  uzumCommission: "monthly.commission",
+  uzumLogistics: "monthly.logistics",
+  uzumStorage: "monthly.storage",
+  uzumAds: "monthly.ads",
+  uzumFines: "monthly.fines",
+  taxes1pct: "monthly.tax",
+  extraExpenses: "monthly.extraExpenses",
+  profit: "monthly.netProfit",
+};
+
 /** Строки таблицы: метрика и способ форматирования (как на Сводке). */
 const ROWS: {
   id: keyof MonthlyKpiItem;
-  label: string;
-  labelLine2?: string;
   isHighlighted: boolean;
   format: RowFormat;
 }[] = [
-  { id: "ordersCount", label: "Всего продано", isHighlighted: false, format: "quantityNoUnit" },
-  { id: "revenue", label: "Выручка", isHighlighted: false, format: "currency" },
-  { id: "productCost", label: "Себестоимость", isHighlighted: false, format: "currency" },
-  { id: "uzumCommission", label: "Комиссия", isHighlighted: false, format: "currency" },
-  { id: "uzumLogistics", label: "Логистика", isHighlighted: false, format: "currency" },
-  { id: "uzumStorage", label: "Хранение", isHighlighted: false, format: "currency" },
-  { id: "uzumAds", label: "Реклама", isHighlighted: false, format: "currency" },
-  { id: "uzumFines", label: "Штрафы", isHighlighted: false, format: "currency" },
-  { id: "taxes1pct", label: "Налог", isHighlighted: false, format: "currency" },
-  { id: "extraExpenses", label: "Доп. расходы", isHighlighted: false, format: "currency" },
-  { id: "profit", label: "ЧИСТАЯ ПРИБЫЛЬ", isHighlighted: true, format: "currency" },
+  { id: "ordersCount", isHighlighted: false, format: "quantityNoUnit" },
+  { id: "revenue", isHighlighted: false, format: "currency" },
+  { id: "productCost", isHighlighted: false, format: "currency" },
+  { id: "uzumCommission", isHighlighted: false, format: "currency" },
+  { id: "uzumLogistics", isHighlighted: false, format: "currency" },
+  { id: "uzumStorage", isHighlighted: false, format: "currency" },
+  { id: "uzumAds", isHighlighted: false, format: "currency" },
+  { id: "uzumFines", isHighlighted: false, format: "currency" },
+  { id: "taxes1pct", isHighlighted: false, format: "currency" },
+  { id: "extraExpenses", isHighlighted: false, format: "currency" },
+  { id: "profit", isHighlighted: true, format: "currency" },
 ];
 
 interface MonthlyTableProps {
@@ -48,6 +61,7 @@ interface MonthlyTableProps {
 }
 
 export function MonthlyTable({ year, shop = null, taxPercent }: MonthlyTableProps) {
+  const { t } = useLanguage();
   const { monthly, loading, error } = useMonthlyKpi(year, shop ?? undefined);
 
   const getDisplayValue = (rowId: keyof MonthlyKpiItem, item: MonthlyKpiItem): number | undefined => {
@@ -72,8 +86,8 @@ export function MonthlyTable({ year, shop = null, taxPercent }: MonthlyTableProp
   return (
     <div className="bg-card rounded-xl border border-border overflow-hidden">
       <div className="p-4 border-b border-border">
-        <h3 className="text-lg font-semibold text-foreground">Финансовые показатели по месяцам</h3>
-        <p className="text-sm text-muted-foreground mt-1">{year} год</p>
+        <h3 className="text-lg font-semibold text-foreground">{t('monthly.title')}</h3>
+        <p className="text-sm text-muted-foreground mt-1">{year} {t('monthly.year')}</p>
       </div>
       <div className="overflow-x-auto">
         {loading ? (
@@ -90,14 +104,14 @@ export function MonthlyTable({ year, shop = null, taxPercent }: MonthlyTableProp
             <TableHeader>
               <TableRow className="bg-violet-50/80 dark:bg-violet-950/30 border-border">
                 <TableHead className="w-[140px] min-w-[140px] max-w-[140px] font-semibold text-foreground sticky left-0 bg-violet-50/80 dark:bg-violet-950/30 z-10 border-r border-border">
-                  Показатель
+                  {t('monthly.indicator')}
                 </TableHead>
-                {MONTH_LABELS.map((month, index) => (
+                {MONTH_KEYS.map((key, index) => (
                   <TableHead
                     key={index}
                     className="text-center min-w-[100px] font-medium text-foreground bg-violet-50/80 dark:bg-violet-950/30 border-r border-border/50"
                   >
-                    {month}
+                    {t(key)}
                   </TableHead>
                 ))}
               </TableRow>
@@ -115,9 +129,9 @@ export function MonthlyTable({ year, shop = null, taxPercent }: MonthlyTableProp
                         : "bg-card font-medium text-foreground group-hover:bg-muted/50"
                     }`}
                   >
-                    {row.label}
+                    {t(ROW_LABEL_KEYS[row.id] ?? row.id)}
                   </TableCell>
-                  {MONTH_LABELS.map((_, monthIndex) => {
+                  {MONTH_KEYS.map((_, monthIndex) => {
                     const value = formatValue(row.id, monthIndex, row.format);
                     const hasData = value !== "—";
                     return (

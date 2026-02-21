@@ -40,6 +40,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const products = [
   {
@@ -229,6 +230,7 @@ const products = [
 ];
 
 const Products = () => {
+  const { t } = useLanguage();
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [productCosts, setProductCosts] = useState<Record<string, number | null>>(() => {
@@ -363,7 +365,7 @@ const Products = () => {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder="Поиск по названию, артикулу..."
+            placeholder={t('search.byNameArticle')}
             className="pl-10 bg-background"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}

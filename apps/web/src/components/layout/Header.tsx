@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -24,10 +25,11 @@ interface HeaderProps {
 export function Header({ onMenuClick, sidebarCollapsed }: HeaderProps) {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   const handleSignOut = async () => {
     await signOut();
-    toast.success('Вы вышли из системы');
+    toast.success(t('header.loggedOut'));
     navigate('/auth');
   };
 
@@ -49,7 +51,7 @@ export function Header({ onMenuClick, sidebarCollapsed }: HeaderProps) {
     if (user?.email) {
       return user.email;
     }
-    return 'Продавец';
+    return t('header.seller');
   };
 
   return (
@@ -70,7 +72,7 @@ export function Header({ onMenuClick, sidebarCollapsed }: HeaderProps) {
         <div className="relative w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder="Поиск товаров, категорий..."
+            placeholder={t('header.search')}
             className="pl-10 bg-muted border-0"
           />
         </div>
@@ -103,22 +105,22 @@ export function Header({ onMenuClick, sidebarCollapsed }: HeaderProps) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56 bg-card">
-            <DropdownMenuLabel>Мой аккаунт</DropdownMenuLabel>
+            <DropdownMenuLabel>{t('header.myAccount')}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => navigate('/settings')}>
-              Профиль
+              {t('header.profile')}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => navigate('/settings')}>
-              Настройки
+              {t('header.settings')}
             </DropdownMenuItem>
-            <DropdownMenuItem>Тарифы</DropdownMenuItem>
+            <DropdownMenuItem>{t('header.tariffs')}</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem 
               className="text-destructive focus:text-destructive"
               onClick={handleSignOut}
             >
               <LogOut className="w-4 h-4 mr-2" />
-              Выйти
+              {t('header.logout')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

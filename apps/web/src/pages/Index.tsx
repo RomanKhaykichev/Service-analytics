@@ -25,8 +25,10 @@ import { formatCurrency, formatQuantity, formatPercent, formatTrend, formatMoney
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { DateRangeProvider, useDateRange } from "@/contexts/DateRangeContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 function Dashboard() {
+  const { t } = useLanguage();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("summary");
   const [store, setStore] = useState(() => searchParams.get("shop") ?? "all");
@@ -137,90 +139,90 @@ function Dashboard() {
   const salesMetrics = metrics ? [
     {
       icon: <ShoppingCart className="w-4 h-4" />,
-      label: "Заказы",
+      label: t('summary.sales.orders'),
       value: formatQuantity(metrics.ordersCount),
       subValue: formatCurrency(metrics.ordersValue),
-      tooltip: "Общее кол-во заказов за выбранный период."
+      tooltip: t('summary.sales.ordersTooltip')
     },
     {
       icon: <Truck className="w-4 h-4" />,
-      label: "В обработке",
+      label: t('summary.sales.processing'),
       value: formatQuantity(metrics.processingCount),
       subValue: formatCurrency(metrics.processingValue),
-      tooltip: "Заказы по которым ожидается оплата."
+      tooltip: t('summary.sales.processingTooltip')
     },
     {
       icon: <Package className="w-4 h-4" />,
-      label: "Выкупы",
+      label: t('summary.sales.completed'),
       value: formatQuantity(metrics.completedCount),
       subValue: formatCurrency(metrics.completedValue),
-      tooltip: "Заказы которые клиент забрал, и прошло 10 дней."
+      tooltip: t('summary.sales.completedTooltip')
     },
     {
       icon: <RotateCcw className="w-4 h-4" />,
-      label: "Возвраты",
+      label: t('summary.sales.returns'),
       value: formatQuantity(metrics.returnsCount),
       subValue: metrics.returnsValue > 0 ? `-${formatCurrency(metrics.returnsValue)}` : formatCurrency(0),
-      tooltip: "Заказы которые клиент вернул или отменил."
+      tooltip: t('summary.sales.returnsTooltip')
     },
     {
       icon: <Percent className="w-4 h-4" />,
-      label: "Процент возврата заказов",
+      label: t('summary.sales.returnRate'),
       value: formatPercent(metrics?.returnRate),
-      tooltip: "Отношение отменённых заказов к выкупленным заказам, выраженное в процентах."
+      tooltip: t('summary.sales.returnRateTooltip')
     },
     {
       icon: <CreditCard className="w-4 h-4" />,
-      label: "Средний чек",
+      label: t('summary.sales.averageCheck'),
       value: formatMoneyNoDecimals(metrics.averageCheck),
-      tooltip: "Средняя стоимость заказа за период."
+      tooltip: t('summary.sales.averageCheckTooltip')
     }
   ] : [];
 
   const financeMetrics = metrics ? [
     {
       icon: <DollarSign className="w-4 h-4" />,
-      label: "Выручка",
+      label: t('summary.finance.revenue'),
       value: formatCurrency(metrics.revenue),
-      tooltip: "Общая сумма денег, полученная вами от реализации товаров."
+      tooltip: t('summary.finance.revenueTooltip')
     },
     {
       icon: <TrendingDown className="w-4 h-4" />,
-      label: "Расходы",
+      label: t('summary.finance.expenses'),
       value: formatCurrency(adjustedTotalExpenses),
-      tooltip: "Сумма всех расходов, представленных во вкладке «Расходы» (услуги UZUM не учитываются)."
+      tooltip: t('summary.finance.expensesTooltip')
     },
     {
       icon: <Wallet className="w-4 h-4" />,
-      label: "Прибыль",
+      label: t('summary.finance.profit'),
       value: formatCurrency(adjustedProfit),
-      tooltip: "Выручка – Расходы."
+      tooltip: t('summary.finance.profitTooltip')
     },
     {
       icon: <Target className="w-4 h-4" />,
-      label: "Рентабельность продаж",
+      label: t('summary.finance.salesProfitability'),
       value: formatPercent(adjustedSalesProfitability),
-      tooltip: "(Прибыль / Выручка) × 100. Показывает, какая часть выручки является прибылью."
+      tooltip: t('summary.finance.salesProfitabilityTooltip')
     },
     {
       icon: <BarChart3 className="w-4 h-4" />,
-      label: "Окупаемость инвестиций",
+      label: t('summary.finance.roi'),
       value: formatPercent(adjustedRoi),
-      tooltip: "(Прибыль / себестоимость товаров) × 100. Показывает, насколько выгодно вложение денег."
+      tooltip: t('summary.finance.roiTooltip')
     },
     {
       icon: <TrendingUp className="w-4 h-4" />,
-      label: "Тренд выручки",
+      label: t('summary.finance.revenueTrend'),
       value: formatTrend(metrics.revenueTrend),
       trend: (metrics.revenueTrend ?? 0) >= 0 ? "up" as const : "down" as const,
       trendValue: "",
-      tooltip: "Сравнение выручки за выбранный текущий период с выручкой за аналогичный период ранее."
+      tooltip: t('summary.finance.revenueTrendTooltip')
     },
     {
       icon: <ArrowDown className="w-4 h-4" />,
-      label: "Упущенная выручка",
+      label: t('summary.finance.lostRevenue'),
       value: formatCurrency(metrics.lostRevenue),
-      tooltip: "Потенциальная потеря выручки за период из-за отсутствия товаров на складе = (кол-во дней без товара) × (средняя выручка за день) для всех товаров."
+      tooltip: t('summary.finance.lostRevenueTooltip')
     }
   ] : [];
 
@@ -228,19 +230,19 @@ function Dashboard() {
   const expenseMetrics = metrics ? [
     {
       icon: <Percent className="w-4 h-4" />,
-      label: "Комиссия UZUM",
+      label: t('summary.expense.commissionUzum'),
       value: formatCurrency(metrics.uzumCommission),
       tooltip: ""
     },
     {
       icon: <Truck className="w-4 h-4" />,
-      label: "Логистика UZUM",
+      label: t('summary.expense.logisticsUzum'),
       value: formatCurrency(metrics.uzumLogistics),
       tooltip: ""
     },
     {
       icon: <Boxes className="w-4 h-4" />,
-      label: "Себест. прод. тов.",
+      label: t('summary.expense.productCost'),
       value: formatCurrency(metrics.productCost),
       tooltip: ""
     },
@@ -248,7 +250,7 @@ function Dashboard() {
       icon: <Receipt className="w-4 h-4" />,
       label: (
         <div className="flex items-center gap-1">
-          <span>Налоги</span>
+          <span>{t('summary.expense.taxes')}</span>
           <input
             type="number"
             value={taxPercentInput}
@@ -266,9 +268,9 @@ function Dashboard() {
     },
     {
       icon: <Info className="w-4 h-4" />,
-      label: "Доп. расходы",
+      label: t('summary.expense.extraExpenses'),
       value: formatCurrency(metrics.extraExpenses),
-      tooltip: "Расходы, указанные вами во вкладке «Доп. расходы»."
+      tooltip: t('summary.expense.extraExpensesTooltip')
     }
   ] : [];
 
@@ -277,21 +279,21 @@ function Dashboard() {
   const uzumServicesMetrics = metrics ? [
     {
       icon: <Warehouse className="w-4 h-4" />,
-      label: "Хранение UZUM",
+      label: t('summary.uzum.storage'),
       value: formatCurrency(metrics.uzumStorage),
-      tooltip: "Стоимость платного хранения товаров за выбранный период."
+      tooltip: t('summary.uzum.storageTooltip')
     },
     {
       icon: <Target className="w-4 h-4" />,
-      label: "Реклама UZUM",
+      label: t('summary.uzum.ads'),
       value: formatCurrency(metrics.uzumAds),
-      tooltip: "Стоимость маркетинговых кампаний (БУСТ в топ) за выбранный период."
+      tooltip: t('summary.uzum.adsTooltip')
     },
     {
       icon: <AlertTriangle className="w-4 h-4" />,
-      label: "Штрафы UZUM",
+      label: t('summary.uzum.fines'),
       value: formatCurrency(metrics.uzumFines),
-      tooltip: "Начисленные штрафы за выбранный период."
+      tooltip: t('summary.uzum.finesTooltip')
     }
   ] : [];
 
@@ -311,21 +313,21 @@ function Dashboard() {
   const warehouseMetrics = metrics ? [
     {
       icon: <Warehouse className="w-4 h-4" />,
-      label: "Товаров на складе",
+      label: t('summary.warehouse.stock'),
       value: formatQuantity(stockQty),
-      tooltip: "Кол-во товаров, хранящихся на складе UZUM для продажи по FBO."
+      tooltip: t('summary.warehouse.stockTooltip')
     },
     {
       icon: <Tag className="w-4 h-4" />,
-      label: "Себест. тов.",
+      label: t('summary.warehouse.cost'),
       value: formatCurrency(stockCost),
       tooltip: ""
     },
     {
       icon: <ShoppingBag className="w-4 h-4" />,
-      label: "Рознич. цена",
+      label: t('summary.warehouse.retailPrice'),
       value: formatCurrency(stockRetail),
-      tooltip: "Стоимость товаров, хранящихся на складе UZUM, при продаже их по ценам маркетплейса."
+      tooltip: t('summary.warehouse.retailPriceTooltip')
     }
   ] : [];
 
@@ -336,7 +338,7 @@ function Dashboard() {
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-3">
-              <h1 className="text-xl font-semibold text-foreground">Мои продажи на</h1>
+              <h1 className="text-xl font-semibold text-foreground">{t('summary.pageTitle')}</h1>
               <span className="px-3 py-1.5 bg-primary/10 text-primary font-semibold rounded-lg">UZUM</span>
             </div>
             {salesMinDate && salesMaxDate && (() => {
@@ -349,7 +351,7 @@ function Dashboard() {
               };
               return (
                 <div className="text-xs text-muted-foreground/80 pl-1">
-                  от <span className="font-medium">{formatDate(salesMinDate)}</span> до <span className="font-medium">{formatDate(salesMaxDate)}</span>
+                  {t('common.from')} <span className="font-medium">{formatDate(salesMinDate)}</span> {t('common.to')} <span className="font-medium">{formatDate(salesMaxDate)}</span>
                 </div>
               );
             })()}
@@ -382,7 +384,7 @@ function Dashboard() {
       </div>
 
       {/* Tabs и фильтры на одном уровне */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-24">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-14">
         <SummaryTabs activeTab={activeTab} onTabChange={setActiveTab} />
         {activeTab !== "expenses" && activeTab !== "monthly" ? (
           <SummaryFilters 
@@ -465,16 +467,16 @@ function Dashboard() {
               </div>
             ) : (
               <>
-                <SummaryBlock title="ПРОДАЖИ" titleColor="text-chart-4" metrics={salesMetrics} />
-                <SummaryBlock title="ФИНАНСЫ" titleColor="text-warning" metrics={financeMetrics} />
+                <SummaryBlock title={t('summary.blockSales')} titleColor="text-chart-4" metrics={salesMetrics} />
+                <SummaryBlock title={t('summary.blockFinances')} titleColor="text-warning" metrics={financeMetrics} />
                 <SummaryBlock 
-                  title="РАСХОДЫ" 
+                  title={t('summary.blockExpenses')} 
                   titleColor="text-destructive" 
                   metrics={expenseMetrics} 
                 />
                 <div className="flex flex-col h-full gap-4">
                   <SummaryBlock 
-                    title="СКЛАД" 
+                    title={t('summary.blockWarehouse')} 
                     titleColor="text-warning" 
                     metrics={warehouseMetrics} 
                     customHeightClass="h-auto"
@@ -485,12 +487,12 @@ function Dashboard() {
                       !loading && showStockZeroWarning ? (
                         <Alert variant="destructive" className="m-0">
                           <AlertTriangle className="h-4 w-4" />
-                          <AlertTitle>Склад = 0</AlertTitle>
+                          <AlertTitle>{t('alert.stockZero')}</AlertTitle>
                           <AlertDescription>
                             <p className="mb-2">
                               {stockZeroReason === "all_zero_in_snapshot"
-                                ? "По последней выгрузке склада (left-out-report_old) сумма «В продаже» = 0. Проверь файл склада/остатков."
-                                : "По данным left-out-report_old на складе 0. Проверь выгрузку «Склад» или фильтр магазина."}
+                                ? t('alert.stockZeroReasonAll')
+                                : t('alert.stockZeroDesc')}
                             </p>
                             {(stockSkuTotal > 0 || stockSkuWithStock >= 0 || stockSnapshotAt) && (
                               <div className="text-xs text-muted-foreground space-y-1">
@@ -498,19 +500,19 @@ function Dashboard() {
                                   <p>SKU: {stockSkuTotal}, с остатком: {stockSkuWithStock}</p>
                                 )}
                                 {stockSnapshotAt && (
-                                  <p>Срез: {new Date(stockSnapshotAt).toLocaleString("ru-RU")}</p>
+                                  <p>{t('common.snapshot')}: {new Date(stockSnapshotAt).toLocaleString("ru-RU")}</p>
                                 )}
                               </div>
                             )}
                           </AlertDescription>
                         </Alert>
                       ) : !loading && !stockHasData && stockSource === null ? (
-                        <p className="text-sm text-muted-foreground m-0">Нет данных по складу. Загрузите файл left-out-report_old.</p>
+                        <p className="text-sm text-muted-foreground m-0">{t('alert.noStockData')}</p>
                       ) : undefined
                     }
                   />
                   <SummaryBlock 
-                    title="УСЛУГИ UZUM" 
+                    title={t('summary.blockUzumServices')} 
                     titleColor="text-primary" 
                     metrics={uzumServicesMetrics} 
                     customBorderClass="border-violet-400 dark:border-violet-500"

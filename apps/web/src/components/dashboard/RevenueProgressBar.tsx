@@ -1,3 +1,5 @@
+import { useLanguage } from "@/contexts/LanguageContext";
+
 interface RevenueProgressBarProps {
   current: number;
   target: number;
@@ -12,11 +14,12 @@ export function RevenueProgressBar({
   year,
   compact = false
 }: RevenueProgressBarProps) {
+  const { t } = useLanguage();
   const percentage = Math.min(current / target * 100, 100);
   const formatNumber = (num: number) => {
-    if (num >= 1000000000) return `${(num / 1000000000).toFixed(0)} млрд`;
-    if (num >= 1000000) return `${(num / 1000000).toFixed(0)} млн`;
-    if (num >= 1000) return `${(num / 1000).toFixed(0)} тыс`;
+    if (num >= 1000000000) return `${(num / 1000000000).toFixed(0)} ${t('progress.billion')}`;
+    if (num >= 1000000) return `${(num / 1000000).toFixed(0)} ${t('progress.mln')}`;
+    if (num >= 1000) return `${(num / 1000).toFixed(0)} ${t('progress.thousand')}`;
     return num.toString();
   };
 
@@ -27,7 +30,7 @@ export function RevenueProgressBar({
       <div className="gap-4 py-3 border border-purple-300/30 shadow rounded-lg min-w-[700px] bg-gradient-to-r from-purple-50 to-violet-50 dark:from-purple-950/30 dark:to-violet-950/30 px-[30px] flex items-center justify-center">
         <div className="flex flex-col">
           <span className="text-sm font-medium text-purple-700 dark:text-purple-300 whitespace-nowrap">
-            Накопительная выручка
+            {t('block.revenueProgress')}
           </span>
           {year != null && (
             <span className="text-xs text-purple-600/80 dark:text-purple-400/80">{year}</span>
@@ -52,7 +55,7 @@ export function RevenueProgressBar({
           <div className="flex justify-between mt-1">
             {scaleValues.map((value, index) => (
               <span key={index} className="text-[10px] text-purple-600/70 dark:text-purple-400/70">
-                {value === 0 ? '0' : value === 1000 ? '1 млрд' : `${value} млн`}
+                {value === 0 ? '0' : value === 1000 ? `1 ${t('progress.billion')}` : `${value} ${t('progress.mln')}`}
               </span>
             ))}
           </div>
@@ -71,14 +74,14 @@ export function RevenueProgressBar({
       <div className="flex items-center justify-between mb-3">
         <div className="flex flex-col">
           <span className="text-base font-medium text-purple-700 dark:text-purple-300">
-            Накопительная выручка
+            {t('block.revenueProgress')}
           </span>
           {year != null && (
             <span className="text-sm text-purple-600/80 dark:text-purple-400/80">{year}</span>
           )}
         </div>
         <span className="text-base font-semibold text-purple-600 dark:text-purple-400">
-          {formatNumber(current)} / {formatNumber(target)} сум
+          {formatNumber(current)} / {formatNumber(target)} {t('common.sum')}
         </span>
       </div>
       <div className="relative h-5 bg-purple-100 dark:bg-purple-900/40 rounded-full overflow-hidden">
@@ -98,7 +101,7 @@ export function RevenueProgressBar({
       <div className="flex justify-between mt-2">
         {scaleValues.map((value, index) => (
           <span key={index} className="text-xs text-purple-600/80 dark:text-purple-400/80">
-            {value === 0 ? '0' : value === 1000 ? '1 млрд' : `${value} млн`}
+            {value === 0 ? '0' : value === 1000 ? `1 ${t('progress.billion')}` : `${value} ${t('progress.mln')}`}
           </span>
         ))}
       </div>

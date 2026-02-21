@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { useShipmentRecommendations } from "@/hooks/useShipmentRecommendations";
 import type { ShipmentRecommendationItem } from "@/hooks/useShipmentRecommendations";
 import { apiGet } from "@/lib/api";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 /** Ключ строки для хранения рассчитанного значения (штрихкод или артикул) */
 function rowKey(row: { barcode?: string | null; sku?: string | null }): string {
@@ -56,6 +57,7 @@ export function ShipmentView({
   calculatedRecommendedByKey,
   setCalculatedRecommended,
 }: ShipmentViewProps) {
+  const { t } = useLanguage();
   const { data, isLoading, error } = useShipmentRecommendations(shop);
   const items = data?.items ?? [];
   const [calculateLoading, setCalculateLoading] = useState(false);
@@ -99,20 +101,20 @@ export function ShipmentView({
           ? String(calculatedRecommendedByKey[key])
           : row.recommended_qty;
       return {
-        "Товар": row.product_name ?? "",
-        "Артикул": row.sku ?? "",
-        "Штрихкод": row.barcode ?? "",
-        "На складе": row.stock ?? "",
-        "Продаж в день": row.sales_per_day ?? "",
-        "Рекомендуемое кол-во": recommendedDisplay,
-        "Запланировано к отгрузке": row.to_ship ?? "",
+        [t('shipment.product')]: row.product_name ?? "",
+        [t('shipment.article')]: row.sku ?? "",
+        [t('product.barcode')]: row.barcode ?? "",
+        [t('shipment.inStock')]: row.stock ?? "",
+        [t('shipment.salesPerDay')]: row.sales_per_day ?? "",
+        [t('shipment.recommendedQty')]: recommendedDisplay,
+        [t('shipment.plannedToShip')]: row.to_ship ?? "",
       };
     });
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Рекомендации по отгрузке");
+    XLSX.utils.book_append_sheet(workbook, worksheet, t('shipment.recommendations'));
     XLSX.writeFile(workbook, `отгрузка_${new Date().toISOString().split("T")[0]}.xlsx`);
-    toast.success(`Выгружено ${rows.length} строк`);
+    toast.success(t('shipment.exportedRows').replace('{0}', String(rows.length)));
   };
 
   return (
@@ -123,12 +125,12 @@ export function ShipmentView({
           <CardHeader className="pb-4">
             <CardTitle className="flex items-center gap-2 text-lg">
               <Package className="h-5 w-5 text-primary" />
-              Дней до отгрузки
+              {t('shipment.daysUntil')}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              <Label htmlFor="daysUntilShipment">Количество дней</Label>
+              <Label htmlFor="daysUntilShipment">{t('shipment.daysCount')}</Label>
               <Input
                 id="daysUntilShipment"
                 type="number"
@@ -138,7 +140,7 @@ export function ShipmentView({
                 className="max-w-[200px]"
               />
               <p className="text-sm text-muted-foreground">
-                Укажите через сколько дней планируется отгрузка товара начиная с даты выгрузки последнего отчета
+                {t('shipment.daysDescription')}
               </p>
             </div>
           </CardContent>
@@ -149,7 +151,7 @@ export function ShipmentView({
           <CardHeader className="pb-4">
             <CardTitle className="flex items-center gap-2 text-lg">
               <Warehouse className="h-5 w-5 text-primary" />
-              Учитывать остатки на складах
+              {t('shipment.considerStock')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -158,13 +160,13 @@ export function ShipmentView({
                 <div className="flex items-center gap-2">
                   <RadioGroupItem value="yes" id="stock-yes" />
                   <Label htmlFor="stock-yes" className="font-normal cursor-pointer">
-                    Да
+                    {t('shipment.yes')}
                   </Label>
                 </div>
                 <div className="flex items-center gap-2">
                   <RadioGroupItem value="no" id="stock-no" />
                   <Label htmlFor="stock-no" className="font-normal cursor-pointer">
-                    Нет
+                    {t('shipment.no')}
                   </Label>
                 </div>
               </RadioGroup>
@@ -174,7 +176,7 @@ export function ShipmentView({
                 onClick={handleCalculate}
                 disabled={calculateLoading}
               >
-                {calculateLoading ? "Расчёт…" : "Рассчитать"}
+                {calculateLoading ? t('shipment.calculating') : t('shipment.calculate')}
               </Button>
             </div>
           </CardContent>
@@ -184,7 +186,7 @@ export function ShipmentView({
       {/* Рекомендации по отгрузке: left-out-report_old, Оборачиваемость < 60 */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <CardTitle>Рекомендации по отгрузке</CardTitle>
+          <CardTitle>{t('shipment.recommendations')}</CardTitle>
           <Button
             variant="outline"
             size="sm"
@@ -192,7 +194,7 @@ export function ShipmentView({
             disabled={items.length === 0}
           >
             <Download className="w-4 h-4 mr-2" />
-            Выгрузить в XLSX
+            {t('shipment.exportXLSX')}
           </Button>
         </CardHeader>
         <CardContent>
@@ -200,24 +202,18 @@ export function ShipmentView({
             <Table>
               <TableHeader>
                 <TableRow className="bg-violet-50/80 dark:bg-violet-950/30 border-border">
-                  <TableHead className="bg-violet-50/80 dark:bg-violet-950/30">Товар</TableHead>
-                  <TableHead className="bg-violet-50/80 dark:bg-violet-950/30">Артикул</TableHead>
-                  <TableHead className="bg-violet-50/80 dark:bg-violet-950/30">Штрихкод</TableHead>
-                  <TableHead className="text-center whitespace-nowrap bg-violet-50/80 dark:bg-violet-950/30">На складе</TableHead>
+                  <TableHead className="bg-violet-50/80 dark:bg-violet-950/30">{t('shipment.product')}</TableHead>
+                  <TableHead className="bg-violet-50/80 dark:bg-violet-950/30">{t('shipment.article')}</TableHead>
+                  <TableHead className="bg-violet-50/80 dark:bg-violet-950/30">{t('product.barcode')}</TableHead>
+                  <TableHead className="text-center whitespace-nowrap bg-violet-50/80 dark:bg-violet-950/30">{t('shipment.inStock')}</TableHead>
                   <TableHead className="text-center bg-violet-50/80 dark:bg-violet-950/30">
-                    Продаж
-                    <br />
-                    в день
+                    {t('shipment.salesPerDay')}
                   </TableHead>
                   <TableHead className="text-center bg-violet-50/80 dark:bg-violet-950/30">
-                    Рекомендуемое
-                    <br />
-                    кол-во
+                    {t('shipment.recommendedQty')}
                   </TableHead>
                   <TableHead className="text-center bg-violet-50/80 dark:bg-violet-950/30">
-                    Запланировано
-                    <br />
-                    к отгрузке
+                    {t('shipment.plannedToShip')}
                   </TableHead>
                 </TableRow>
               </TableHeader>
@@ -225,19 +221,19 @@ export function ShipmentView({
                 {isLoading ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                      Загрузка…
+                      {t('expense.loading')}
                     </TableCell>
                   </TableRow>
                 ) : error ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center text-destructive py-8">
-                      Ошибка загрузки данных
+                      {t('report.loadError')}
                     </TableCell>
                   </TableRow>
                 ) : items.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                      Нет данных. Загрузите отчёт «Остатки (старый)» (left-out-report_old) с колонкой Оборачиваемость &lt; 60.
+                      {t('shipment.noDataHint')}
                     </TableCell>
                   </TableRow>
                 ) : (

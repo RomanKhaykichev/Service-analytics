@@ -20,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { useDailySummary, type DailySummaryGranularity } from "@/hooks/useDailySummary";
 import { format, addDays } from "date-fns";
 
@@ -47,25 +48,19 @@ const SERIES_COLORS: Record<string, string> = {
   profit: "#7C3AED",
 };
 
-const CHART_SERIES = [
-  { key: "orders", label: "Заказы", color: SERIES_COLORS.orders, axis: "count" as const },
-  { key: "returns", label: "Возвраты", color: SERIES_COLORS.returns, axis: "count" as const },
-  { key: "revenue", label: "Выручка", color: SERIES_COLORS.revenue, axis: "money" as const },
-  { key: "logistics", label: "Логистика", color: SERIES_COLORS.logistics, axis: "money" as const },
-  { key: "ads", label: "Реклама", color: SERIES_COLORS.ads, axis: "money" as const },
-  { key: "storage", label: "Хранение", color: SERIES_COLORS.storage, axis: "money" as const },
-  { key: "taxes", label: "Налог", color: SERIES_COLORS.taxes, axis: "money" as const },
-  { key: "profit", label: "Прибыль", color: SERIES_COLORS.profit, axis: "money" as const },
+const CHART_SERIES_KEYS: { key: string; labelKey: string; color: string; axis: "count" | "money" }[] = [
+  { key: "orders", labelKey: "daily.orders", color: SERIES_COLORS.orders, axis: "count" },
+  { key: "returns", labelKey: "daily.returns", color: SERIES_COLORS.returns, axis: "count" },
+  { key: "revenue", labelKey: "daily.revenue", color: SERIES_COLORS.revenue, axis: "money" },
+  { key: "logistics", labelKey: "daily.logistics", color: SERIES_COLORS.logistics, axis: "money" },
+  { key: "ads", labelKey: "daily.ads", color: SERIES_COLORS.ads, axis: "money" },
+  { key: "storage", labelKey: "daily.storage", color: SERIES_COLORS.storage, axis: "money" },
+  { key: "taxes", labelKey: "daily.tax", color: SERIES_COLORS.taxes, axis: "money" },
+  { key: "profit", labelKey: "daily.profitNet", color: SERIES_COLORS.profit, axis: "money" },
 ];
 
 type SortDirection = "asc" | "desc" | null;
 type SortColumn = string | null;
-
-const GRANULARITY_OPTIONS: { value: DailySummaryGranularity; label: string }[] = [
-  { value: "day", label: "День" },
-  { value: "week", label: "Неделя" },
-  { value: "month", label: "Месяц" },
-];
 
 function formatChartDateLabel(dateISO: string, granularity: DailySummaryGranularity): string {
   const d = new Date(dateISO);
@@ -78,6 +73,23 @@ function formatChartDateLabel(dateISO: string, granularity: DailySummaryGranular
 }
 
 export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, shop = null, taxPercent = 1 }: DailyViewProps) {
+  const { t } = useLanguage();
+  const CHART_SERIES = CHART_SERIES_KEYS.map((s) => ({ ...s, label: t(s.labelKey) }));
+  const columns = [
+    { key: "dateFormatted", label: t('daily.date') },
+    { key: "orders", label: t('daily.orders') },
+    { key: "buys", label: t('daily.buys') },
+    { key: "returns", label: t('daily.returns') },
+    { key: "revenue", label: t('daily.revenue') },
+    { key: "commission", label: t('daily.commission') },
+    { key: "logistics", label: t('daily.logistics') },
+    { key: "storage", label: t('daily.storage') },
+    { key: "ads", label: t('daily.ads') },
+    { key: "penalties", label: t('daily.penalties') },
+    { key: "cogs", label: t('daily.cogs') },
+    { key: "taxes", label: t('daily.tax') },
+    { key: "profit", label: t('daily.profitNet') },
+  ];
   // Гранулярность графика берётся из селекта "По дням/По неделям/По месяцам" (viewMode из SummaryFilters)
   const timeGrouping: DailySummaryGranularity = (viewMode === "week" || viewMode === "month" ? viewMode : "day");
   // График: date_from/date_to + granularity (group_by на бэкенде)
@@ -216,28 +228,12 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
 
   const formatNumber = (num: number) => num.toLocaleString("ru-RU");
 
-  const columns = [
-    { key: "dateFormatted", label: "Дата" },
-    { key: "orders", label: "Заказы" },
-    { key: "buys", label: "Выкупы" },
-    { key: "returns", label: "Возвраты" },
-    { key: "revenue", label: "Выручка" },
-    { key: "commission", label: "Комиссия" },
-    { key: "logistics", label: "Логистика" },
-    { key: "storage", label: "Хранение" },
-    { key: "ads", label: "Реклама" },
-    { key: "penalties", label: "Штрафы" },
-    { key: "cogs", label: "Себестоимость" },
-    { key: "taxes", label: "Налог" },
-    { key: "profit", label: "Чистая прибыль" },
-  ];
-
   return (
     <div className="space-y-6">
       {/* График заказов и продаж: 8 метрик (все Line), кнопки выбора метрик, переключатель гранулярности — overlay слева снизу */}
       <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
         <div className="flex items-center gap-3 flex-wrap mb-4">
-          <h3 className="font-semibold text-foreground">График заказов и продаж</h3>
+          <h3 className="font-semibold text-foreground">{t('daily.chartTitle')}</h3>
           <div className="flex items-center gap-2 ml-auto flex-wrap justify-end">
             {CHART_SERIES.map((s) => (
               <Button
@@ -261,15 +257,15 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
         <div className="relative h-80">
           {loadingChart ? (
             <div className="flex items-center justify-center h-full text-muted-foreground">
-              Загрузка...
+              {t('daily.loading')}
             </div>
           ) : errorChart ? (
             <div className="flex items-center justify-center h-full text-destructive">
-              Ошибка загрузки данных
+              {t('daily.loadError')}
             </div>
           ) : chartData.length === 0 ? (
             <div className="flex items-center justify-center h-full text-muted-foreground">
-              Нет данных за выбранный период
+              {t('daily.noDataPeriod')}
             </div>
           ) : (
             <>
@@ -338,12 +334,12 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
 
       {/* Table Section — Данные по дням from GET /api/charts/daily-summary */}
       <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
-        <h3 className="font-semibold text-foreground mb-4">Данные по дням</h3>
+        <h3 className="font-semibold text-foreground mb-4">{t('daily.dataByDay')}</h3>
         <div className="overflow-x-auto">
           {loadingTable ? (
-            <div className="py-8 text-center text-muted-foreground">Загрузка...</div>
+            <div className="py-8 text-center text-muted-foreground">{t('daily.loading')}</div>
           ) : errorTable ? (
-            <div className="py-8 text-center text-destructive">Ошибка загрузки данных</div>
+            <div className="py-8 text-center text-destructive">{t('daily.loadError')}</div>
           ) : (
             <Table className="table-fixed w-full min-w-[800px]">
               <TableHeader>
