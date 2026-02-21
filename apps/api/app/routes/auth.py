@@ -4,7 +4,10 @@ from sqlalchemy import and_
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone
 from uuid import UUID
+import logging
 from app.db import get_db
+
+logger = logging.getLogger(__name__)
 from app.deps import require_user
 from app.models import User, AuthIdentity, RefreshToken
 from app.models.auth_identity import AuthProvider
@@ -39,72 +42,82 @@ async def register(
     """
     Register a new user with email and password.
     """
-    # Check if user with this email already exists
-    existing_user = db.query(User).filter(User.email == request.email).first()
-    if existing_user:
+    try:
+        # Check if user with this email already exists
+        existing_user = db.query(User).filter(User.email == request.email).first()
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User with this email already exists"
+            )
+
+        # Check if auth identity with this email exists
+        existing_identity = db.query(AuthIdentity).filter(
+            and_(
+                AuthIdentity.provider == AuthProvider.EMAIL_PASSWORD,
+                AuthIdentity.identifier == request.email
+            )
+        ).first()
+        if existing_identity:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User with this email already exists"
+            )
+
+        # Create user
+        user = User(
+            email=request.email,
+            full_name=request.full_name or None,
+            is_active=True
+        )
+        db.add(user)
+        db.flush()  # Get user.id
+
+        # Create auth identity (store provider as string for varchar column)
+        password_hash = hash_password(request.password)
+        auth_identity = AuthIdentity(
+            user_id=user.id,
+            provider=AuthProvider.EMAIL_PASSWORD,
+            identifier=request.email,
+            password_hash=password_hash
+        )
+        db.add(auth_identity)
+
+        # Create tokens
+        access_token = create_access_token(str(user.id))
+        refresh_token = create_refresh_token(str(user.id))
+
+        # Store refresh token hash
+        refresh_token_hash = hash_token(refresh_token)
+        from datetime import timedelta
+        from app.settings import get_settings
+        settings = get_settings()
+        expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TTL_DAYS)
+
+        db_refresh_token = RefreshToken(
+            user_id=user.id,
+            token_hash=refresh_token_hash,
+            expires_at=expires_at
+        )
+        db.add(db_refresh_token)
+
+        db.commit()
+        db.refresh(user)
+
+        return AuthResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            user=UserResponse.model_validate(user)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Registration failed")
+        db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User with this email already exists"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Registration failed: {str(e)}"
         )
-    
-    # Check if auth identity with this email exists
-    existing_identity = db.query(AuthIdentity).filter(
-        and_(
-            AuthIdentity.provider == AuthProvider.EMAIL_PASSWORD,
-            AuthIdentity.identifier == request.email
-        )
-    ).first()
-    if existing_identity:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User with this email already exists"
-        )
-    
-    # Create user
-    user = User(
-        email=request.email,
-        full_name=request.full_name or None,
-        is_active=True
-    )
-    db.add(user)
-    db.flush()  # Get user.id
-    
-    # Create auth identity
-    password_hash = hash_password(request.password)
-    auth_identity = AuthIdentity(
-        user_id=user.id,
-        provider=AuthProvider.EMAIL_PASSWORD,
-        identifier=request.email,
-        password_hash=password_hash
-    )
-    db.add(auth_identity)
-    
-    # Create tokens
-    access_token = create_access_token(str(user.id))
-    refresh_token = create_refresh_token(str(user.id))
-    
-    # Store refresh token hash
-    refresh_token_hash = hash_token(refresh_token)
-    from datetime import timedelta
-    from app.settings import get_settings
-    settings = get_settings()
-    expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TTL_DAYS)
-    
-    db_refresh_token = RefreshToken(
-        user_id=user.id,
-        token_hash=refresh_token_hash,
-        expires_at=expires_at
-    )
-    db.add(db_refresh_token)
-    
-    db.commit()
-    db.refresh(user)
-    
-    return AuthResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        user=UserResponse.model_validate(user)
-    )
 
 
 @router.post("/login", response_model=AuthResponse)

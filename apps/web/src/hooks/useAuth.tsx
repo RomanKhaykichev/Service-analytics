@@ -1,7 +1,14 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
-import { apiGet } from '@/lib/api';
+import {
+  apiGet,
+  apiPostNoAuth,
+  setAuthTokens,
+  clearAuthTokens,
+  getAccessToken,
+  getRefreshToken,
+} from '@/lib/api';
 
-// Simple user interface (replaces Supabase User)
+// User from API (matches backend UserResponse)
 interface User {
   id: string;
   email?: string;
@@ -19,23 +26,25 @@ interface AuthContextType {
   signUp: (email: string, password: string, fullName?: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
-  /** Refresh user from API (GET /auth/me). Updates header/profile after profile edit. */
   refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const USER_ID_KEY = 'user_id';
-const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
+interface AuthResponse {
+  access_token: string;
+  refresh_token: string;
+  user: { id: string; email?: string | null; full_name?: string | null; phone?: string | null };
+}
 
-// Get or create user_id from localStorage
-function getOrCreateUserId(): string {
-  const stored = localStorage.getItem(USER_ID_KEY);
-  if (stored) {
-    return stored;
-  }
-  localStorage.setItem(USER_ID_KEY, DEFAULT_USER_ID);
-  return DEFAULT_USER_ID;
+function mapUser(u: AuthResponse['user']): User {
+  return {
+    id: u.id,
+    email: u.email ?? undefined,
+    full_name: u.full_name ?? undefined,
+    phone: u.phone ?? undefined,
+    user_metadata: u.full_name ? { full_name: u.full_name } : undefined,
+  };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -44,78 +53,106 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Initialize user from localStorage
-    const userId = getOrCreateUserId();
-    const mockUser: User = {
-      id: userId,
-      email: 'dev@example.com',
-      user_metadata: {
-        full_name: 'Dev User',
-      },
-    };
-    
-    setUser(mockUser);
-    setSession({ user: mockUser });
-    setLoading(false);
+    let cancelled = false;
+    const token = getAccessToken();
+    const refreshToken = getRefreshToken();
+
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    (async () => {
+      try {
+        const data = await apiGet<{ id: string; email?: string | null; full_name?: string | null; phone?: string | null }>('/api/auth/me');
+        if (!cancelled) {
+          const u: User = mapUser(data);
+          setUser(u);
+          setSession({ user: u });
+        }
+      } catch (err: unknown) {
+        if (cancelled) return;
+        if (refreshToken) {
+          try {
+            const tokens = await apiPostNoAuth<{ access_token: string; refresh_token: string }>('/api/auth/refresh', { refresh_token: refreshToken });
+            setAuthTokens(tokens.access_token, tokens.refresh_token);
+            const me = await apiGet<AuthResponse['user']>('/api/auth/me');
+            if (!cancelled) {
+              const u = mapUser(me);
+              setUser(u);
+              setSession({ user: u });
+            }
+          } catch {
+            clearAuthTokens();
+            setUser(null);
+            setSession(null);
+          }
+        } else {
+          clearAuthTokens();
+          setUser(null);
+          setSession(null);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const signUp = async (email: string, password: string, fullName?: string) => {
-    // TODO: Implement actual signup with backend API
-    // For now, just create a mock user
-    const userId = DEFAULT_USER_ID;
-    localStorage.setItem(USER_ID_KEY, userId);
-    
-    const mockUser: User = {
-      id: userId,
-      email,
-      user_metadata: {
-        full_name: fullName,
-      },
-    };
-    
-    setUser(mockUser);
-    setSession({ user: mockUser });
-    
-    return { error: null };
+    try {
+      const res = await apiPostNoAuth<AuthResponse>('/api/auth/register', {
+        email,
+        password,
+        full_name: fullName || null,
+      });
+      setAuthTokens(res.access_token, res.refresh_token);
+      const u = mapUser(res.user);
+      setUser(u);
+      setSession({ user: u });
+      return { error: null };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Ошибка регистрации';
+      return { error: new Error(message) };
+    }
   };
 
   const signIn = async (email: string, password: string) => {
-    // TODO: Implement actual signin with backend API
-    // For now, just use default user
-    const userId = getOrCreateUserId();
-    
-    const mockUser: User = {
-      id: userId,
-      email,
-    };
-    
-    setUser(mockUser);
-    setSession({ user: mockUser });
-    
-    return { error: null };
+    try {
+      const res = await apiPostNoAuth<AuthResponse>('/api/auth/login', { email, password });
+      setAuthTokens(res.access_token, res.refresh_token);
+      const u = mapUser(res.user);
+      setUser(u);
+      setSession({ user: u });
+      return { error: null };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Ошибка входа';
+      return { error: new Error(message) };
+    }
   };
 
   const signOut = async () => {
-    // Clear user_id from localStorage
-    localStorage.removeItem(USER_ID_KEY);
+    const refreshToken = getRefreshToken();
+    if (refreshToken) {
+      try {
+        await apiPostNoAuth('/api/auth/logout', { refresh_token: refreshToken });
+      } catch {
+        // ignore
+      }
+    }
+    clearAuthTokens();
     setUser(null);
     setSession(null);
   };
 
   const refreshProfile = async () => {
     try {
-      const data = await apiGet<{ id: string; email?: string | null; full_name?: string | null; phone?: string | null }>('/api/auth/me');
-      const nextUser: User = {
-        id: data.id,
-        email: data.email ?? undefined,
-        full_name: data.full_name ?? undefined,
-        phone: data.phone ?? undefined,
-        user_metadata: data.full_name ? { full_name: data.full_name } : undefined,
-      };
-      setUser(nextUser);
-      setSession({ user: nextUser });
+      const data = await apiGet<AuthResponse['user']>('/api/auth/me');
+      const u = mapUser(data);
+      setUser(u);
+      setSession({ user: u });
     } catch {
-      // Ignore (e.g. no backend or 401)
+      // 401 or network: leave user as is or could clear
     }
   };
 

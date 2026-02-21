@@ -1,6 +1,41 @@
 /**
- * API utility for making requests to backend with X-User-Id header
+ * API utility for making requests to backend.
+ * Uses JWT (Authorization: Bearer) when logged in; falls back to X-User-Id for dev.
  */
+
+const ACCESS_TOKEN_KEY = "access_token";
+const REFRESH_TOKEN_KEY = "refresh_token";
+
+export function getAccessToken(): string | null {
+  return localStorage.getItem(ACCESS_TOKEN_KEY);
+}
+
+export function getRefreshToken(): string | null {
+  return localStorage.getItem(REFRESH_TOKEN_KEY);
+}
+
+export function setAuthTokens(accessToken: string, refreshToken: string): void {
+  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+}
+
+export function clearAuthTokens(): void {
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+  localStorage.removeItem("user_id");
+  localStorage.removeItem("dev_user_id");
+}
+
+/**
+ * Headers for authenticated API calls: Bearer token if present, else X-User-Id (dev).
+ */
+export function getAuthHeaders(): Record<string, string> {
+  const token = getAccessToken();
+  if (token) {
+    return { Authorization: `Bearer ${token}` };
+  }
+  return { "X-User-Id": getDevUserId() };
+}
 
 /**
  * Get API base URL from env or default
@@ -125,6 +160,48 @@ function buildUrl(baseUrl: string, path: string, params?: Record<string, any>): 
 }
 
 /**
+ * POST without auth (for login/register).
+ */
+export async function apiPostNoAuth<T>(path: string, body: any): Promise<T> {
+  const baseUrl = getApiBaseUrl();
+  const url = buildUrl(baseUrl, path);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      let detail = text;
+      try {
+        const j = JSON.parse(text);
+        if (j.detail) {
+          if (typeof j.detail === "string") {
+            detail = j.detail;
+          } else if (Array.isArray(j.detail) && j.detail.length > 0) {
+            detail = j.detail.map((e: { msg?: string }) => e.msg || "").filter(Boolean).join(". ") || text;
+          } else {
+            detail = JSON.stringify(j.detail);
+          }
+        }
+      } catch {
+        // use text as is
+      }
+      throw new Error(detail || `HTTP ${response.status}`);
+    }
+    return response.json();
+  } catch (err) {
+    if (err instanceof TypeError && err.message === "Failed to fetch") {
+      throw new Error(
+        "Не удалось подключиться к API. Убедитесь, что: 1) сервер запущен в apps/api (uvicorn на порту 8000); 2) страница открыта через npm run dev (localhost:8080), а не файлом."
+      );
+    }
+    throw err;
+  }
+}
+
+/**
  * Make GET request to API
  */
 export async function apiGet<T>(path: string, params?: Record<string, any>): Promise<T> {
@@ -134,7 +211,7 @@ export async function apiGet<T>(path: string, params?: Record<string, any>): Pro
   const response = await fetch(url, {
     method: "GET",
     headers: {
-      "X-User-Id": getDevUserId(),
+      ...getAuthHeaders(),
     },
   });
 
@@ -157,7 +234,7 @@ export async function apiPost<T>(path: string, body: any): Promise<T> {
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        "X-User-Id": getDevUserId(),
+        ...getAuthHeaders(),
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
@@ -192,7 +269,7 @@ export async function apiPut<T>(path: string, body: any): Promise<T> {
     const response = await fetch(url, {
       method: "PUT",
       headers: {
-        "X-User-Id": getDevUserId(),
+        ...getAuthHeaders(),
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
@@ -233,7 +310,7 @@ export async function apiPatch<T>(path: string, body: any): Promise<T> {
     const response = await fetch(url, {
       method: "PATCH",
       headers: {
-        "X-User-Id": getDevUserId(),
+        ...getAuthHeaders(),
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
@@ -266,9 +343,7 @@ export async function apiDelete<T>(path: string): Promise<T> {
   try {
     const response = await fetch(url, {
       method: "DELETE",
-      headers: {
-        "X-User-Id": getDevUserId(),
-      },
+      headers: getAuthHeaders(),
     });
 
     if (!response.ok) {

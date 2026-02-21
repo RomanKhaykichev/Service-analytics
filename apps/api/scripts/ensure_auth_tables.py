@@ -1,0 +1,89 @@
+"""
+Создаёт схему app и таблицы для авторизации (users, auth_identities, refresh_tokens, verification_codes)
+в той же базе, к которой подключается API (из .env в apps/api).
+Запуск из корня репозитория или из apps/api:
+  cd apps/api && .venv\Scripts\activate && python scripts/ensure_auth_tables.py
+"""
+import sys
+from pathlib import Path
+
+# Чтобы подхватить app.settings из apps/api
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from sqlalchemy import create_engine, text
+from app.settings import get_settings
+
+
+def main():
+    settings = get_settings()
+    engine = create_engine(settings.DATABASE_URL)
+    schema = settings.DB_SCHEMA
+
+    with engine.connect() as conn:
+        conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
+        conn.commit()
+
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS {schema}.users (
+                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                email varchar(255) UNIQUE,
+                full_name varchar(255),
+                phone varchar(50) UNIQUE,
+                is_active boolean NOT NULL DEFAULT true,
+                created_at timestamptz NOT NULL DEFAULT now(),
+                updated_at timestamptz NOT NULL DEFAULT now()
+            )
+        """))
+        conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_users_email ON {schema}.users (email)"))
+        conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_users_phone ON {schema}.users (phone)"))
+        conn.commit()
+
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS {schema}.auth_identities (
+                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id uuid NOT NULL REFERENCES {schema}.users(id) ON DELETE CASCADE,
+                provider varchar(50) NOT NULL,
+                identifier varchar(255) NOT NULL,
+                password_hash varchar(255),
+                created_at timestamptz NOT NULL DEFAULT now()
+            )
+        """))
+        conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_auth_identities_user_id ON {schema}.auth_identities (user_id)"))
+        conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_auth_identities_identifier ON {schema}.auth_identities (identifier)"))
+        conn.commit()
+
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS {schema}.refresh_tokens (
+                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id uuid NOT NULL REFERENCES {schema}.users(id) ON DELETE CASCADE,
+                token_hash varchar(255) NOT NULL UNIQUE,
+                revoked_at timestamptz,
+                expires_at timestamptz NOT NULL,
+                created_at timestamptz NOT NULL DEFAULT now()
+            )
+        """))
+        conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_refresh_tokens_user_id ON {schema}.refresh_tokens (user_id)"))
+        conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_refresh_tokens_token_hash ON {schema}.refresh_tokens (token_hash)"))
+        conn.commit()
+
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS {schema}.verification_codes (
+                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id uuid REFERENCES {schema}.users(id) ON DELETE CASCADE,
+                channel varchar(50) NOT NULL,
+                destination varchar(255) NOT NULL,
+                code_hash varchar(255) NOT NULL,
+                expires_at timestamptz NOT NULL,
+                consumed_at timestamptz,
+                created_at timestamptz NOT NULL DEFAULT now()
+            )
+        """))
+        conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_verification_codes_user_id ON {schema}.verification_codes (user_id)"))
+        conn.commit()
+
+    print("OK: схема и таблицы авторизации созданы (или уже существуют).")
+    print("  Таблицы:", f"{schema}.users", f"{schema}.auth_identities", f"{schema}.refresh_tokens", f"{schema}.verification_codes")
+
+
+if __name__ == "__main__":
+    main()

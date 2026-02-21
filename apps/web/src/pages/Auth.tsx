@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,7 +11,9 @@ import { Mail, Loader2, Eye, EyeOff } from 'lucide-react';
 
 export default function Auth() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, signIn, signUp } = useAuth();
+  const defaultTab = searchParams.get('tab') === 'signup' ? 'signup' : 'signin';
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -27,8 +29,10 @@ export default function Auth() {
   }, [user, navigate]);
 
   const validateEmail = (email: string) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
+    const trimmed = (email || '').trim();
+    if (!trimmed) return false;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    return emailRegex.test(trimmed);
   };
 
   const validatePassword = (password: string) => {
@@ -49,16 +53,19 @@ export default function Auth() {
     }
 
     setLoading(true);
-    const { error } = await signIn(email, password);
+    const { error } = await signIn(email.trim(), password);
     setLoading(false);
 
     if (error) {
-      if (error.message.includes('Invalid login credentials')) {
+      const msg = error.message || '';
+      if (msg.includes('Invalid login credentials') || msg.includes('Invalid') && msg.includes('password')) {
         toast.error('Неверный email или пароль');
-      } else if (error.message.includes('Email not confirmed')) {
+      } else if (msg.includes('Email not confirmed')) {
         toast.error('Подтвердите email перед входом');
+      } else if (msg.includes('подключиться') || msg.includes('Failed to fetch')) {
+        toast.error('Не удалось подключиться к API. Запустите сервер в папке apps/api (uvicorn на порту 8000) и откройте сайт через npm run dev.');
       } else {
-        toast.error(error.message || 'Ошибка входа');
+        toast.error(msg || 'Ошибка входа');
       }
       return;
     }
@@ -86,14 +93,19 @@ export default function Auth() {
     }
 
     setLoading(true);
-    const { error } = await signUp(email, password, fullName);
+    const { error } = await signUp(email.trim(), password, fullName.trim());
     setLoading(false);
 
     if (error) {
-      if (error.message.includes('User already registered')) {
+      const msg = (error.message || '').trim();
+      if (msg.includes('already exists') || msg.includes('already registered')) {
         toast.error('Пользователь с таким email уже зарегистрирован');
+      } else if (msg.includes('valid email') || msg.includes('Invalid email') || /validation|email.*format/i.test(msg)) {
+        toast.error('Введите корректный email');
+      } else if (msg.includes('подключиться к серверу') || msg.includes('Failed to fetch')) {
+        toast.error('Не удалось подключиться к API. Запустите сервер (apps/api) и обновите страницу.');
       } else {
-        toast.error(error.message || 'Ошибка регистрации');
+        toast.error(msg || 'Ошибка регистрации');
       }
       return;
     }
@@ -116,7 +128,7 @@ export default function Auth() {
         </CardHeader>
         
         <CardContent>
-          <Tabs defaultValue="signin" className="w-full">
+          <Tabs defaultValue={defaultTab} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="signin">Вход</TabsTrigger>
               <TabsTrigger value="signup">Регистрация</TabsTrigger>

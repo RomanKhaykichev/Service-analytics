@@ -13,8 +13,10 @@ import { ReportUploadDialog } from "./ReportUploadDialog";
 import { PricingDialog } from "./PricingDialog";
 import { ProfileDialog } from "./ProfileDialog";
 import { LanguageDialog } from "./LanguageDialog";
+import { useNavigate } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
 
 function getUserDisplayName(user: { full_name?: string; user_metadata?: { full_name?: string }; email?: string } | null): string {
   if (!user) return "Пользователь";
@@ -26,8 +28,15 @@ function getUserDisplayName(user: { full_name?: string; user_metadata?: { full_n
 
 export function HeaderActions() {
   const { t } = useLanguage();
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
   const [pricingOpen, setPricingOpen] = useState(false);
+
+  const handleSignOut = async () => {
+    await signOut();
+    toast.success(t('header.loggedOut'));
+    navigate('/auth');
+  };
   const [profileOpen, setProfileOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
   const displayName = getUserDisplayName(user);
@@ -95,7 +104,7 @@ export function HeaderActions() {
             {t('header.language')}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem className="cursor-pointer text-destructive">
+          <DropdownMenuItem className="cursor-pointer text-destructive" onClick={handleSignOut}>
             <LogOut className="w-4 h-4 mr-2" />
             {t('header.logout')}
           </DropdownMenuItem>
