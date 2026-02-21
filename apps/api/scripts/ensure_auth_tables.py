@@ -81,8 +81,36 @@ def main():
         conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_verification_codes_user_id ON {schema}.verification_codes (user_id)"))
         conn.commit()
 
-    print("OK: схема и таблицы авторизации созданы (или уже существуют).")
-    print("  Таблицы:", f"{schema}.users", f"{schema}.auth_identities", f"{schema}.refresh_tokens", f"{schema}.verification_codes")
+        # Таблица для загрузки отчётов (create_batch в imports.py)
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS {schema}.upload_batch (
+                upload_batch_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id uuid NOT NULL REFERENCES {schema}.users(id) ON DELETE CASCADE,
+                status varchar(50) NOT NULL DEFAULT 'processing',
+                is_current boolean NOT NULL DEFAULT false
+            )
+        """))
+        conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_upload_batch_user_id ON {schema}.upload_batch (user_id)"))
+        conn.commit()
+
+        # Если upload_batch уже была создана с FK на user_account — перепривязать на app.users
+        conn.execute(text(f"ALTER TABLE {schema}.upload_batch DROP CONSTRAINT IF EXISTS upload_batch_user_id_fkey"))
+        conn.commit()
+        # Удалить батчи с user_id, которых нет в app.users (иначе ADD CONSTRAINT упадёт)
+        conn.execute(text(f"""
+            DELETE FROM {schema}.upload_batch
+            WHERE user_id NOT IN (SELECT id FROM {schema}.users)
+        """))
+        conn.commit()
+        conn.execute(text(f"""
+            ALTER TABLE {schema}.upload_batch
+            ADD CONSTRAINT upload_batch_user_id_fkey
+            FOREIGN KEY (user_id) REFERENCES {schema}.users(id) ON DELETE CASCADE
+        """))
+        conn.commit()
+
+    print("OK: схема и таблицы авторизации и загрузки созданы (или уже существуют).")
+    print("  Таблицы:", f"{schema}.users", f"{schema}.auth_identities", f"{schema}.refresh_tokens", f"{schema}.verification_codes", f"{schema}.upload_batch")
 
 
 if __name__ == "__main__":

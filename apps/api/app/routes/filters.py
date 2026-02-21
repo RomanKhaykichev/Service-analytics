@@ -15,23 +15,35 @@ async def get_date_bounds(
     db: Session = Depends(get_db),
 ):
     """
-    Return min/max date from fact_sales.date_created (sells-report "Дата создания") for the current user.
-    Used by frontend to restrict calendar picker to available data range.
-    No shop filter — bounds are global for all sales.
-    If no data: min_date and max_date are null.
+    Return min/max date for the current user: first from fact_sales.date_created,
+    if no sales then from fact_expenses.date_written_off. Used by frontend for calendar.
+    If no data at all: min_date and max_date are null.
     """
-    q = text(
+    uid = str(user_id)
+    # 1) Try fact_sales (sells-report "Дата создания")
+    q_sales = text(
         f"""
-        SELECT
-          MIN(date_created::date) AS min_date,
-          MAX(date_created::date) AS max_date
+        SELECT MIN(date_created::date), MAX(date_created::date)
         FROM {qname("fact_sales")}
         WHERE user_id = CAST(:user_id AS uuid)
         """
     )
-    row = db.execute(q, {"user_id": str(user_id)}).fetchone()
-    if not row or (row[0] is None and row[1] is None):
-        return {"min_date": None, "max_date": None}
-    min_d = row[0].isoformat() if row[0] else None
-    max_d = row[1].isoformat() if row[1] else None
-    return {"min_date": min_d, "max_date": max_d}
+    row = db.execute(q_sales, {"user_id": uid}).fetchone()
+    if row and (row[0] is not None or row[1] is not None):
+        min_d = row[0].isoformat() if row[0] else None
+        max_d = row[1].isoformat() if row[1] else None
+        return {"min_date": min_d, "max_date": max_d}
+    # 2) Fallback: fact_expenses (expenses-report "Дата списания")
+    q_exp = text(
+        f"""
+        SELECT MIN(date_written_off::date), MAX(date_written_off::date)
+        FROM {qname("fact_expenses")}
+        WHERE user_id = CAST(:user_id AS uuid)
+        """
+    )
+    row = db.execute(q_exp, {"user_id": uid}).fetchone()
+    if row and (row[0] is not None or row[1] is not None):
+        min_d = row[0].isoformat() if row[0] else None
+        max_d = row[1].isoformat() if row[1] else None
+        return {"min_date": min_d, "max_date": max_d}
+    return {"min_date": None, "max_date": None}
