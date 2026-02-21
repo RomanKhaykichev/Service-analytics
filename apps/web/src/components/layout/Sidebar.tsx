@@ -45,10 +45,10 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       <div className="flex items-center justify-between h-16 px-4 border-b border-sidebar-border">
         {!collapsed && (
           <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-sidebar-primary rounded-lg flex items-center justify-center">
-              <span className="text-sidebar-primary-foreground font-bold text-sm">U</span>
+            <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 bg-transparent">
+              <img src="/favicon.png" alt="" className="w-full h-full object-contain" />
             </div>
-            <span className="text-lg font-bold text-sidebar-foreground">UZUM Stats</span>
+            <span className="text-lg font-bold text-sidebar-foreground">Profiboard</span>
           </Link>
         )}
         <Button
