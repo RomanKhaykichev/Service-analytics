@@ -257,19 +257,41 @@ def main():
         conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_fact_leftout_snapshot_user_batch ON {schema}.fact_leftout_snapshot (user_id, upload_batch_id)"))
         conn.commit()
 
+        # manual_expenses — доп. расходы (вкладка «Доп. расходы»)
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS {schema}.manual_expenses (
+                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id uuid NOT NULL,
+                expense_date date NOT NULL,
+                amount_sum numeric(18,2) NOT NULL,
+                shop_id uuid,
+                category text NOT NULL DEFAULT 'Прочее',
+                comment text,
+                name text,
+                is_deleted boolean NOT NULL DEFAULT false,
+                created_at timestamptz NOT NULL DEFAULT now(),
+                updated_at timestamptz NOT NULL DEFAULT now()
+            )
+        """))
+        conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_manual_expenses_user_date ON {schema}.manual_expenses (user_id, expense_date)"))
+        conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_manual_expenses_user_shop ON {schema}.manual_expenses (user_id, shop_id)"))
+        conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_manual_expenses_user_deleted ON {schema}.manual_expenses (user_id, is_deleted)"))
+        conn.commit()
+
         # Удалить FK на user_account, если таблицы созданы старыми миграциями (user_id без ссылки на user_account)
         for tbl in (
             "stg_sales", "stg_expenses", "stg_storage", "stg_leftout",
             "dim_shop",
             "fact_sales", "fact_expenses", "fact_storage_snapshot", "fact_leftout_snapshot",
             "map_shop_sku",
+            "manual_expenses",
         ):
             conn.execute(text(f"ALTER TABLE {schema}.{tbl} DROP CONSTRAINT IF EXISTS {tbl}_user_id_fkey"))
         conn.commit()
 
-    print("OK: таблицы для загрузки отчётов (sales, expenses, storage, inventory) созданы или уже существуют.")
+    print("OK: таблицы для загрузки отчётов и доп. расходов созданы или уже существуют.")
     print("  dim_shop, stg_sales, stg_expenses, stg_storage, stg_leftout,")
-    print("  fact_sales, fact_expenses, fact_storage_snapshot, fact_leftout_snapshot, map_shop_sku")
+    print("  fact_sales, fact_expenses, fact_storage_snapshot, fact_leftout_snapshot, map_shop_sku, manual_expenses")
 
 
 if __name__ == "__main__":

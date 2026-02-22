@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from uuid import UUID
-from typing import Optional
+from typing import Optional, Union
 from datetime import date, datetime, timedelta
 from pydantic import BaseModel
 import logging
@@ -166,7 +167,7 @@ class ExtraExpenseUpdate(BaseModel):
 
 
 class ExtraExpenseItem(BaseModel):
-    id: int
+    id: Union[int, str]  # int (legacy) or uuid string
     expense_date: str
     amount_sum: float
     shop_id: Optional[str] = None
@@ -334,7 +335,7 @@ async def get_extra_expenses(
         if idx < 3:  # Log first 3 rows for debugging
             logger.info(f"  Row {idx}: id={row[0]}, name={repr(name_value)}")
         expenses.append(ExtraExpenseItem(
-            id=row[0],
+            id=str(row[0]) if hasattr(row[0], 'hex') else row[0],
             expense_date=row[1].isoformat() if isinstance(row[1], date) else str(row[1]),
             amount_sum=float(row[2]),
             shop_id=row[3],
@@ -527,6 +528,20 @@ async def create_extra_expense(
         if not row:
             logger.error(f"Failed to create expense: no row returned for user_id={user_id}")
             raise HTTPException(status_code=500, detail="Failed to create expense")
+    except IntegrityError as e:
+        db.rollback()
+        err = str(e).lower()
+        if "user_account" in err or "foreign key" in err or "violates foreign key" in err:
+            logger.error(f"manual_expenses FK violation (user_id): {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Таблица доп. расходов привязана к старой таблице user_account. "
+                    "Запустите из папки apps/api: python -m scripts.ensure_import_tables"
+                )
+            )
+        logger.error(f"Error creating expense for user_id={user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create expense: {str(e)}")
     except Exception as e:
         db.rollback()
         logger.error(f"Error creating expense for user_id={user_id}: {e}", exc_info=True)
@@ -561,7 +576,7 @@ async def create_extra_expense(
         logger.info(f"  Saved name from database: {repr(saved_name)}")
         logger.info(f"  Returning expense with name={repr(saved_name)}")
         return ExtraExpenseItem(
-            id=row[0],
+            id=str(row[0]) if hasattr(row[0], 'hex') else row[0],
             expense_date=row[1].isoformat() if isinstance(row[1], date) else str(row[1]),
             amount_sum=float(row[2]),
             shop_id=row[3],
@@ -575,7 +590,7 @@ async def create_extra_expense(
     else:  # Without name column
         logger.warning(f"  Returning without name (column doesn't exist or wrong row length)")
         return ExtraExpenseItem(
-            id=row[0],
+            id=str(row[0]) if hasattr(row[0], 'hex') else row[0],
             expense_date=row[1].isoformat() if isinstance(row[1], date) else str(row[1]),
             amount_sum=float(row[2]),
             shop_id=row[3],
@@ -590,21 +605,21 @@ async def create_extra_expense(
 
 @router.put("/extra-expenses/{expense_id}", response_model=ExtraExpenseItem)
 async def update_extra_expense(
-    expense_id: int,
+    expense_id: Union[int, str],
     expense: ExtraExpenseUpdate,
     user_id: UUID = Depends(require_user),
     db: Session = Depends(get_db)
 ):
-    """Update an existing extra expense."""
-    # Check if expense exists and belongs to user
+    """Update an existing extra expense. expense_id can be int (legacy) or uuid string."""
+    # id::text works for both uuid and bigint id columns
     check_query = text(f"""
         SELECT id FROM {qname("manual_expenses")}
-        WHERE id = :expense_id
+        WHERE id::text = :expense_id
           AND user_id = CAST(:user_id AS uuid)
           AND is_deleted = false
     """)
     check_result = db.execute(check_query, {
-        "expense_id": expense_id,
+        "expense_id": str(expense_id),
         "user_id": str(user_id)
     })
     if not check_result.fetchone():
@@ -687,10 +702,11 @@ async def update_extra_expense(
     
     # updated_at will be set by trigger
     name_return = "name," if has_name_column else "NULL::text AS name,"
+    params["expense_id"] = str(expense_id)
     update_query = text(f"""
         UPDATE {qname("manual_expenses")}
         SET {', '.join(updates)}
-        WHERE id = :expense_id
+        WHERE id::text = :expense_id
           AND user_id = CAST(:user_id AS uuid)
           AND is_deleted = false
         RETURNING 
@@ -731,7 +747,7 @@ async def update_extra_expense(
     # Handle different row structures based on whether name column exists
     if has_name_column and len(row) >= 9:
         return ExtraExpenseItem(
-            id=row[0],
+            id=str(row[0]) if hasattr(row[0], 'hex') else row[0],
             expense_date=row[1].isoformat() if isinstance(row[1], date) else str(row[1]),
             amount_sum=float(row[2]),
             shop_id=row[3],
@@ -744,7 +760,7 @@ async def update_extra_expense(
         )
     else:
         return ExtraExpenseItem(
-            id=row[0],
+            id=str(row[0]) if hasattr(row[0], 'hex') else row[0],
             expense_date=row[1].isoformat() if isinstance(row[1], date) else str(row[1]),
             amount_sum=float(row[2]),
             shop_id=row[3],
@@ -759,22 +775,22 @@ async def update_extra_expense(
 
 @router.delete("/extra-expenses/{expense_id}")
 async def delete_extra_expense(
-    expense_id: int,
+    expense_id: Union[int, str],
     user_id: UUID = Depends(require_user),
     db: Session = Depends(get_db)
 ):
-    """Delete an extra expense (soft delete by setting is_deleted=true)."""
+    """Delete an extra expense (soft delete by setting is_deleted=true). expense_id can be int or uuid string."""
     query = text(f"""
         UPDATE {qname("manual_expenses")}
         SET is_deleted = true, updated_at = now()
-        WHERE id = :expense_id
+        WHERE id::text = :expense_id
           AND user_id = CAST(:user_id AS uuid)
           AND is_deleted = false
         RETURNING id
     """)
     
     result = db.execute(query, {
-        "expense_id": expense_id,
+        "expense_id": str(expense_id),
         "user_id": str(user_id)
     })
     db.commit()
