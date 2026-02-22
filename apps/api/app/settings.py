@@ -2,8 +2,10 @@ import os
 from typing import Optional
 from dotenv import load_dotenv
 
-# Load .env file from apps/api directory
+# Load .env.example first (defaults), then .env (overrides). If .env is missing, only .env.example is used.
 env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+env_example_path = os.path.join(os.path.dirname(__file__), "..", ".env.example")
+load_dotenv(env_example_path)
 load_dotenv(env_path)
 
 
@@ -34,6 +36,9 @@ class Settings:
     JWT_ISSUER: str = os.getenv("JWT_ISSUER", "service-analytics-api")
     ACCESS_TTL_MIN: int = int(os.getenv("ACCESS_TTL_MIN", "15"))  # 15 minutes
     REFRESH_TTL_DAYS: int = int(os.getenv("REFRESH_TTL_DAYS", "30"))  # 30 days
+
+    # Admin: comma-separated list of emails or UUIDs allowed to access /api/admin/*
+    ADMIN_USER_IDS: str = os.getenv("ADMIN_USER_IDS", "")
 
 
 _settings_instance: Optional[Settings] = None

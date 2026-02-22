@@ -95,6 +95,49 @@ def require_user(
         )
 
 
+def _admin_user_ids_set() -> set:
+    """Parse ADMIN_USER_IDS (comma-separated emails or UUIDs) into a set of lowercase strings."""
+    raw = (settings.ADMIN_USER_IDS or "").strip()
+    if not raw:
+        return set()
+    return {s.strip().lower() for s in raw.split(",") if s.strip()}
+
+
+def require_admin(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+) -> UUID:
+    """
+    Dependency for admin-only routes. Requires valid user (JWT or X-User-Id) and
+    that the user is in ADMIN_USER_IDS (comma-separated emails or UUIDs in env).
+    """
+    user_id = require_user(request, credentials)
+    admin_ids = _admin_user_ids_set()
+    if not admin_ids:
+        logger.warning("ADMIN_USER_IDS is empty; no one can access admin routes")
+        raise HTTPException(status_code=403, detail="Admin access not configured")
+    user_id_str = str(user_id).lower()
+    if user_id_str in admin_ids:
+        return user_id
+    # Check by email (need DB)
+    from app.db import SessionLocal
+    from sqlalchemy import text
+    from app.db import qname
+    db = SessionLocal()
+    try:
+        db.execute(text(f"SET search_path TO {settings.DB_SCHEMA}, public"))
+        row = db.execute(
+            text(f"SELECT email FROM {qname('users')} WHERE id = :uid"),
+            {"uid": str(user_id)},
+        ).fetchone()
+        if row and row[0]:
+            if row[0].lower() in admin_ids:
+                return user_id
+    finally:
+        db.close()
+    raise HTTPException(status_code=403, detail="Admin access required")
+
+
 def require_user_id(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)

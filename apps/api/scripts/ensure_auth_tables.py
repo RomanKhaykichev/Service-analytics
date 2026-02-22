@@ -36,6 +36,10 @@ def main():
         """))
         conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_users_email ON {schema}.users (email)"))
         conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_users_phone ON {schema}.users (phone)"))
+        conn.execute(text(f"ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS admin_notes text"))
+        conn.execute(text(f"ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS trial_ends_at timestamptz"))
+        conn.execute(text(f"ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS plan varchar(50) NOT NULL DEFAULT 'trial'"))
+        conn.execute(text(f"ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS last_login_at timestamptz"))
         conn.commit()
 
         conn.execute(text(f"""
@@ -91,6 +95,9 @@ def main():
             )
         """))
         conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_upload_batch_user_id ON {schema}.upload_batch (user_id)"))
+        conn.execute(text(f"ALTER TABLE {schema}.upload_batch ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now()"))
+        conn.execute(text(f"ALTER TABLE {schema}.upload_batch ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()"))
+        conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_upload_batch_created_at ON {schema}.upload_batch (created_at)"))
         conn.commit()
 
         # Если upload_batch уже была создана с FK на user_account — перепривязать на app.users

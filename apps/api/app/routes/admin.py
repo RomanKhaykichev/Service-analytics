@@ -1,0 +1,1020 @@
+"""
+Admin-only API: overview KPIs, tenants list/detail, tenant actions.
+All routes require ADMIN_USER_IDS (env) and valid admin user (JWT).
+"""
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+from uuid import UUID
+from datetime import date, datetime, timedelta, timezone
+from typing import Optional, Any
+from pydantic import BaseModel
+import logging
+
+from app.db import get_db, qname
+from app.deps import require_admin
+from app.settings import get_settings
+from app.auth import hash_password
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+settings = get_settings()
+
+
+# --- Response models ---
+
+class AdminOverviewKPIs(BaseModel):
+    active_customers_mau_30d: Optional[int] = None
+    new_signups_7d: Optional[int] = None
+    new_signups_30d: Optional[int] = None
+    activated_pct: Optional[float] = None  # % signup -> first import
+    paid_count: Optional[int] = None
+    trial_count: Optional[int] = None
+    expired_count: Optional[int] = None
+    mrr: Optional[float] = None
+    revenue_30d: Optional[float] = None
+    imports_24h: Optional[int] = None
+    import_success_rate_7d: Optional[float] = None
+    queue_pending: Optional[int] = None
+    queue_running: Optional[int] = None
+    queue_failed: Optional[int] = None
+    oldest_pending_minutes: Optional[float] = None
+    api_errors_5xx_24h: Optional[int] = None
+
+
+class RegistrationsPerDayPoint(BaseModel):
+    date: str
+    count: int
+
+
+class ImportsPerDayPoint(BaseModel):
+    date: str
+    success: int
+    failed: int
+
+
+class DataFreshnessBucket(BaseModel):
+    bucket: str  # "0-3" | "4-7" | "8-14" | "15+"
+    count: int
+
+
+class SubscriptionAnalyticsPoint(BaseModel):
+    month: str  # "YYYY-MM"
+    active_users: int
+    revenue: float
+
+
+class AdminOverviewResponse(BaseModel):
+    kpis: AdminOverviewKPIs
+    registrations_per_day: list[RegistrationsPerDayPoint]
+    visits_per_day: list[RegistrationsPerDayPoint]  # users who logged in that day
+    imports_per_day: list[ImportsPerDayPoint]
+    import_processing_p50_p95: Optional[list[dict]] = None  # [{date, p50, p95}]
+    top_import_error_types: list[dict]  # [{error_type, count}]
+    data_freshness_buckets: list[DataFreshnessBucket]
+    subscription_analytics: list[SubscriptionAnalyticsPoint] = []  # по месяцам: активные пользователи, доход
+
+
+class TenantRow(BaseModel):
+    tenant_id: str
+    company_name: Optional[str] = None
+    owner_email: Optional[str] = None
+    phone: Optional[str] = None
+    created_at: Optional[str] = None
+    plan: str
+    trial_ends_at: Optional[str] = None
+    next_billing_date: Optional[str] = None
+    payment_status: Optional[str] = None
+    last_activity_at: Optional[str] = None
+    last_import_at: Optional[str] = None
+    last_import_status: Optional[str] = None
+    last_import_type: Optional[str] = None
+    data_freshness_days: Optional[int] = None
+    imports_30d: int
+    failed_imports_30d: int
+    storage_mb: Optional[float] = None
+    top_last_error: Optional[str] = None
+    notes: Optional[str] = None
+    is_active: bool
+    # Доп. колонки для таблицы
+    shops_count: int = 0
+    status: str = "active"  # active | blocked
+    trial_days_left: Optional[int] = None
+    paid: bool = False
+    paid_amount: Optional[float] = None  # Оплачено — сумма, которую оплатил клиент
+    last_login_at: Optional[str] = None  # дата последнего входа
+
+
+class TenantsListResponse(BaseModel):
+    tenants: list[TenantRow]
+    total_count: int
+
+
+class TenantDetailResponse(BaseModel):
+    tenant_id: str
+    company_name: Optional[str] = None
+    owner_email: Optional[str] = None
+    created_at: Optional[str] = None
+    plan: str
+    trial_ends_at: Optional[str] = None
+    notes: Optional[str] = None
+    is_active: bool
+    last_import_at: Optional[str] = None
+    last_import_batch_id: Optional[str] = None
+    last_import_status: Optional[str] = None
+    data_freshness_days: Optional[int] = None
+    imports_30d: int
+    failed_imports_30d: int
+
+
+def _safe_date(r: Any, idx: int) -> Optional[str]:
+    v = r[idx] if r and len(r) > idx else None
+    if v is None:
+        return None
+    if hasattr(v, "isoformat"):
+        return v.isoformat()[:10] if hasattr(v, "isoformat") else str(v)
+    return str(v)[:10]
+
+
+def _safe_ts(r: Any, idx: int) -> Optional[str]:
+    v = r[idx] if r and len(r) > idx else None
+    if v is None:
+        return None
+    if hasattr(v, "isoformat"):
+        return v.isoformat()
+    return str(v)
+
+
+@router.get("/admin/overview", response_model=AdminOverviewResponse)
+async def admin_overview(
+    from_date: Optional[date] = Query(None, alias="from"),
+    to_date: Optional[date] = Query(None, alias="to"),
+    subscription_period: Optional[str] = Query("month", description="Аналитика подписок: day | week | month"),
+    _: UUID = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """KPI cards + chart data for admin dashboard. Uses upload_batch.created_at and users."""
+    schema = settings.DB_SCHEMA
+    to_d = to_date or date.today()
+    from_d = from_date or (to_d - timedelta(days=90))
+    if from_d > to_d:
+        from_d, to_d = to_d, from_d
+    sub_period = (subscription_period or "month").lower()
+    if sub_period not in ("day", "week", "month"):
+        sub_period = "month"
+
+    kpis = AdminOverviewKPIs()
+    now = datetime.now(timezone.utc)
+    today = now.date()
+    d30 = today - timedelta(days=30)
+    d7 = today - timedelta(days=7)
+    d1 = now - timedelta(hours=24)
+
+    try:
+        # upload_batch may not have created_at if migration not run
+        has_created_at = False
+        try:
+            r = db.execute(text(f"""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = :s AND table_name = 'upload_batch' AND column_name = 'created_at'
+            """), {"s": schema}).fetchone()
+            has_created_at = r is not None
+        except Exception:
+            pass
+
+        if has_created_at:
+            # Active customers (MAU 30d): distinct users with upload_batch in last 30d
+            r = db.execute(text(f"""
+                SELECT COUNT(DISTINCT user_id) FROM {qname('upload_batch')}
+                WHERE created_at >= :d30
+            """), {"d30": d30}).fetchone()
+            kpis.active_customers_mau_30d = r[0] if r else 0
+
+            # Imports 24h
+            r = db.execute(text(f"""
+                SELECT COUNT(*) FROM {qname('upload_batch')}
+                WHERE created_at >= :d1
+            """), {"d1": d1}).fetchone()
+            kpis.imports_24h = r[0] if r else 0
+
+            # Import success rate 7d: batches with at least one fact_sales row vs total batches
+            r = db.execute(text(f"""
+                SELECT COUNT(DISTINCT b.upload_batch_id) FROM {qname('upload_batch')} b
+                WHERE b.created_at >= :d7
+            """), {"d7": d7}).fetchone()
+            total_7d = r[0] or 0
+            r = db.execute(text(f"""
+                SELECT COUNT(DISTINCT b.upload_batch_id) FROM {qname('upload_batch')} b
+                INNER JOIN {qname('fact_sales')} fs ON fs.user_id = b.user_id AND fs.upload_batch_id = b.upload_batch_id
+                WHERE b.created_at >= :d7
+            """), {"d7": d7}).fetchone()
+            success_7d = r[0] or 0
+            kpis.import_success_rate_7d = (success_7d / total_7d * 100) if total_7d else None
+        else:
+            kpis.active_customers_mau_30d = None
+            kpis.imports_24h = None
+            kpis.import_success_rate_7d = None
+
+        # New signups 7d / 30d
+        r = db.execute(text(f"""
+            SELECT COUNT(*) FROM {qname('users')} WHERE created_at >= :d7
+        """), {"d7": d7}).fetchone()
+        kpis.new_signups_7d = r[0] if r else 0
+        r = db.execute(text(f"""
+            SELECT COUNT(*) FROM {qname('users')} WHERE created_at >= :d30
+        """), {"d30": d30}).fetchone()
+        kpis.new_signups_30d = r[0] if r else 0
+
+        # Activated %: users with at least one upload_batch / total users
+        r = db.execute(text(f"SELECT COUNT(*) FROM {qname('users')}")).fetchone()
+        total_users = r[0] or 0
+        r = db.execute(text(f"""
+            SELECT COUNT(DISTINCT user_id) FROM {qname('upload_batch')}
+        """)).fetchone()
+        users_with_import = r[0] or 0
+        kpis.activated_pct = (users_with_import / total_users * 100) if total_users else None
+
+        # Plan counts (users.plan, users.trial_ends_at)
+        try:
+            r = db.execute(text(f"""
+                SELECT plan, trial_ends_at FROM {qname('users')}
+            """)).fetchall()
+            paid = trial = expired = 0
+            for row in r or []:
+                plan = (row[0] or "trial").lower()
+                te = row[1]
+                if plan == "paid":
+                    paid += 1
+                elif te and te < now:
+                    expired += 1
+                else:
+                    trial += 1
+            kpis.paid_count = paid
+            kpis.trial_count = trial
+            kpis.expired_count = expired
+        except Exception:
+            kpis.paid_count = kpis.trial_count = kpis.expired_count = None
+
+        kpis.mrr = None
+        kpis.revenue_30d = None
+        kpis.queue_pending = 0
+        kpis.queue_running = 0
+        kpis.queue_failed = 0
+        kpis.oldest_pending_minutes = None
+        kpis.api_errors_5xx_24h = None
+
+    except Exception as e:
+        logger.warning(f"Admin overview KPIs partial failure: {e}")
+        db.rollback()
+
+    # Registrations per day (включая полный день to_d — сегодня)
+    registrations_per_day: list[RegistrationsPerDayPoint] = []
+    try:
+        rows = db.execute(text(f"""
+            SELECT date_trunc('day', created_at)::date AS d, COUNT(*)
+            FROM {qname('users')}
+            WHERE created_at::date >= :from_d AND created_at::date <= :to_d
+            GROUP BY 1 ORDER BY 1
+        """), {"from_d": from_d, "to_d": to_d}).fetchall()
+        for row in rows or []:
+            registrations_per_day.append(RegistrationsPerDayPoint(date=str(row[0])[:10], count=row[1]))
+    except Exception as e:
+        logger.warning(f"Admin registrations_per_day: {e}")
+        db.rollback()
+
+    # Visits per day (users who logged in that day, by last_login_at)
+    visits_per_day: list[RegistrationsPerDayPoint] = []
+    try:
+        r = db.execute(text("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = :s AND table_name = 'users' AND column_name = 'last_login_at'
+        """), {"s": schema}).fetchone()
+        if r:
+            rows = db.execute(text(f"""
+                SELECT date_trunc('day', last_login_at)::date AS d, COUNT(*)
+                FROM {qname('users')}
+                WHERE last_login_at::date >= :from_d AND last_login_at::date <= :to_d
+                GROUP BY 1 ORDER BY 1
+            """), {"from_d": from_d, "to_d": to_d}).fetchall()
+            for row in rows or []:
+                visits_per_day.append(RegistrationsPerDayPoint(date=str(row[0])[:10], count=row[1]))
+    except Exception as e:
+        logger.warning(f"Admin visits_per_day: {e}")
+        db.rollback()
+
+    # Imports per day (success = has fact_sales for that batch)
+    imports_per_day: list[ImportsPerDayPoint] = []
+    if has_created_at:
+        try:
+            rows = db.execute(text(f"""
+                SELECT date_trunc('day', b.created_at)::date AS d,
+                       COUNT(DISTINCT b.upload_batch_id) AS total,
+                       COUNT(DISTINCT CASE WHEN fs.upload_batch_id IS NOT NULL THEN b.upload_batch_id END) AS success
+                FROM {qname('upload_batch')} b
+                LEFT JOIN (SELECT DISTINCT user_id, upload_batch_id FROM {qname('fact_sales')}) fs
+                  ON fs.user_id = b.user_id AND fs.upload_batch_id = b.upload_batch_id
+                WHERE b.created_at::date >= :from_d AND b.created_at::date <= :to_d
+                GROUP BY 1 ORDER BY 1
+            """), {"from_d": from_d, "to_d": to_d}).fetchall()
+            for row in rows or []:
+                d = str(row[0])[:10]
+                total = row[1] or 0
+                success = row[2] or 0
+                failed = total - success
+                imports_per_day.append(ImportsPerDayPoint(date=d, success=success, failed=failed))
+        except Exception as e:
+            logger.warning(f"Admin imports_per_day: {e}")
+            db.rollback()
+
+    # Top import error types: no table, return empty
+    top_import_error_types: list[dict] = []
+
+    # Data freshness buckets: by user, max(date_created) from fact_sales -> days ago
+    data_freshness_buckets: list[DataFreshnessBucket] = []
+    try:
+        rows = db.execute(text(f"""
+            WITH last_data AS (
+                SELECT user_id, MAX(date_created)::date AS last_d
+                FROM {qname('fact_sales')}
+                GROUP BY user_id
+            ),
+            days_ago AS (
+                SELECT user_id, (:today::date - last_d) AS d
+                FROM last_data
+            )
+            SELECT
+                COUNT(*) FILTER (WHERE d <= 3) AS b0_3,
+                COUNT(*) FILTER (WHERE d >= 4 AND d <= 7) AS b4_7,
+                COUNT(*) FILTER (WHERE d >= 8 AND d <= 14) AS b8_14,
+                COUNT(*) FILTER (WHERE d >= 15) AS b15
+            FROM days_ago
+        """), {"today": today}).fetchone()
+        if rows:
+            data_freshness_buckets = [
+                DataFreshnessBucket(bucket="0-3", count=rows[0] or 0),
+                DataFreshnessBucket(bucket="4-7", count=rows[1] or 0),
+                DataFreshnessBucket(bucket="8-14", count=rows[2] or 0),
+                DataFreshnessBucket(bucket="15+", count=rows[3] or 0),
+            ]
+    except Exception as e:
+        logger.warning(f"Admin data_freshness_buckets: {e}")
+        db.rollback()
+
+    # Аналитика подписок: по дням / неделям / месяцам до сегодня
+    subscription_analytics: list[SubscriptionAnalyticsPoint] = []
+    try:
+        periods: list[tuple[date, date, str]] = []  # (from_d, to_d, label)
+        if sub_period == "day":
+            for i in range(29, -1, -1):
+                d = to_d - timedelta(days=i)
+                periods.append((d, d, d.strftime("%Y-%m-%d")))
+        elif sub_period == "week":
+            # 12 недель: понедельник–воскресенье, последняя неделя заканчивается to_d
+            for i in range(11, -1, -1):
+                end = to_d - timedelta(days=i * 7)
+                start = end - timedelta(days=6)
+                periods.append((start, end, start.strftime("%d.%m")))
+        else:
+            # month: последние 12 месяцев
+            d = date(to_d.year, to_d.month, 1)
+            for _ in range(12):
+                from_m = d.replace(day=1)
+                if from_m.month == 12:
+                    to_m = from_m.replace(year=from_m.year + 1, month=1) - timedelta(days=1)
+                else:
+                    to_m = from_m.replace(month=from_m.month + 1) - timedelta(days=1)
+                if to_m > to_d:
+                    to_m = to_d
+                periods.append((from_m, to_m, from_m.strftime("%Y-%m")))
+                d = from_m - timedelta(days=1)
+            periods.reverse()
+        has_last_login = False
+        r = db.execute(text("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = :s AND table_name = 'users' AND column_name = 'last_login_at'
+        """), {"s": schema}).fetchone()
+        if r:
+            has_last_login = True
+        for from_p, to_p, period_key in periods:
+            active_users = 0
+            if has_last_login:
+                r2 = db.execute(text(f"""
+                    SELECT COUNT(DISTINCT id) FROM {qname('users')}
+                    WHERE last_login_at::date >= :from_p AND last_login_at::date <= :to_p AND is_active = true
+                """), {"from_p": from_p, "to_p": to_p}).fetchone()
+                active_users = r2[0] or 0 if r2 else 0
+            else:
+                r2 = db.execute(text(f"""
+                    SELECT COUNT(DISTINCT user_id) FROM {qname('upload_batch')}
+                    WHERE created_at::date >= :from_p AND created_at::date <= :to_p
+                """), {"from_p": from_p, "to_p": to_p}).fetchone()
+                active_users = r2[0] or 0 if r2 else 0
+            revenue = 0.0
+            try:
+                r3 = db.execute(text(f"""
+                    SELECT COALESCE(SUM(amount), 0)
+                    FROM {qname('user_payments')}
+                    WHERE paid_at::date >= :from_p AND paid_at::date <= :to_p
+                """), {"from_p": from_p, "to_p": to_p}).fetchone()
+                revenue = float(r3[0] or 0) if r3 else 0.0
+            except Exception:
+                pass
+            subscription_analytics.append(
+                SubscriptionAnalyticsPoint(month=period_key, active_users=active_users, revenue=round(revenue, 2))
+            )
+    except Exception as e:
+        logger.warning(f"Admin subscription_analytics: {e}")
+        db.rollback()
+
+    return AdminOverviewResponse(
+        kpis=kpis,
+        registrations_per_day=registrations_per_day,
+        visits_per_day=visits_per_day,
+        imports_per_day=imports_per_day,
+        import_processing_p50_p95=None,
+        top_import_error_types=top_import_error_types,
+        data_freshness_buckets=data_freshness_buckets,
+        subscription_analytics=subscription_analytics,
+    )
+
+
+@router.get("/admin/tenants", response_model=TenantsListResponse)
+async def admin_tenants_list(
+    search: Optional[str] = Query(None),
+    plan: Optional[str] = Query(None),
+    import_status: Optional[str] = Query(None),
+    freshness_bucket: Optional[str] = Query(None),
+    payment_status: Optional[str] = Query(None),
+    has_failures_7d: Optional[bool] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    sort: str = Query("created_at"),
+    _: UUID = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """List tenants (users) with filters and pagination."""
+    schema = settings.DB_SCHEMA
+    today = date.today()
+    has_created_at = False
+    try:
+        r = db.execute(text("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = :s AND table_name = 'upload_batch' AND column_name = 'created_at'
+        """), {"s": schema}).fetchone()
+        has_created_at = r is not None
+    except Exception:
+        pass
+
+    # Build tenant list from users + last batch + data freshness
+    # Simple query: all users, then enrich with subqueries
+    order_col = "created_at"
+    if sort in ("created_at", "last_import_at", "data_freshness", "imports_30d"):
+        order_col = sort
+
+    params: dict = {"limit": page_size, "offset": (page - 1) * page_size}
+    search_cond = ""
+    if search and search.strip():
+        search_cond = " AND (u.email ILIKE :search OR u.full_name ILIKE :search OR u.id::text = :search_exact)"
+        params["search"] = f"%{search.strip()}%"
+        params["search_exact"] = search.strip()
+
+    # Check plan column exists before filtering by plan
+    has_plan_cols = False
+    has_paid_amount = False
+    try:
+        r = db.execute(text("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = :s AND table_name = 'users' AND column_name IN ('plan','trial_ends_at','admin_notes','paid_amount')
+        """), {"s": schema}).fetchall()
+        col_set = {row[0] for row in (r or [])}
+        has_plan_cols = len(col_set & {"plan", "trial_ends_at", "admin_notes"}) >= 3
+        has_paid_amount = "paid_amount" in col_set
+    except Exception:
+        pass
+
+    plan_cond = ""
+    if plan and plan.strip() and has_plan_cols:
+        plan_cond = " AND COALESCE(u.plan, 'trial') = :plan"
+        params["plan"] = plan.strip()
+
+    # Count total
+    count_sql = f"""
+        SELECT COUNT(*) FROM {qname('users')} u
+        WHERE 1=1 {search_cond} {plan_cond}
+    """
+    total = db.execute(text(count_sql), params).scalar() or 0
+
+    # Get users with optional columns (plan, trial_ends_at, admin_notes, last_login_at, phone)
+    cols = "id, email, full_name, created_at, is_active"
+    try:
+        r = db.execute(text("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = :s AND table_name = 'users' AND column_name IN ('phone', 'last_login_at')
+        """), {"s": schema}).fetchall()
+        col_names = [row[0] for row in (r or [])]
+        has_phone = "phone" in col_names
+        has_last_login = "last_login_at" in col_names
+    except Exception:
+        has_phone = has_last_login = False
+    if has_phone:
+        cols += ", phone"
+    else:
+        cols += ", NULL::varchar AS phone"
+    if has_last_login:
+        cols += ", last_login_at"
+    else:
+        cols += ", NULL::timestamptz AS last_login_at"
+    if has_plan_cols:
+        cols += ", COALESCE(plan,'trial') AS plan, trial_ends_at, admin_notes"
+    else:
+        cols += ", 'trial' AS plan, NULL::timestamptz AS trial_ends_at, NULL::text AS admin_notes"
+    if has_paid_amount:
+        cols += ", paid_amount"
+    else:
+        cols += ", NULL::numeric AS paid_amount"
+
+    list_sql = f"""
+        SELECT {cols} FROM {qname('users')} u
+        WHERE 1=1 {search_cond} {plan_cond}
+        ORDER BY u.created_at DESC NULLS LAST
+        LIMIT :limit OFFSET :offset
+    """
+    rows = db.execute(text(list_sql), params).fetchall()
+    tenants_out: list[TenantRow] = []
+
+    for row in rows or []:
+        uid = str(row[0])
+        email = row[1]
+        full_name = row[2]
+        created_at = _safe_ts(row, 3)
+        is_active = row[4] if len(row) > 4 else True
+        phone = row[5] if len(row) > 5 and row[5] else None
+        last_login_at_val = _safe_ts(row, 6) if len(row) > 6 else None
+        plan_val = row[7] if len(row) > 7 else "trial"
+        trial_ends_at = _safe_ts(row, 8) if len(row) > 8 else None
+        notes = row[9] if len(row) > 9 else None
+        paid_amount_val = float(row[10]) if len(row) > 10 and row[10] is not None else None
+
+        last_import_at = None
+        last_import_status = None
+        last_import_type = None
+        imports_30d = 0
+        failed_30d = 0
+        data_freshness_days = None
+        shops_count = 0
+
+        if has_created_at:
+            b = db.execute(text(f"""
+                SELECT upload_batch_id, created_at, status
+                FROM {qname('upload_batch')}
+                WHERE user_id = :uid
+                ORDER BY created_at DESC NULLS LAST
+                LIMIT 1
+            """), {"uid": uid}).fetchone()
+            if b:
+                last_import_at = _safe_ts(b, 1)
+                last_import_status = (b[2] or "processing").lower()
+                last_import_type = "xlsx"
+                # Success if batch has fact_sales
+                has_fs = db.execute(text(f"""
+                    SELECT 1 FROM {qname('fact_sales')}
+                    WHERE user_id = :uid AND upload_batch_id = :bid
+                    LIMIT 1
+                """), {"uid": uid, "bid": str(b[0])}).fetchone()
+                if has_fs:
+                    last_import_status = "success"
+                else:
+                    last_import_status = "failed"
+
+            r30 = db.execute(text(f"""
+                SELECT COUNT(*),
+                       COUNT(*) FILTER (WHERE NOT EXISTS (
+                         SELECT 1 FROM {qname('fact_sales')} fs
+                         WHERE fs.user_id = b.user_id AND fs.upload_batch_id = b.upload_batch_id
+                       ))
+                FROM {qname('upload_batch')} b
+                WHERE b.user_id = :uid AND b.created_at >= :d30
+            """), {"uid": uid, "d30": today - timedelta(days=30)}).fetchone()
+            if r30:
+                imports_30d = r30[0] or 0
+                failed_30d = r30[1] or 0
+
+            # Data freshness: max date_created from fact_sales for this user
+            df = db.execute(text(f"""
+                SELECT (CURRENT_DATE - MAX(date_created)::date) FROM {qname('fact_sales')}
+                WHERE user_id = :uid
+            """), {"uid": uid}).fetchone()
+            if df and df[0] is not None:
+                data_freshness_days = int(df[0])
+
+        # Количество магазинов (dim_shop), без «все»/заглушки (Не определено)
+        try:
+            sc = db.execute(text(f"""
+                SELECT COUNT(*) FROM {qname('dim_shop')}
+                WHERE user_id = :uid AND COALESCE(trim(shop_name), '') != '(Не определено)'
+            """), {"uid": uid}).scalar()
+            shops_count = sc or 0
+        except Exception:
+            pass
+
+        # Остаток дней триала; оплачено = plan paid
+        trial_days_left = None
+        if trial_ends_at:
+            try:
+                if isinstance(trial_ends_at, str):
+                    te = date.fromisoformat(trial_ends_at[:10])
+                else:
+                    te = getattr(trial_ends_at, "date", lambda: trial_ends_at)() if hasattr(trial_ends_at, "date") else trial_ends_at
+                trial_days_left = (te - today).days
+            except Exception:
+                pass
+        paid = (plan_val or "").lower() == "paid"
+        status = "active" if is_active else "blocked"
+
+        tenants_out.append(TenantRow(
+            tenant_id=uid,
+            company_name=full_name or email or None,
+            owner_email=email,
+            created_at=created_at[:10] if created_at else None,
+            plan=plan_val,
+            trial_ends_at=trial_ends_at[:10] if trial_ends_at else None,
+            next_billing_date=None,
+            payment_status=None,
+            last_activity_at=last_import_at,
+            last_import_at=last_import_at,
+            last_import_status=last_import_status,
+            last_import_type=last_import_type,
+            data_freshness_days=data_freshness_days,
+            imports_30d=imports_30d,
+            failed_imports_30d=failed_30d,
+            storage_mb=None,
+            top_last_error=None,
+            notes=notes,
+            is_active=bool(is_active),
+            phone=phone,
+            shops_count=shops_count,
+            status=status,
+            trial_days_left=trial_days_left,
+            paid=paid,
+            paid_amount=paid_amount_val,
+            last_login_at=last_login_at_val[:10] if last_login_at_val else None,
+        ))
+
+    return TenantsListResponse(tenants=tenants_out, total_count=total)
+
+
+@router.get("/admin/tenants/{tenant_id}", response_model=TenantDetailResponse)
+async def admin_tenant_detail(
+    tenant_id: UUID,
+    _: UUID = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Tenant (user) detail for admin."""
+    uid = str(tenant_id)
+    row = db.execute(text(f"""
+        SELECT id, email, full_name, created_at, is_active
+        FROM {qname('users')}
+        WHERE id = :uid
+    """), {"uid": uid}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    plan_val = "trial"
+    trial_ends_at_val = None
+    notes_val = None
+    try:
+        r = db.execute(text("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = :s AND table_name = 'users' AND column_name IN ('plan','trial_ends_at','admin_notes')
+        """), {"s": settings.DB_SCHEMA}).fetchall()
+        if r and len(r) >= 3:
+            ext = db.execute(text(f"""
+                SELECT COALESCE(plan,'trial'), trial_ends_at, admin_notes FROM {qname('users')} WHERE id = :uid
+            """), {"uid": uid}).fetchone()
+            if ext:
+                plan_val = ext[0] or "trial"
+                trial_ends_at_val = ext[1]
+                notes_val = ext[2]
+    except Exception:
+        pass
+
+    last_import_at = None
+    last_batch_id = None
+    last_status = None
+    imports_30d = 0
+    failed_30d = 0
+    data_freshness_days = None
+    try:
+        r = db.execute(text("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = :schema AND table_name = 'upload_batch' AND column_name = 'created_at'
+        """), {"schema": settings.DB_SCHEMA}).fetchone()
+        if r:
+            b = db.execute(text(f"""
+                SELECT upload_batch_id, created_at, status
+                FROM {qname('upload_batch')} WHERE user_id = :uid
+                ORDER BY created_at DESC NULLS LAST LIMIT 1
+            """), {"uid": uid}).fetchone()
+            if b:
+                last_batch_id = str(b[0])
+                last_import_at = _safe_ts(b, 1)
+                has_fs = db.execute(text(f"""
+                    SELECT 1 FROM {qname('fact_sales')}
+                    WHERE user_id = :uid AND upload_batch_id = :bid LIMIT 1
+                """), {"uid": uid, "bid": last_batch_id}).fetchone()
+                last_status = "success" if has_fs else "failed"
+            r30 = db.execute(text(f"""
+                SELECT COUNT(*),
+                       COUNT(*) FILTER (WHERE NOT EXISTS (
+                         SELECT 1 FROM {qname('fact_sales')} fs
+                         WHERE fs.user_id = b.user_id AND fs.upload_batch_id = b.upload_batch_id
+                       ))
+                FROM {qname('upload_batch')} b
+                WHERE b.user_id = :uid AND b.created_at >= :d30
+            """), {"uid": uid, "d30": date.today() - timedelta(days=30)}).fetchone()
+            if r30:
+                imports_30d = r30[0] or 0
+                failed_30d = r30[1] or 0
+            df = db.execute(text(f"""
+                SELECT (CURRENT_DATE - MAX(date_created)::date) FROM {qname('fact_sales')} WHERE user_id = :uid
+            """), {"uid": uid}).fetchone()
+            if df and df[0] is not None:
+                data_freshness_days = int(df[0])
+    except Exception as e:
+        logger.warning(f"Admin tenant detail enrichment: {e}")
+        db.rollback()
+
+    return TenantDetailResponse(
+        tenant_id=uid,
+        company_name=row[2] or row[1],
+        owner_email=row[1],
+        created_at=_safe_ts(row, 3),
+        plan=plan_val,
+        trial_ends_at=trial_ends_at_val.isoformat() if trial_ends_at_val and hasattr(trial_ends_at_val, "isoformat") else (str(trial_ends_at_val) if trial_ends_at_val else None),
+        notes=notes_val,
+        is_active=bool(row[4]),
+        last_import_at=last_import_at,
+        last_import_batch_id=last_batch_id,
+        last_import_status=last_status,
+        data_freshness_days=data_freshness_days,
+        imports_30d=imports_30d,
+        failed_imports_30d=failed_30d,
+    )
+
+
+@router.get("/admin/imports/{import_id}/log")
+async def admin_import_log(
+    import_id: UUID,
+    _: UUID = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Return last import (batch) info for admin. No secrets (no DSN, passwords)."""
+    bid = str(import_id)
+    row = db.execute(text(f"""
+        SELECT b.upload_batch_id, b.user_id, b.status, b.created_at, b.updated_at
+        FROM {qname('upload_batch')} b
+        WHERE b.upload_batch_id = :bid
+    """), {"bid": bid}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Import not found")
+    has_fs = db.execute(text(f"""
+        SELECT COUNT(*) FROM {qname('fact_sales')}
+        WHERE user_id = :uid AND upload_batch_id = :bid
+    """), {"uid": str(row[1]), "bid": bid}).scalar() or 0
+    return {
+        "import_id": bid,
+        "user_id": str(row[1]),
+        "status": row[2],
+        "created_at": _safe_ts(row, 3),
+        "updated_at": _safe_ts(row, 4),
+        "has_sales_data": has_fs > 0,
+        "message": "No log storage; batch metadata only.",
+    }
+
+
+@router.post("/admin/imports/{import_id}/retry")
+async def admin_import_retry(
+    import_id: UUID,
+    _: UUID = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Retry import. No queue in MVP - returns 501."""
+    raise HTTPException(status_code=501, detail="Retry not implemented (no job queue)")
+
+
+class ExtendTrialBody(BaseModel):
+    days: int = 7
+
+
+@router.post("/admin/tenants/{tenant_id}/disable")
+async def admin_tenant_disable(
+    tenant_id: UUID,
+    _: UUID = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Disable tenant (set is_active = false)."""
+    uid = str(tenant_id)
+    try:
+        db.execute(text(f"UPDATE {qname('users')} SET is_active = false, updated_at = now() WHERE id = :uid"), {"uid": uid})
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"ok": True, "tenant_id": uid, "is_active": False}
+
+
+@router.post("/admin/tenants/{tenant_id}/enable")
+async def admin_tenant_enable(
+    tenant_id: UUID,
+    _: UUID = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Enable tenant (set is_active = true)."""
+    uid = str(tenant_id)
+    try:
+        db.execute(text(f"UPDATE {qname('users')} SET is_active = true, updated_at = now() WHERE id = :uid"), {"uid": uid})
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"ok": True, "tenant_id": uid, "is_active": True}
+
+
+@router.post("/admin/tenants/{tenant_id}/extend-trial")
+async def admin_tenant_extend_trial(
+    tenant_id: UUID,
+    body: ExtendTrialBody,
+    _: UUID = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Extend trial_ends_at by body.days (from now or current trial_ends_at)."""
+    uid = str(tenant_id)
+    try:
+        # Get current trial_ends_at
+        r = db.execute(text(f"SELECT trial_ends_at FROM {qname('users')} WHERE id = :uid"), {"uid": uid}).fetchone()
+        if not r:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        base = r[0] or datetime.now(timezone.utc)
+        if base < datetime.now(timezone.utc):
+            base = datetime.now(timezone.utc)
+        new_end = base + timedelta(days=body.days)
+        db.execute(text(f"""
+            UPDATE {qname('users')} SET trial_ends_at = :end, updated_at = now() WHERE id = :uid
+        """), {"uid": uid, "end": new_end})
+        db.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"ok": True, "tenant_id": uid, "trial_ends_at": new_end.isoformat()}
+
+
+class PaymentBody(BaseModel):
+    amount: float  # сумма оплаты (попадает в колонку Оплачено и в график дохода по месяцу paid_at)
+    paid_at: Optional[str] = None  # ISO datetime; по умолчанию now()
+
+
+@router.post("/admin/tenants/{tenant_id}/payment")
+async def admin_tenant_payment(
+    tenant_id: UUID,
+    body: PaymentBody,
+    _: UUID = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Записать платёж клиента: сумма попадёт в колонку «Оплачено» и в график «Аналитика подписок» по месяцу paid_at."""
+    uid = str(tenant_id)
+    if body.amount <= 0:
+        raise HTTPException(status_code=400, detail="amount must be positive")
+    try:
+        r = db.execute(text(f"SELECT id FROM {qname('users')} WHERE id = :uid"), {"uid": uid}).fetchone()
+        if not r:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        paid_at = datetime.now(timezone.utc)
+        if body.paid_at:
+            try:
+                paid_at = datetime.fromisoformat(body.paid_at.replace("Z", "+00:00"))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="paid_at must be ISO datetime")
+        db.execute(text(f"""
+            INSERT INTO {qname('user_payments')} (user_id, amount, paid_at)
+            VALUES (:uid, :amount, :paid_at)
+        """), {"uid": uid, "amount": body.amount, "paid_at": paid_at})
+        try:
+            db.execute(text(f"""
+                UPDATE {qname('users')} SET paid_amount = COALESCE(paid_amount, 0) + :amount, updated_at = now() WHERE id = :uid
+            """), {"uid": uid, "amount": body.amount})
+        except Exception:
+            pass  # колонка paid_amount может отсутствовать до миграции
+        db.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"ok": True, "tenant_id": uid, "amount": body.amount, "paid_at": paid_at.isoformat()}
+
+
+class NotesBody(BaseModel):
+    notes: Optional[str] = None
+
+
+@router.patch("/admin/tenants/{tenant_id}/notes")
+async def admin_tenant_notes(
+    tenant_id: UUID,
+    body: NotesBody,
+    _: UUID = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Update internal admin notes for tenant."""
+    uid = str(tenant_id)
+    try:
+        db.execute(text(f"""
+            UPDATE {qname('users')} SET admin_notes = :notes, updated_at = now() WHERE id = :uid
+        """), {"uid": uid, "notes": body.notes or ""})
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"ok": True, "tenant_id": uid, "notes": body.notes}
+
+
+class SetPasswordBody(BaseModel):
+    password: str
+
+
+@router.post("/admin/tenants/{tenant_id}/set-password")
+async def admin_tenant_set_password(
+    tenant_id: UUID,
+    body: SetPasswordBody,
+    _: UUID = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Установить новый пароль клиенту (по email-identity). Пароль хранится в виде хеша, просмотр невозможен."""
+    uid = str(tenant_id)
+    if not body.password or len(body.password) < 6:
+        raise HTTPException(status_code=400, detail="Пароль не менее 6 символов")
+    try:
+        pw_hash = hash_password(body.password)
+        r = db.execute(text(f"""
+            UPDATE {qname('auth_identities')}
+            SET password_hash = :pw
+            WHERE user_id = :uid AND provider = 'email_password'
+            RETURNING id
+        """), {"uid": uid, "pw": pw_hash}).fetchone()
+        if not r:
+            raise HTTPException(status_code=404, detail="У клиента нет входа по email/паролю")
+        db.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"ok": True, "tenant_id": uid, "message": "Пароль изменён"}
+
+
+def _table_missing(exc: Exception) -> bool:
+    """Пропускать только ошибку «таблица/relation не существует»."""
+    msg = (getattr(exc, "message", "") or str(exc)).lower()
+    return "does not exist" in msg or "undefined_table" in msg or "relation" in msg and "exist" in msg
+
+
+@router.delete("/admin/tenants/{tenant_id}")
+async def admin_tenant_delete(
+    tenant_id: UUID,
+    _: UUID = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Удалить аккаунт клиента и все загруженные данные (безвозвратно)."""
+    uid = str(tenant_id)
+    # Порядок: факты/стаджинги по user_id, map_*, manual_expenses, dim_shop, upload_batch, auth, users
+    tables_user = [
+        "fact_sales", "fact_expenses", "fact_storage_snapshot", "fact_leftout_snapshot",
+        "fact_leftout_old_snapshot",
+        "stg_sales", "stg_expenses", "stg_storage", "stg_leftout", "stg_leftout_old",
+        "map_shop_sku", "map_shop_barcode",
+        "manual_expenses", "dim_shop", "upload_batch",
+    ]
+    try:
+        for tbl in tables_user:
+            try:
+                db.execute(text(f"DELETE FROM {qname(tbl)} WHERE user_id = :uid"), {"uid": uid})
+            except Exception as e:
+                if _table_missing(e):
+                    pass
+                else:
+                    raise
+        for tbl in ["refresh_tokens", "auth_identities", "verification_codes"]:
+            try:
+                db.execute(text(f"DELETE FROM {qname(tbl)} WHERE user_id = :uid"), {"uid": uid})
+            except Exception as e:
+                if _table_missing(e):
+                    pass
+                else:
+                    raise
+        db.execute(text(f"DELETE FROM {qname('users')} WHERE id = :uid"), {"uid": uid})
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.exception("admin_tenant_delete failed for %s", uid)
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"ok": True, "tenant_id": uid, "message": "Аккаунт и данные удалены"}

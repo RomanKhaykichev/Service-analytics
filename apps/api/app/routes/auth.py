@@ -175,6 +175,13 @@ async def login(
     )
     db.add(db_refresh_token)
     
+    # Update last_login_at for admin "visits" metric
+    now_utc = datetime.now(timezone.utc)
+    try:
+        db.query(User).filter(User.id == user.id).update({User.last_login_at: now_utc}, synchronize_session=False)
+    except Exception:
+        pass  # column may not exist yet
+    
     db.commit()
     db.refresh(user)
     
@@ -257,6 +264,11 @@ async def refresh(
         )
         db.add(new_db_refresh_token)
         
+        now_utc = datetime.now(timezone.utc)
+        try:
+            db.query(User).filter(User.id == user_id).update({User.last_login_at: now_utc}, synchronize_session=False)
+        except Exception:
+            pass
         db.commit()
         
         return TokenResponse(
