@@ -10,7 +10,7 @@ from app.settings import get_settings
 from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
-from app.deps import require_user
+from app.deps import require_user, is_user_admin
 from app.models import User, AuthIdentity, RefreshToken
 from app.models.auth_identity import AuthProvider
 from app.schemas.auth import (
@@ -105,11 +105,12 @@ async def register(
 
         db.commit()
         db.refresh(user)
-
+        user_resp = UserResponse.model_validate(user)
+        user_resp.is_admin = is_user_admin(user.id, db)
         return AuthResponse(
             access_token=access_token,
             refresh_token=refresh_token,
-            user=UserResponse.model_validate(user)
+            user=user_resp
         )
     except HTTPException:
         raise
@@ -198,11 +199,12 @@ async def login(
         logger.warning("Таблица login_events отсутствует — метрика «Посещения» будет 0. Выполните: cd apps/api && alembic upgrade head")
     db.commit()
     db.refresh(user)
-    
+    user_resp = UserResponse.model_validate(user)
+    user_resp.is_admin = is_user_admin(user.id, db)
     return AuthResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        user=UserResponse.model_validate(user)
+        user=user_resp
     )
 
 
@@ -349,7 +351,9 @@ async def get_current_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-    return UserResponse.model_validate(user)
+    resp = UserResponse.model_validate(user)
+    resp.is_admin = is_user_admin(user_id, db)
+    return resp
 
 
 @router.patch("/me", response_model=UserResponse)

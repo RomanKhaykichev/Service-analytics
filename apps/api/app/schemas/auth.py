@@ -52,6 +52,7 @@ class UserResponse(BaseModel):
     phone: Optional[str]
     is_active: bool
     created_at: datetime
+    is_admin: bool = False
 
     class Config:
         from_attributes = True

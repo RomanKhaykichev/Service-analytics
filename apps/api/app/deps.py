@@ -103,6 +103,24 @@ def _admin_user_ids_set() -> set:
     return {s.strip().lower() for s in raw.split(",") if s.strip()}
 
 
+def is_user_admin(user_id: UUID, db) -> bool:
+    """Проверить, входит ли пользователь в ADMIN_USER_IDS (по id или email)."""
+    admin_ids = _admin_user_ids_set()
+    if not admin_ids:
+        return False
+    if str(user_id).lower() in admin_ids:
+        return True
+    from sqlalchemy import text
+    from app.db import qname
+    row = db.execute(
+        text(f"SELECT email FROM {qname('users')} WHERE id = :uid"),
+        {"uid": str(user_id)},
+    ).fetchone()
+    if row and row[0] and row[0].lower() in admin_ids:
+        return True
+    return False
+
+
 def require_admin(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
