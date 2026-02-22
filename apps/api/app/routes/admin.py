@@ -15,6 +15,7 @@ from app.db import get_db, qname
 from app.deps import require_admin
 from app.settings import get_settings
 from app.auth import hash_password
+from app.models import User, RefreshToken
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -67,7 +68,8 @@ class SubscriptionAnalyticsPoint(BaseModel):
 class AdminOverviewResponse(BaseModel):
     kpis: AdminOverviewKPIs
     registrations_per_day: list[RegistrationsPerDayPoint]
-    visits_per_day: list[RegistrationsPerDayPoint]  # users who logged in that day
+    visits_per_day: list[RegistrationsPerDayPoint]  # уникальные пользователи, заходившие в этот день (last_login_at)
+    total_visits_per_day: list[RegistrationsPerDayPoint] = []  # Посещения: общее количество заходов по дням (login_events)
     imports_per_day: list[ImportsPerDayPoint]
     import_processing_p50_p95: Optional[list[dict]] = None  # [{date, p50, p95}]
     top_import_error_types: list[dict]  # [{error_type, count}]
@@ -182,6 +184,16 @@ async def admin_overview(
         except Exception:
             pass
 
+        has_import_file_attempts = False
+        try:
+            r = db.execute(text("""
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = :s AND table_name = 'import_file_attempts'
+            """), {"s": schema}).fetchone()
+            has_import_file_attempts = r is not None
+        except Exception:
+            pass
+
         if has_created_at:
             # Active customers (MAU 30d): distinct users with upload_batch in last 30d
             r = db.execute(text(f"""
@@ -197,18 +209,31 @@ async def admin_overview(
             """), {"d1": d1}).fetchone()
             kpis.imports_24h = r[0] if r else 0
 
-            # Import success rate 7d: batches with at least one fact_sales row vs total batches
-            r = db.execute(text(f"""
-                SELECT COUNT(DISTINCT b.upload_batch_id) FROM {qname('upload_batch')} b
-                WHERE b.created_at >= :d7
-            """), {"d7": d7}).fetchone()
-            total_7d = r[0] or 0
-            r = db.execute(text(f"""
-                SELECT COUNT(DISTINCT b.upload_batch_id) FROM {qname('upload_batch')} b
-                INNER JOIN {qname('fact_sales')} fs ON fs.user_id = b.user_id AND fs.upload_batch_id = b.upload_batch_id
-                WHERE b.created_at >= :d7
-            """), {"d7": d7}).fetchone()
-            success_7d = r[0] or 0
+            # Import success rate 7d: по файлам (если есть import_file_attempts) или по батчам
+            if has_import_file_attempts:
+                r = db.execute(text(f"""
+                    SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'success')
+                    FROM {qname('import_file_attempts')}
+                    WHERE created_at >= :d7
+                """), {"d7": d7}).fetchone()
+                total_7d = (r[0] or 0) if r else 0
+                success_7d = (r[1] or 0) if r else 0
+            else:
+                r = db.execute(text(f"""
+                    SELECT COUNT(DISTINCT b.upload_batch_id) FROM {qname('upload_batch')} b
+                    WHERE b.created_at >= :d7
+                """), {"d7": d7}).fetchone()
+                total_7d = r[0] or 0
+                r = db.execute(text(f"""
+                    SELECT COUNT(DISTINCT b.upload_batch_id) FROM {qname('upload_batch')} b
+                    WHERE b.created_at >= :d7
+                      AND (EXISTS (SELECT 1 FROM {qname('fact_sales')} fs WHERE fs.user_id = b.user_id AND fs.upload_batch_id = b.upload_batch_id)
+                           OR EXISTS (SELECT 1 FROM {qname('fact_expenses')} fe WHERE fe.user_id = b.user_id AND fe.upload_batch_id = b.upload_batch_id)
+                           OR EXISTS (SELECT 1 FROM {qname('fact_leftout_snapshot')} fl WHERE fl.user_id = b.user_id AND fl.upload_batch_id = b.upload_batch_id)
+                           OR EXISTS (SELECT 1 FROM {qname('fact_storage_snapshot')} fss WHERE fss.user_id = b.user_id AND fss.upload_batch_id = b.upload_batch_id)
+                           OR EXISTS (SELECT 1 FROM {qname('fact_leftout_old_snapshot')} flo WHERE flo.user_id = b.user_id AND flo.upload_batch_id = b.upload_batch_id))
+                """), {"d7": d7}).fetchone()
+                success_7d = r[0] or 0
             kpis.import_success_rate_7d = (success_7d / total_7d * 100) if total_7d else None
         else:
             kpis.active_customers_mau_30d = None
@@ -267,6 +292,8 @@ async def admin_overview(
         logger.warning(f"Admin overview KPIs partial failure: {e}")
         db.rollback()
 
+    # Для графиков «Регистрации / заходы / посещения» всегда включаем сегодня (дата сервера)
+    to_d_chart = to_d if to_d >= today else today
     # Registrations per day (включая полный день to_d — сегодня)
     registrations_per_day: list[RegistrationsPerDayPoint] = []
     try:
@@ -275,7 +302,7 @@ async def admin_overview(
             FROM {qname('users')}
             WHERE created_at::date >= :from_d AND created_at::date <= :to_d
             GROUP BY 1 ORDER BY 1
-        """), {"from_d": from_d, "to_d": to_d}).fetchall()
+        """), {"from_d": from_d, "to_d": to_d_chart}).fetchall()
         for row in rows or []:
             registrations_per_day.append(RegistrationsPerDayPoint(date=str(row[0])[:10], count=row[1]))
     except Exception as e:
@@ -295,24 +322,69 @@ async def admin_overview(
                 FROM {qname('users')}
                 WHERE last_login_at::date >= :from_d AND last_login_at::date <= :to_d
                 GROUP BY 1 ORDER BY 1
-            """), {"from_d": from_d, "to_d": to_d}).fetchall()
+            """), {"from_d": from_d, "to_d": to_d_chart}).fetchall()
             for row in rows or []:
                 visits_per_day.append(RegistrationsPerDayPoint(date=str(row[0])[:10], count=row[1]))
     except Exception as e:
         logger.warning(f"Admin visits_per_day: {e}")
         db.rollback()
 
-    # Imports per day (success = has fact_sales for that batch)
+    # Посещения: общее количество заходов по дням (из login_events)
+    total_visits_per_day: list[RegistrationsPerDayPoint] = []
+    try:
+        r = db.execute(text("""
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = :s AND table_name = 'login_events'
+        """), {"s": schema}).fetchone()
+        if not r:
+            logger.info("Таблица login_events не найдена — выполните: alembic upgrade head (миграция 20260150)")
+        else:
+            # дата в UTC, чтобы совпадала с today на сервере
+            rows = db.execute(text(f"""
+                SELECT (date_trunc('day', logged_at AT TIME ZONE 'UTC'))::date AS d, COUNT(*)
+                FROM {qname('login_events')}
+                WHERE (logged_at AT TIME ZONE 'UTC')::date >= :from_d AND (logged_at AT TIME ZONE 'UTC')::date <= :to_d
+                GROUP BY 1 ORDER BY 1
+            """), {"from_d": from_d, "to_d": to_d_chart}).fetchall()
+            for row in rows or []:
+                total_visits_per_day.append(RegistrationsPerDayPoint(date=str(row[0])[:10], count=row[1]))
+    except Exception as e:
+        logger.warning("Admin total_visits_per_day (login_events): %s", e)
+        db.rollback()
+
+    # Imports per day: по каждому файлу — успех/ошибка (если есть import_file_attempts), иначе по батчам
     imports_per_day: list[ImportsPerDayPoint] = []
-    if has_created_at:
+    if has_import_file_attempts:
+        try:
+            rows = db.execute(text(f"""
+                SELECT date_trunc('day', created_at)::date AS d,
+                       COUNT(*) FILTER (WHERE status = 'success') AS success,
+                       COUNT(*) FILTER (WHERE status = 'failed') AS failed
+                FROM {qname('import_file_attempts')}
+                WHERE created_at::date >= :from_d AND created_at::date <= :to_d
+                GROUP BY 1 ORDER BY 1
+            """), {"from_d": from_d, "to_d": to_d}).fetchall()
+            for row in rows or []:
+                d = str(row[0])[:10]
+                success = row[1] or 0
+                failed = row[2] or 0
+                imports_per_day.append(ImportsPerDayPoint(date=d, success=success, failed=failed))
+        except Exception as e:
+            logger.warning(f"Admin imports_per_day (attempts): {e}")
+            db.rollback()
+    elif has_created_at:
         try:
             rows = db.execute(text(f"""
                 SELECT date_trunc('day', b.created_at)::date AS d,
                        COUNT(DISTINCT b.upload_batch_id) AS total,
-                       COUNT(DISTINCT CASE WHEN fs.upload_batch_id IS NOT NULL THEN b.upload_batch_id END) AS success
+                       COUNT(DISTINCT CASE WHEN (
+                         EXISTS (SELECT 1 FROM {qname('fact_sales')} fs WHERE fs.user_id = b.user_id AND fs.upload_batch_id = b.upload_batch_id)
+                         OR EXISTS (SELECT 1 FROM {qname('fact_expenses')} fe WHERE fe.user_id = b.user_id AND fe.upload_batch_id = b.upload_batch_id)
+                         OR EXISTS (SELECT 1 FROM {qname('fact_leftout_snapshot')} fl WHERE fl.user_id = b.user_id AND fl.upload_batch_id = b.upload_batch_id)
+                         OR EXISTS (SELECT 1 FROM {qname('fact_storage_snapshot')} fss WHERE fss.user_id = b.user_id AND fss.upload_batch_id = b.upload_batch_id)
+                         OR EXISTS (SELECT 1 FROM {qname('fact_leftout_old_snapshot')} flo WHERE flo.user_id = b.user_id AND flo.upload_batch_id = b.upload_batch_id)
+                       ) THEN b.upload_batch_id END) AS success
                 FROM {qname('upload_batch')} b
-                LEFT JOIN (SELECT DISTINCT user_id, upload_batch_id FROM {qname('fact_sales')}) fs
-                  ON fs.user_id = b.user_id AND fs.upload_batch_id = b.upload_batch_id
                 WHERE b.created_at::date >= :from_d AND b.created_at::date <= :to_d
                 GROUP BY 1 ORDER BY 1
             """), {"from_d": from_d, "to_d": to_d}).fetchall()
@@ -339,7 +411,7 @@ async def admin_overview(
                 GROUP BY user_id
             ),
             days_ago AS (
-                SELECT user_id, (:today::date - last_d) AS d
+                SELECT user_id, (CAST(:today AS date) - last_d) AS d
                 FROM last_data
             )
             SELECT
@@ -360,31 +432,34 @@ async def admin_overview(
         logger.warning(f"Admin data_freshness_buckets: {e}")
         db.rollback()
 
-    # Аналитика подписок: по дням / неделям / месяцам до сегодня
+    # Аналитика подписок: по дням / неделям / месяцам — всегда до и включая сегодня
     subscription_analytics: list[SubscriptionAnalyticsPoint] = []
     try:
+        db.rollback()  # сброс транзакции на случай сбоя в предыдущих блоках (data_freshness_buckets и т.д.)
+        end_date = today  # всегда учитываем сегодняшний день, независимо от from/to
         periods: list[tuple[date, date, str]] = []  # (from_d, to_d, label)
         if sub_period == "day":
+            # 30 дней: от (сегодня - 29) до сегодня включительно
             for i in range(29, -1, -1):
-                d = to_d - timedelta(days=i)
+                d = end_date - timedelta(days=i)
                 periods.append((d, d, d.strftime("%Y-%m-%d")))
         elif sub_period == "week":
-            # 12 недель: понедельник–воскресенье, последняя неделя заканчивается to_d
+            # 12 недель: последняя неделя заканчивается сегодня
             for i in range(11, -1, -1):
-                end = to_d - timedelta(days=i * 7)
+                end = end_date - timedelta(days=i * 7)
                 start = end - timedelta(days=6)
                 periods.append((start, end, start.strftime("%d.%m")))
         else:
-            # month: последние 12 месяцев
-            d = date(to_d.year, to_d.month, 1)
+            # month: последние 12 месяцев, текущий месяц — по сегодня
+            d = date(end_date.year, end_date.month, 1)
             for _ in range(12):
                 from_m = d.replace(day=1)
                 if from_m.month == 12:
                     to_m = from_m.replace(year=from_m.year + 1, month=1) - timedelta(days=1)
                 else:
                     to_m = from_m.replace(month=from_m.month + 1) - timedelta(days=1)
-                if to_m > to_d:
-                    to_m = to_d
+                if to_m > end_date:
+                    to_m = end_date
                 periods.append((from_m, to_m, from_m.strftime("%Y-%m")))
                 d = from_m - timedelta(days=1)
             periods.reverse()
@@ -430,6 +505,7 @@ async def admin_overview(
         kpis=kpis,
         registrations_per_day=registrations_per_day,
         visits_per_day=visits_per_day,
+        total_visits_per_day=total_visits_per_day,
         imports_per_day=imports_per_day,
         import_processing_p50_p95=None,
         top_import_error_types=top_import_error_types,
@@ -462,6 +538,16 @@ async def admin_tenants_list(
             WHERE table_schema = :s AND table_name = 'upload_batch' AND column_name = 'created_at'
         """), {"s": schema}).fetchone()
         has_created_at = r is not None
+    except Exception:
+        pass
+
+    has_import_file_attempts = False
+    try:
+        r = db.execute(text("""
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = :s AND table_name = 'import_file_attempts'
+        """), {"s": schema}).fetchone()
+        has_import_file_attempts = r is not None
     except Exception:
         pass
 
@@ -575,26 +661,49 @@ async def admin_tenants_list(
                 last_import_at = _safe_ts(b, 1)
                 last_import_status = (b[2] or "processing").lower()
                 last_import_type = "xlsx"
-                # Success if batch has fact_sales
-                has_fs = db.execute(text(f"""
-                    SELECT 1 FROM {qname('fact_sales')}
-                    WHERE user_id = :uid AND upload_batch_id = :bid
-                    LIMIT 1
+                # Успех = загрузка Excel прошла успешно = есть ≥1 строка в любой fact-таблице
+                has_any = db.execute(text(f"""
+                    SELECT 1 FROM {qname('fact_sales')} WHERE user_id = :uid AND upload_batch_id = :bid LIMIT 1
                 """), {"uid": uid, "bid": str(b[0])}).fetchone()
-                if has_fs:
-                    last_import_status = "success"
-                else:
-                    last_import_status = "failed"
+                if not has_any:
+                    has_any = db.execute(text(f"""
+                        SELECT 1 FROM {qname('fact_expenses')} WHERE user_id = :uid AND upload_batch_id = :bid LIMIT 1
+                    """), {"uid": uid, "bid": str(b[0])}).fetchone()
+                if not has_any:
+                    has_any = db.execute(text(f"""
+                        SELECT 1 FROM {qname('fact_leftout_snapshot')} WHERE user_id = :uid AND upload_batch_id = :bid LIMIT 1
+                    """), {"uid": uid, "bid": str(b[0])}).fetchone()
+                if not has_any:
+                    has_any = db.execute(text(f"""
+                        SELECT 1 FROM {qname('fact_storage_snapshot')} WHERE user_id = :uid AND upload_batch_id = :bid LIMIT 1
+                    """), {"uid": uid, "bid": str(b[0])}).fetchone()
+                if not has_any:
+                    has_any = db.execute(text(f"""
+                        SELECT 1 FROM {qname('fact_leftout_old_snapshot')} WHERE user_id = :uid AND upload_batch_id = :bid LIMIT 1
+                    """), {"uid": uid, "bid": str(b[0])}).fetchone()
+                last_import_status = "success" if has_any else "failed"
 
-            r30 = db.execute(text(f"""
-                SELECT COUNT(*),
-                       COUNT(*) FILTER (WHERE NOT EXISTS (
-                         SELECT 1 FROM {qname('fact_sales')} fs
-                         WHERE fs.user_id = b.user_id AND fs.upload_batch_id = b.upload_batch_id
-                       ))
-                FROM {qname('upload_batch')} b
-                WHERE b.user_id = :uid AND b.created_at >= :d30
-            """), {"uid": uid, "d30": today - timedelta(days=30)}).fetchone()
+            if has_import_file_attempts:
+                r30 = db.execute(text(f"""
+                    SELECT COUNT(*) FILTER (WHERE a.status = 'success'),
+                           COUNT(*) FILTER (WHERE a.status = 'failed')
+                    FROM {qname('import_file_attempts')} a
+                    JOIN {qname('upload_batch')} b ON b.upload_batch_id = a.upload_batch_id
+                    WHERE b.user_id = :uid AND a.created_at >= :d30
+                """), {"uid": uid, "d30": today - timedelta(days=30)}).fetchone()
+            else:
+                r30 = db.execute(text(f"""
+                    SELECT COUNT(*),
+                           COUNT(*) FILTER (WHERE NOT (
+                             EXISTS (SELECT 1 FROM {qname('fact_sales')} fs WHERE fs.user_id = b.user_id AND fs.upload_batch_id = b.upload_batch_id)
+                             OR EXISTS (SELECT 1 FROM {qname('fact_expenses')} fe WHERE fe.user_id = b.user_id AND fe.upload_batch_id = b.upload_batch_id)
+                             OR EXISTS (SELECT 1 FROM {qname('fact_leftout_snapshot')} fl WHERE fl.user_id = b.user_id AND fl.upload_batch_id = b.upload_batch_id)
+                             OR EXISTS (SELECT 1 FROM {qname('fact_storage_snapshot')} fss WHERE fss.user_id = b.user_id AND fss.upload_batch_id = b.upload_batch_id)
+                             OR EXISTS (SELECT 1 FROM {qname('fact_leftout_old_snapshot')} flo WHERE flo.user_id = b.user_id AND flo.upload_batch_id = b.upload_batch_id)
+                           ))
+                    FROM {qname('upload_batch')} b
+                    WHERE b.user_id = :uid AND b.created_at >= :d30
+                """), {"uid": uid, "d30": today - timedelta(days=30)}).fetchone()
             if r30:
                 imports_30d = r30[0] or 0
                 failed_30d = r30[1] or 0
@@ -703,6 +812,15 @@ async def admin_tenant_detail(
     imports_30d = 0
     failed_30d = 0
     data_freshness_days = None
+    has_import_file_attempts_detail = False
+    try:
+        r = db.execute(text("""
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = :schema AND table_name = 'import_file_attempts'
+        """), {"schema": settings.DB_SCHEMA}).fetchone()
+        has_import_file_attempts_detail = r is not None
+    except Exception:
+        pass
     try:
         r = db.execute(text("""
             SELECT 1 FROM information_schema.columns
@@ -717,20 +835,47 @@ async def admin_tenant_detail(
             if b:
                 last_batch_id = str(b[0])
                 last_import_at = _safe_ts(b, 1)
-                has_fs = db.execute(text(f"""
-                    SELECT 1 FROM {qname('fact_sales')}
-                    WHERE user_id = :uid AND upload_batch_id = :bid LIMIT 1
+                has_any = db.execute(text(f"""
+                    SELECT 1 FROM {qname('fact_sales')} WHERE user_id = :uid AND upload_batch_id = :bid LIMIT 1
                 """), {"uid": uid, "bid": last_batch_id}).fetchone()
-                last_status = "success" if has_fs else "failed"
-            r30 = db.execute(text(f"""
-                SELECT COUNT(*),
-                       COUNT(*) FILTER (WHERE NOT EXISTS (
-                         SELECT 1 FROM {qname('fact_sales')} fs
-                         WHERE fs.user_id = b.user_id AND fs.upload_batch_id = b.upload_batch_id
-                       ))
-                FROM {qname('upload_batch')} b
-                WHERE b.user_id = :uid AND b.created_at >= :d30
-            """), {"uid": uid, "d30": date.today() - timedelta(days=30)}).fetchone()
+                if not has_any:
+                    has_any = db.execute(text(f"""
+                        SELECT 1 FROM {qname('fact_expenses')} WHERE user_id = :uid AND upload_batch_id = :bid LIMIT 1
+                    """), {"uid": uid, "bid": last_batch_id}).fetchone()
+                if not has_any:
+                    has_any = db.execute(text(f"""
+                        SELECT 1 FROM {qname('fact_leftout_snapshot')} WHERE user_id = :uid AND upload_batch_id = :bid LIMIT 1
+                    """), {"uid": uid, "bid": last_batch_id}).fetchone()
+                if not has_any:
+                    has_any = db.execute(text(f"""
+                        SELECT 1 FROM {qname('fact_storage_snapshot')} WHERE user_id = :uid AND upload_batch_id = :bid LIMIT 1
+                    """), {"uid": uid, "bid": last_batch_id}).fetchone()
+                if not has_any:
+                    has_any = db.execute(text(f"""
+                        SELECT 1 FROM {qname('fact_leftout_old_snapshot')} WHERE user_id = :uid AND upload_batch_id = :bid LIMIT 1
+                    """), {"uid": uid, "bid": last_batch_id}).fetchone()
+                last_status = "success" if has_any else "failed"
+            if has_import_file_attempts_detail:
+                r30 = db.execute(text(f"""
+                    SELECT COUNT(*) FILTER (WHERE a.status = 'success'),
+                           COUNT(*) FILTER (WHERE a.status = 'failed')
+                    FROM {qname('import_file_attempts')} a
+                    JOIN {qname('upload_batch')} b ON b.upload_batch_id = a.upload_batch_id
+                    WHERE b.user_id = :uid AND a.created_at >= :d30
+                """), {"uid": uid, "d30": date.today() - timedelta(days=30)}).fetchone()
+            else:
+                r30 = db.execute(text(f"""
+                    SELECT COUNT(*),
+                           COUNT(*) FILTER (WHERE NOT (
+                             EXISTS (SELECT 1 FROM {qname('fact_sales')} fs WHERE fs.user_id = b.user_id AND fs.upload_batch_id = b.upload_batch_id)
+                             OR EXISTS (SELECT 1 FROM {qname('fact_expenses')} fe WHERE fe.user_id = b.user_id AND fe.upload_batch_id = b.upload_batch_id)
+                             OR EXISTS (SELECT 1 FROM {qname('fact_leftout_snapshot')} fl WHERE fl.user_id = b.user_id AND fl.upload_batch_id = b.upload_batch_id)
+                             OR EXISTS (SELECT 1 FROM {qname('fact_storage_snapshot')} fss WHERE fss.user_id = b.user_id AND fss.upload_batch_id = b.upload_batch_id)
+                             OR EXISTS (SELECT 1 FROM {qname('fact_leftout_old_snapshot')} flo WHERE flo.user_id = b.user_id AND flo.upload_batch_id = b.upload_batch_id)
+                           ))
+                    FROM {qname('upload_batch')} b
+                    WHERE b.user_id = :uid AND b.created_at >= :d30
+                """), {"uid": uid, "d30": date.today() - timedelta(days=30)}).fetchone()
             if r30:
                 imports_30d = r30[0] or 0
                 failed_30d = r30[1] or 0
@@ -776,17 +921,21 @@ async def admin_import_log(
     """), {"bid": bid}).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Import not found")
-    has_fs = db.execute(text(f"""
-        SELECT COUNT(*) FROM {qname('fact_sales')}
-        WHERE user_id = :uid AND upload_batch_id = :bid
-    """), {"uid": str(row[1]), "bid": bid}).scalar() or 0
+    uid = str(row[1])
+    has_fs = db.execute(text(f"SELECT 1 FROM {qname('fact_sales')} WHERE user_id = :uid AND upload_batch_id = :bid LIMIT 1"), {"uid": uid, "bid": bid}).fetchone()
+    has_fe = db.execute(text(f"SELECT 1 FROM {qname('fact_expenses')} WHERE user_id = :uid AND upload_batch_id = :bid LIMIT 1"), {"uid": uid, "bid": bid}).fetchone()
+    has_fl = db.execute(text(f"SELECT 1 FROM {qname('fact_leftout_snapshot')} WHERE user_id = :uid AND upload_batch_id = :bid LIMIT 1"), {"uid": uid, "bid": bid}).fetchone()
+    has_fss = db.execute(text(f"SELECT 1 FROM {qname('fact_storage_snapshot')} WHERE user_id = :uid AND upload_batch_id = :bid LIMIT 1"), {"uid": uid, "bid": bid}).fetchone()
+    has_flo = db.execute(text(f"SELECT 1 FROM {qname('fact_leftout_old_snapshot')} WHERE user_id = :uid AND upload_batch_id = :bid LIMIT 1"), {"uid": uid, "bid": bid}).fetchone()
+    has_any_data = bool(has_fs or has_fe or has_fl or has_fss or has_flo)
     return {
         "import_id": bid,
-        "user_id": str(row[1]),
+        "user_id": uid,
         "status": row[2],
         "created_at": _safe_ts(row, 3),
         "updated_at": _safe_ts(row, 4),
-        "has_sales_data": has_fs > 0,
+        "has_sales_data": bool(has_fs),
+        "has_any_data": has_any_data,
         "message": "No log storage; batch metadata only.",
     }
 
@@ -949,27 +1098,51 @@ async def admin_tenant_set_password(
     _: UUID = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Установить новый пароль клиенту (по email-identity). Пароль хранится в виде хеша, просмотр невозможен."""
-    uid = str(tenant_id)
-    if not body.password or len(body.password) < 6:
+    """
+    Переписать только пароль у существующей записи входа по email.
+    Обновляется только колонка password_hash (provider и identifier не трогаем — избегаем ошибок enum).
+    """
+    password = (body.password or "").strip()
+    if len(password) < 6:
         raise HTTPException(status_code=400, detail="Пароль не менее 6 символов")
+    user = db.query(User).filter(User.id == tenant_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    email = (user.email or "").strip()
+    if not email:
+        raise HTTPException(
+            status_code=400,
+            detail="У пользователя не указан email. Укажите email в карточке клиента, затем установите пароль.",
+        )
     try:
-        pw_hash = hash_password(body.password)
-        r = db.execute(text(f"""
-            UPDATE {qname('auth_identities')}
-            SET password_hash = :pw
-            WHERE user_id = :uid AND provider = 'email_password'
-            RETURNING id
-        """), {"uid": uid, "pw": pw_hash}).fetchone()
+        password_hash = hash_password(password)
+        # Только UPDATE password_hash по user_id и email (без учёта регистра) — не трогаем provider (enum в БД)
+        r = db.execute(
+            text(f"""
+                UPDATE {qname('auth_identities')}
+                SET password_hash = :pw
+                WHERE user_id = CAST(:uid AS uuid) AND LOWER(identifier) = LOWER(:email) AND password_hash IS NOT NULL
+                RETURNING id
+            """),
+            {"uid": str(tenant_id), "pw": password_hash, "email": email},
+        ).fetchone()
         if not r:
-            raise HTTPException(status_code=404, detail="У клиента нет входа по email/паролю")
+            raise HTTPException(
+                status_code=404,
+                detail="У клиента нет входа по email/паролю. Сначала зайдите под этим пользователем или зарегистрируйте его.",
+            )
+        # Отозвать все refresh-токены
+        db.query(RefreshToken).filter(RefreshToken.user_id == tenant_id).update(
+            {RefreshToken.revoked_at: datetime.now(timezone.utc)}, synchronize_session=False
+        )
         db.commit()
     except HTTPException:
         raise
     except Exception as e:
         db.rollback()
+        logger.exception("set-password failed for tenant_id=%s: %s", tenant_id, e)
         raise HTTPException(status_code=500, detail=str(e))
-    return {"ok": True, "tenant_id": uid, "message": "Пароль изменён"}
+    return {"ok": True, "tenant_id": str(tenant_id), "message": "Пароль изменён. Вход только с новым паролем."}
 
 
 def _table_missing(exc: Exception) -> bool:

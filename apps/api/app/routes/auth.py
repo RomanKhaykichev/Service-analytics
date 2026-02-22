@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone
 from uuid import UUID
 import logging
-from app.db import get_db
+from app.db import get_db, qname
+from app.settings import get_settings
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 from app.deps import require_user
@@ -127,12 +129,15 @@ async def login(
 ):
     """
     Login with email and password.
+    Поиск по email без учёта регистра (identifier хранит текущий email пользователя).
     """
-    # Find auth identity
+    email_lower = (request.email or "").strip().lower()
+    if not email_lower:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email is required")
     auth_identity = db.query(AuthIdentity).filter(
         and_(
             AuthIdentity.provider == AuthProvider.EMAIL_PASSWORD,
-            AuthIdentity.identifier == request.email
+            func.lower(AuthIdentity.identifier) == email_lower
         )
     ).first()
     
@@ -175,13 +180,22 @@ async def login(
     )
     db.add(db_refresh_token)
     
-    # Update last_login_at for admin "visits" metric
+    # Update last_login_at and записать посещение для графика «Посещения»
     now_utc = datetime.now(timezone.utc)
     try:
-        db.query(User).filter(User.id == user.id).update({User.last_login_at: now_utc}, synchronize_session=False)
-    except Exception:
-        pass  # column may not exist yet
-    
+        db.execute(text(f"UPDATE {qname('users')} SET last_login_at = :now WHERE id = :uid"), {"now": now_utc, "uid": user.id})
+    except Exception as e:
+        logger.debug("last_login_at update skipped: %s", e)
+    schema = get_settings().DB_SCHEMA
+    r = db.execute(text("SELECT 1 FROM information_schema.tables WHERE table_schema = :s AND table_name = 'login_events'"), {"s": schema}).fetchone()
+    if r:
+        try:
+            db.execute(text(f"INSERT INTO {qname('login_events')} (user_id, logged_at) VALUES (:uid, :now)"), {"uid": user.id, "now": now_utc})
+            logger.info("login_events: записано посещение user_id=%s", user.id)
+        except Exception as e:
+            logger.warning("login_events insert failed: %s", e)
+    else:
+        logger.warning("Таблица login_events отсутствует — метрика «Посещения» будет 0. Выполните: cd apps/api && alembic upgrade head")
     db.commit()
     db.refresh(user)
     
@@ -266,9 +280,19 @@ async def refresh(
         
         now_utc = datetime.now(timezone.utc)
         try:
-            db.query(User).filter(User.id == user_id).update({User.last_login_at: now_utc}, synchronize_session=False)
-        except Exception:
-            pass
+            db.execute(text(f"UPDATE {qname('users')} SET last_login_at = :now WHERE id = :uid"), {"now": now_utc, "uid": user_id})
+        except Exception as e:
+            logger.debug("last_login_at update skipped: %s", e)
+        schema = get_settings().DB_SCHEMA
+        r = db.execute(text("SELECT 1 FROM information_schema.tables WHERE table_schema = :s AND table_name = 'login_events'"), {"s": schema}).fetchone()
+        if r:
+            try:
+                db.execute(text(f"INSERT INTO {qname('login_events')} (user_id, logged_at) VALUES (:uid, :now)"), {"uid": user_id, "now": now_utc})
+                logger.info("login_events: записано посещение user_id=%s (refresh)", user_id)
+            except Exception as e:
+                logger.warning("login_events insert failed: %s", e)
+        else:
+            logger.warning("Таблица login_events отсутствует — выполните: alembic upgrade head")
         db.commit()
         
         return TokenResponse(
@@ -317,24 +341,14 @@ async def get_current_user(
     """
     Get current authenticated user.
     Requires Bearer access token or X-User-Id header (dev mode).
-    In dev mode, if user does not exist, creates a minimal user so profile can be edited.
+    If user was deleted (e.g. dev@example.com), returns 404 — client should clear auth and redirect to login.
     """
-    from app.settings import get_settings
-    settings = get_settings()
-
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        if settings.APP_ENV.lower() in ("dev", "development") and str(user_id) == settings.DEFAULT_DEV_USER_ID:
-            user = User(id=user_id, email="dev@example.com", full_name="Dev User", is_active=True)
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
-
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
     return UserResponse.model_validate(user)
 
 
@@ -347,28 +361,13 @@ async def update_profile(
     """
     Update current user profile (full_name, email, phone).
     If email is changed, auth identity identifier is updated so login continues to work.
-    In dev mode, if user does not exist, creates them so profile save works.
     """
-    from app.settings import get_settings
-    settings = get_settings()
-
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        if settings.APP_ENV.lower() in ("dev", "development"):
-            user = User(
-                id=user_id,
-                email=request.email or "dev@example.com",
-                full_name=request.full_name or "Dev User",
-                phone=request.phone,
-                is_active=True,
-            )
-            db.add(user)
-            db.flush()
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
     
     if request.full_name is not None:
         user.full_name = (request.full_name.strip() or None) if request.full_name else None

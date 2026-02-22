@@ -1388,7 +1388,17 @@ async def import_xlsx(
         
         # Step 7: Commit transaction (all operations succeeded)
         db.commit()
-        
+        # Отметить батч как успешный для метрик админки (успех = загрузка Excel прошла без ошибки)
+        try:
+            db.execute(
+                text(f"UPDATE {qname('upload_batch')} SET status = 'success' WHERE upload_batch_id = CAST(:bid AS uuid)"),
+                {"bid": batch_id},
+            )
+            db.commit()
+        except Exception as e:
+            logger.debug("upload_batch status update skipped: %s", e)
+            db.rollback()
+
         # Step 8: Log success with row counts per table
         # Get row counts per fact table for detailed logging
         user_id_str = str(user_id)
@@ -1655,7 +1665,17 @@ async def import_xlsx_batch(
         
         # Step 5: Commit transaction (all operations succeeded)
         db.commit()
-        
+        # Отметить батч как успешный для метрик админки
+        try:
+            db.execute(
+                text(f"UPDATE {qname('upload_batch')} SET status = 'success' WHERE upload_batch_id = CAST(:bid AS uuid)"),
+                {"bid": batch_id},
+            )
+            db.commit()
+        except Exception as e:
+            logger.debug("upload_batch status update skipped: %s", e)
+            db.rollback()
+
         # Step 6: Log success with row counts per table
         logger.info(
             f"Batch import successful: user_id={user_id}, upload_batch_id={batch_id}, "
