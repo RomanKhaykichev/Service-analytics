@@ -1,0 +1,110 @@
+.cta {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  align-items: stretch;
+
+  background: #9cffc9;
+  border-radius: 40px;
+  overflow: hidden;
+
+  min-height: 280px;
+}
+
+/* Левая колонка */
+.content {
+  position: relative;
+  z-index: 2;
+  padding: 36px 40px;
+  /* важно: без background, чтобы не было эффекта "второй плашки" */
+}
+
+/* Правая колонка: явная высота чтобы img не схлопывался */
+.media {
+  position: relative;
+  z-index: 1;
+  min-height: 200px;
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+.image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+
+/* Волнистый стык между колонками:
+   делаем "волну" у правого края контента, как в референсе */
+.content::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: -86px; /* насколько волна заходит на картинку */
+  width: 180px;
+  height: 100%;
+
+  background: #9cffc9;
+  z-index: 3;
+
+  /* Маска волны: чередуем "выемки" кругами */
+  -webkit-mask-image:
+    radial-gradient(circle 40px at 0 20%, transparent 98%, #000 100%),
+    radial-gradient(circle 40px at 0 50%, transparent 98%, #000 100%),
+    radial-gradient(circle 40px at 0 80%, transparent 98%, #000 100%),
+    linear-gradient(#000, #000);
+  -webkit-mask-composite: source-over;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: 80px 80px, 80px 80px, 80px 80px, 100% 100%;
+  -webkit-mask-position: 0 0, 0 0, 0 0, 0 0;
+
+  mask-image:
+    radial-gradient(circle 40px at 0 20%, transparent 98%, #000 100%),
+    radial-gradient(circle 40px at 0 50%, transparent 98%, #000 100%),
+    radial-gradient(circle 40px at 0 80%, transparent 98%, #000 100%),
+    linear-gradient(#000, #000);
+  mask-repeat: no-repeat;
+  mask-size: 80px 80px, 80px 80px, 80px 80px, 100% 100%;
+  mask-position: 0 0, 0 0, 0 0, 0 0;
+}
+
+/* Правая внешняя выемка (пазл) на самом краю */
+.cta::after {
+  content: "";
+  position: absolute;
+  right: -36px; /* выносим за край, чтобы было как вырез */
+  top: 50%;
+  transform: translateY(-50%);
+
+  width: 100px;
+  height: 100px;
+  border-radius: 999px;
+
+  /* цвет фона страницы */
+  background: #ffffff;
+
+  z-index: 5;
+}
+
+/* Адаптив: на мобилке упрощаем */
+@media (max-width: 768px) {
+  .cta {
+    grid-template-columns: 1fr;
+    border-radius: 32px;
+  }
+
+  .content {
+    padding: 28px 22px;
+  }
+
+  .media {
+    height: 240px;
+  }
+
+  .content::after,
+  .cta::after {
+    display: none;
+  }
+}
