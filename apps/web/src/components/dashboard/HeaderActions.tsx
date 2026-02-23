@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { HelpCircle, User, ChevronDown, LogOut, CreditCard, Globe, PlayCircle, MessageCircle, HelpCircle as FAQ } from "lucide-react";
+import { HelpCircle, User, ChevronDown, LogOut, CreditCard, Globe, PlayCircle, MessageCircle, HelpCircle as FAQ, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -13,7 +13,7 @@ import { ReportUploadDialog } from "./ReportUploadDialog";
 import { PricingDialog } from "./PricingDialog";
 import { ProfileDialog } from "./ProfileDialog";
 import { LanguageDialog } from "./LanguageDialog";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -90,6 +90,14 @@ export function HeaderActions() {
             <User className="w-4 h-4 mr-2" />
             {t('header.profile')}
           </DropdownMenuItem>
+          {user?.is_admin && (
+            <DropdownMenuItem className="cursor-pointer" asChild>
+              <Link to="/admin">
+                <ShieldCheck className="w-4 h-4 mr-2" />
+                {t('header.adminPanel')}
+              </Link>
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem className="cursor-pointer" onClick={() => setPricingOpen(true)}>
             <CreditCard className="w-4 h-4 mr-2" />
             {t('header.tariff')}

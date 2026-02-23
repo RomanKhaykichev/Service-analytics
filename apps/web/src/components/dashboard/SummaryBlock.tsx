@@ -1,6 +1,7 @@
 import { ReactNode, useState, useEffect } from "react";
 import { ChevronDown, ChevronUp, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { RevenueTrendIcon } from "@/components/dashboard/RevenueTrendIcon";
 import {
   Tooltip,
   TooltipContent,
@@ -140,6 +141,9 @@ export function SummaryBlock({
                 )}
               </div>
               <div className="flex items-center gap-2">
+                {(metric.trend === "up" || metric.trend === "down") && (
+                  <RevenueTrendIcon trend={metric.trend} />
+                )}
                 <span className="text-sm font-semibold text-foreground whitespace-nowrap">
                   {metric.value}
                 </span>
@@ -207,6 +211,9 @@ export function SummaryBlock({
                           )}
                         </div>
                         <div className="flex items-center gap-2">
+                          {(metric.trend === "up" || metric.trend === "down") && (
+                            <RevenueTrendIcon trend={metric.trend} />
+                          )}
                           <span className="text-sm font-semibold text-foreground whitespace-nowrap">
                             {metric.value}
                           </span>

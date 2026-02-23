@@ -1,4 +1,4 @@
-import { Bell, Search, HelpCircle, Menu, LogOut } from "lucide-react";
+import { Bell, Search, HelpCircle, Menu, LogOut, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -13,7 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -110,6 +110,14 @@ export function Header({ onMenuClick, sidebarCollapsed }: HeaderProps) {
             <DropdownMenuItem onClick={() => navigate('/settings')}>
               {t('header.profile')}
             </DropdownMenuItem>
+            {user?.is_admin && (
+              <DropdownMenuItem asChild>
+                <Link to="/admin" className="flex items-center">
+                  <ShieldCheck className="w-4 h-4 mr-2" />
+                  {t('header.adminPanel')}
+                </Link>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => navigate('/settings')}>
               {t('header.settings')}
             </DropdownMenuItem>
