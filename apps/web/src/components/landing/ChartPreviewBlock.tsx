@@ -6,7 +6,7 @@ import { Container } from "./Container";
  */
 export function ChartPreviewBlock() {
   return (
-    <section className="pt-8 sm:pt-10 md:pt-12 pb-1 sm:pb-2 md:pb-3 bg-white">
+    <section className="pt-2 sm:pt-3 md:pt-4 pb-1 sm:pb-2 md:pb-3 bg-white">
       <Container>
         <div className="flex justify-center max-w-5xl w-full mx-auto overflow-hidden rounded-2xl border-2 border-[#7F7F7F]">
           <img

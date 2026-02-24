@@ -1,40 +1,41 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Container } from "./Container";
+import { ArrowRight } from "lucide-react";
 
-/** Hero-секция. TODO: тексты и иллюстрация — один в один из Figma frame 1. */
+/** Hero-секция: вопрос для продавцов UZUM, описание PROFiboard, CTA и изображение. */
 export function Hero() {
   return (
-    <section className="relative overflow-hidden bg-white py-16 sm:py-20 md:py-24 lg:py-28">
-      <Container className="relative flex flex-col lg:flex-row items-center gap-12 lg:gap-16">
-        <div className="flex-1 text-center lg:text-left max-w-2xl">
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-foreground tracking-tight">
-            Аналитика для вашего бизнеса
-          </h1>
-          <p className="mt-4 sm:mt-6 text-lg text-muted-foreground">
-            Управляйте продажами, финансами и складом в одном месте. Отчёты, тренды и рекомендации на основе данных.
-          </p>
-          <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-            <Link to="/auth">
-              <Button size="xl" variant="hero">
-                Попробовать бесплатно
-              </Button>
-            </Link>
-            <a href="#how-it-works">
-              <Button size="xl" variant="outline">
-                Как это работает
-              </Button>
-            </a>
+    <section className="relative overflow-hidden bg-white pt-0 pb-4 sm:pb-5 md:pb-6 lg:pb-8">
+      <Container className="relative flex flex-col gap-1 lg:gap-2">
+        <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-8">
+          <div className="flex-1 text-left max-w-2xl lg:max-w-3xl lg:-mr-12 xl:-mr-20 z-10 lg:pr-4 lg:ml-16 xl:ml-24 -mt-4 sm:-mt-6">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-foreground tracking-tight leading-tight">
+              Вы продавец на UZUM Market? Уверены что знаете свою реальную прибыль?
+            </h1>
+            <p className="mt-5 sm:mt-6 text-base sm:text-lg text-foreground">
+              PROFiboard показывает реальную прибыль, маржинальность и убыточные товары в вашем магазине — в несколько кликов.
+            </p>
+          </div>
+          <div className="flex-1 flex justify-center lg:justify-end w-full max-w-md relative z-0 lg:ml-8 xl:ml-12 mt-6 lg:mt-10">
+            <div className="relative w-full max-w-sm aspect-square rounded-full bg-sky-100 overflow-hidden flex items-center justify-center">
+              <img
+                src="/hero-seller.png"
+                alt="Продавец с телефоном"
+                className="w-full h-full object-cover object-center"
+              />
+            </div>
           </div>
         </div>
-        <div className="flex-1 flex justify-center lg:justify-end w-full max-w-lg">
-          {/* TODO: заменить на hero-illustration из Figma — src/assets/landing/hero-illustration.svg или .png */}
-          <div
-            className="w-full aspect-square max-w-md rounded-2xl bg-primary/10 flex items-center justify-center text-primary/50"
-            aria-hidden
-          >
-            <span className="text-sm">Hero illustration</span>
-          </div>
+        <div className="w-full flex justify-center -mt-10 lg:-mt-16">
+          <Link to="/auth">
+            <Button
+              size="lg"
+              className="bg-[#3366FF] hover:bg-[#2952CC] text-white font-semibold uppercase tracking-wide rounded-lg px-6"
+            >
+              ПОПРОБОВАТЬ <ArrowRight className="ml-2 h-4 w-4 inline" />
+            </Button>
+          </Link>
         </div>
       </Container>
     </section>
