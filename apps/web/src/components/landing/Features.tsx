@@ -26,7 +26,7 @@ const features = [
 /** Секция «Возможности»: 3 карточки сверху, заголовок и подзаголовок снизу (как раньше). */
 export function Features() {
   return (
-    <section id="features" className="py-16 sm:py-20 md:py-24 bg-white">
+    <section id="features" className="pt-16 sm:pt-20 md:pt-24 pb-8 sm:pb-10 md:pb-12 bg-white">
       <Container>
         <SectionTitle
           title="Возможности"
@@ -36,12 +36,12 @@ export function Features() {
           {features.map((item, i) => (
             <div
               key={i}
-              className="rounded-xl border border-border bg-card p-6 shadow-sm hover:shadow-md transition-shadow"
+              className="rounded-xl border border-border bg-card p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col items-center text-center"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-sky-600">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-sky-600 shrink-0">
                 <item.icon className="h-6 w-6" />
               </div>
-              <h3 className="mt-4 font-semibold text-foreground">{item.title}</h3>
+              <h3 className="mt-4 text-base sm:text-lg font-semibold text-foreground">{item.title}</h3>
               <p className="mt-2 text-sm text-muted-foreground">{item.description}</p>
             </div>
           ))}
@@ -50,8 +50,25 @@ export function Features() {
           className="mt-12 sm:mt-14 md:mt-16 mb-0"
           title="внутренняя аналитика"
           subtitle="вашего личного кабинета"
-          subtitleClassName="mt-1 text-2xl sm:text-3xl md:text-4xl font-bold text-foreground tracking-tight max-w-2xl mx-auto"
+          titleClassName="text-3xl sm:text-4xl md:text-5xl"
+          subtitleClassName="mt-1 text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-foreground tracking-tight max-w-2xl mx-auto"
         />
+        <p className="mt-6 sm:mt-8 text-center text-muted-foreground max-w-5xl mx-auto text-base sm:text-lg">
+          Мы подготовили десятки удобных отчетов, позволяющих решить любые задачи по анализу ваших
+          продаж на маркетплейсах с настраиваемыми таблицами и гибкими фильтрами.
+        </p>
+        <div className="mt-8 sm:mt-10 flex justify-center max-w-5xl w-full mx-auto overflow-hidden rounded-2xl border-2 border-[#7F7F7F]">
+          <img
+            src="/dashboard-preview.png"
+            alt="Мои продажи на UZUM — сводка дашборда"
+            className="w-full rounded-2xl"
+          />
+        </div>
+        <p className="mt-8 sm:mt-10 text-center font-bold text-foreground max-w-5xl mx-auto text-lg sm:text-xl md:text-2xl leading-relaxed">
+          Отслеживайте свои продажи и прибыль с учетом всех издержек.
+          <br />
+          Планируйте поставки товаров с учетом динамики продаж и остатков.
+        </p>
       </Container>
     </section>
   );

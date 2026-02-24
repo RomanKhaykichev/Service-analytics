@@ -48,7 +48,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 bg-transparent">
               <img src="/favicon.png" alt="" className="w-full h-full object-contain" />
             </div>
-            <span className="text-lg font-bold text-sidebar-foreground">Profiboard</span>
+            <span className="text-lg text-sidebar-foreground"><span className="font-bold">PROF</span>iboard</span>
           </Link>
         )}
         <Button

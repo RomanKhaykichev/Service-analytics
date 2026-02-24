@@ -10,7 +10,7 @@ const steps = [
 /** Секция «Как это работает». TODO: шаги и визуал — из Figma. */
 export function HowItWorks() {
   return (
-    <section id="how-it-works" className="py-16 sm:py-20 md:py-24 bg-white">
+    <section id="how-it-works" className="pt-8 sm:pt-10 md:pt-12 pb-16 sm:pb-20 md:pb-24 bg-white scroll-mt-20 sm:scroll-mt-24">
       <Container>
         <SectionTitle
           title="Как это работает"

@@ -20,7 +20,7 @@ export function SectionTitle({
     <div className={cn("text-center mb-10 md:mb-12 lg:mb-14", className)}>
       <h2
         className={cn(
-          "text-2xl sm:text-3xl md:text-4xl font-bold text-foreground tracking-tight",
+          "text-3xl sm:text-4xl md:text-5xl font-bold text-foreground tracking-tight",
           titleClassName
         )}
       >

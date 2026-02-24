@@ -15,8 +15,7 @@ export function CtaPlovBlock() {
         <div className={styles.cta}>
           <div className={styles.content}>
             <p className="text-[22px] md:text-[26px] leading-[1.25] text-black text-left md:text-center">
-              <span className="font-extrabold">PROFI</span>
-              <span className="font-semibold">board</span>{" "}
+              <span className="font-extrabold">PROF</span>i<span className="font-semibold">board</span>{" "}
               возьмет на себя всю рутину аналитики вашего ЛК, позволив вам
               сосредоточиться на главном — принятии правильных бизнес-решений и
               увеличению прибыли!

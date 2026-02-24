@@ -1,10 +1,11 @@
 import { Header } from "@/components/landing/Header";
 import { Hero } from "@/components/landing/Hero";
+import { ChartPreviewBlock } from "@/components/landing/ChartPreviewBlock";
 import { Features } from "@/components/landing/Features";
 import { HowItWorks } from "@/components/landing/HowItWorks";
 import { Testimonials } from "@/components/landing/Testimonials";
 import { FAQ } from "@/components/landing/FAQ";
-import { CtaPlovBlock } from "@/components/landing/CtaPlovBlock";
+import { CtaGreenBlock } from "@/components/landing/CtaGreenBlock";
 import { Footer } from "@/components/landing/Footer";
 
 /**
@@ -17,11 +18,12 @@ export default function Landing() {
       <Header />
       <main className="flex-1">
         <Hero />
+        <ChartPreviewBlock />
         <Features />
         <HowItWorks />
         <Testimonials />
         <FAQ />
-        <CtaPlovBlock />
+        <CtaGreenBlock />
       </main>
       <Footer />
     </div>

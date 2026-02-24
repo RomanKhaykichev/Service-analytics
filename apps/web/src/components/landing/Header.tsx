@@ -11,6 +11,15 @@ const navItems = [
   { label: "Вопросы", href: "#faq" },
 ];
 
+/** Зелёный треугольник логотипа PROFiboard */
+function LogoIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="flex-shrink-0">
+      <path d="M10 2L18 18H2L10 2Z" fill="currentColor" className="text-green-500" />
+    </svg>
+  );
+}
+
 /** Шапка лендинга. TODO: сверить логотип, отступы и пункты меню с Figma. */
 export function Header() {
   const [open, setOpen] = useState(false);
@@ -20,11 +29,11 @@ export function Header() {
       <Container className="flex h-14 sm:h-16 items-center justify-between gap-4">
         <Link
           to="/landing"
-          className="flex items-center gap-2 font-semibold text-foreground"
+          className="flex items-center gap-2 text-foreground"
           onClick={() => setOpen(false)}
         >
-          {/* TODO: заменить на лого из Figma — src/assets/landing/logo.svg */}
-          <span className="text-lg">Service Analytics</span>
+          <LogoIcon />
+          <span className="text-lg"><span className="font-bold">PROFi</span><span className="font-normal">board</span></span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-6">

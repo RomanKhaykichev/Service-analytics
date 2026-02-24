@@ -40,8 +40,8 @@ export function Testimonials() {
   return (
     <section id="testimonials" className="py-16 sm:py-20 md:py-24 bg-muted/30">
       <Container>
-        <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground tracking-tight text-center mb-10 md:mb-12 lg:mb-14">
-          Что говорят о PROFIboard
+        <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-foreground tracking-tight text-center mb-10 md:mb-12 lg:mb-14">
+          Что говорят о PROFiboard
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 max-w-5xl mx-auto">
           {testimonials.map((t, i) => (
