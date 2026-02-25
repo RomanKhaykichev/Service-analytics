@@ -15,13 +15,22 @@ import { AuthDialog } from "./Auth";
  * Лендинг (маркетинговая страница).
  * Структура сверстана по типовому макету; точные тексты, отступы и ассеты — см. TODO в компонентах (Figma).
  */
+export type AuthTab = 'signin' | 'signup';
+
 export default function Landing() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [authOpen, setAuthOpen] = useState(false);
+  const [authDefaultTab, setAuthDefaultTab] = useState<AuthTab>('signin');
+
+  const openAuth = (tab: AuthTab = 'signin') => {
+    setAuthDefaultTab(tab);
+    setAuthOpen(true);
+  };
 
   // Открыть окно входа при переходе с ?auth=open (например после выхода)
   useEffect(() => {
     if (searchParams.get('auth') === 'open') {
+      setAuthDefaultTab('signin');
       setAuthOpen(true);
       setSearchParams({}, { replace: true });
     }
@@ -29,18 +38,18 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <Header onOpenAuth={() => setAuthOpen(true)} />
+      <Header onOpenAuth={openAuth} />
       <main className="flex-1">
-        <Hero onOpenAuth={() => setAuthOpen(true)} />
+        <Hero onOpenAuth={openAuth} />
         <ChartPreviewBlock />
         <Features />
         <HowItWorks />
         <Testimonials />
         <FAQ />
-        <CtaGreenBlock onOpenAuth={() => setAuthOpen(true)} />
+        <CtaGreenBlock onOpenAuth={openAuth} />
       </main>
       <Footer />
-      <AuthDialog open={authOpen} onOpenChange={setAuthOpen} />
+      <AuthDialog open={authOpen} onOpenChange={setAuthOpen} defaultTab={authDefaultTab} />
     </div>
   );
 }

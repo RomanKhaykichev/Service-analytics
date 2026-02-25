@@ -9,6 +9,15 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
     full_name: Optional[str] = None
+    phone: Optional[str] = None
+    consent_processing: bool = False
+
+    @field_validator("phone", mode="before")
+    @classmethod
+    def phone_empty_to_none(cls, v):
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        return v.strip() if isinstance(v, str) else v
 
 
 class LoginRequest(BaseModel):

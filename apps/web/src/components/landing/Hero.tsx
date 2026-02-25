@@ -4,7 +4,7 @@ import { Container } from "./Container";
 import { ArrowRight } from "lucide-react";
 
 interface HeroProps {
-  onOpenAuth?: () => void;
+  onOpenAuth?: (tab: 'signin' | 'signup') => void;
 }
 
 /** Hero-секция: вопрос для продавцов UZUM, описание PROFiboard, CTA и изображение. */
@@ -36,7 +36,7 @@ export function Hero({ onOpenAuth }: HeroProps) {
             <Button
               size="lg"
               className="bg-[#3366FF] hover:bg-[#2952CC] text-white font-semibold uppercase tracking-wide rounded-lg px-6"
-              onClick={onOpenAuth}
+              onClick={() => onOpenAuth('signup')}
             >
               ПОПРОБОВАТЬ <ArrowRight className="ml-2 h-4 w-4 inline" />
             </Button>

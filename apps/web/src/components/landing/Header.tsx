@@ -33,7 +33,7 @@ const languages: { code: Language; label: string }[] = [
 ];
 
 interface HeaderProps {
-  onOpenAuth?: () => void;
+  onOpenAuth?: (tab: 'signin' | 'signup') => void;
 }
 
 /** Шапка лендинга. TODO: сверить логотип, отступы и пункты меню с Figma. */
@@ -86,10 +86,10 @@ export function Header({ onOpenAuth }: HeaderProps) {
           </DropdownMenu>
           {onOpenAuth ? (
             <>
-              <Button variant="ghost" size="sm" className="hidden sm:inline-flex" onClick={onOpenAuth}>
+              <Button variant="ghost" size="sm" className="hidden sm:inline-flex" onClick={() => onOpenAuth('signin')}>
                 Войти
               </Button>
-              <Button size="sm" onClick={onOpenAuth}>
+              <Button size="sm" onClick={() => onOpenAuth('signup')}>
                 Начать
               </Button>
             </>
@@ -131,7 +131,7 @@ export function Header({ onOpenAuth }: HeaderProps) {
               </a>
             ))}
             {onOpenAuth ? (
-              <Button variant="outline" className="w-full mt-2" onClick={() => { setOpen(false); onOpenAuth(); }}>
+              <Button variant="outline" className="w-full mt-2" onClick={() => { setOpen(false); onOpenAuth('signin'); }}>
                 Войти
               </Button>
             ) : (

@@ -4,7 +4,7 @@ import { Container } from "./Container";
 const PLOV_IMG = "/plov.png";
 
 interface CtaGreenBlockProps {
-  onOpenAuth?: () => void;
+  onOpenAuth?: (tab: 'signin' | 'signup') => void;
 }
 
 /**
@@ -31,7 +31,7 @@ export function CtaGreenBlock({ onOpenAuth }: CtaGreenBlockProps) {
                 <button
                   type="button"
                   className="inline-flex items-center justify-center h-12 px-8 rounded-xl bg-[#2C64ED] text-white font-medium uppercase tracking-wide hover:opacity-90 transition-opacity"
-                  onClick={onOpenAuth}
+                  onClick={() => onOpenAuth('signup')}
                 >
                   ПОПРОБОВАТЬ БЕСПЛАТНО
                 </button>

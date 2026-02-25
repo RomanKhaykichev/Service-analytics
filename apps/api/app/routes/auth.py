@@ -44,6 +44,11 @@ async def register(
     """
     Register a new user with email and password.
     """
+    if not request.consent_processing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Consent to personal data processing is required"
+        )
     try:
         # Check if user with this email already exists
         existing_user = db.query(User).filter(User.email == request.email).first()
@@ -52,6 +57,14 @@ async def register(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="User with this email already exists"
             )
+
+        if request.phone:
+            existing_phone = db.query(User).filter(User.phone == request.phone).first()
+            if existing_phone:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="User with this phone number already exists"
+                )
 
         # Check if auth identity with this email exists
         existing_identity = db.query(AuthIdentity).filter(
@@ -70,6 +83,7 @@ async def register(
         user = User(
             email=request.email,
             full_name=request.full_name or None,
+            phone=request.phone or None,
             is_active=True
         )
         db.add(user)

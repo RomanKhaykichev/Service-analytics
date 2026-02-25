@@ -24,7 +24,7 @@ interface AuthContextType {
   user: User | null;
   session: { user: User } | null;
   loading: boolean;
-  signUp: (email: string, password: string, fullName?: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, fullName?: string, phone?: string, consentProcessing?: boolean) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -101,12 +101,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, []);
 
-  const signUp = async (email: string, password: string, fullName?: string) => {
+  const signUp = async (email: string, password: string, fullName?: string, phone?: string, consentProcessing?: boolean) => {
     try {
       const res = await apiPostNoAuth<AuthResponse>('/api/auth/register', {
         email,
         password,
         full_name: fullName || null,
+        phone: (phone && phone.trim()) || null,
+        consent_processing: !!consentProcessing,
       });
       setAuthTokens(res.access_token, res.refresh_token);
       const u = mapUser(res.user);
