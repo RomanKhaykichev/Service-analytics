@@ -3,11 +3,15 @@ import { Container } from "./Container";
 
 const PLOV_IMG = "/plov.png";
 
+interface CtaGreenBlockProps {
+  onOpenAuth?: () => void;
+}
+
 /**
  * CTA-блок под FAQ: ширина как у блока отзывов (max-w-5xl).
  * Слева — текст на зелёном фоне, справа — картинка плова на всю высоту блока.
  */
-export function CtaGreenBlock() {
+export function CtaGreenBlock({ onOpenAuth }: CtaGreenBlockProps) {
   return (
     <section className="pt-8 sm:pt-10 md:pt-12 pb-16 sm:pb-20 md:pb-24 bg-white">
       <Container>
@@ -23,12 +27,22 @@ export function CtaGreenBlock() {
               получите готовое решение по цене 2x ужинов.
             </p>
             <div className="mt-8 flex justify-start">
-              <Link
-                to="/auth"
-                className="inline-flex items-center justify-center h-12 px-8 rounded-xl bg-[#2C64ED] text-white font-medium uppercase tracking-wide hover:opacity-90 transition-opacity"
-              >
-                ПОПРОБОВАТЬ БЕСПЛАТНО
-              </Link>
+              {onOpenAuth ? (
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center h-12 px-8 rounded-xl bg-[#2C64ED] text-white font-medium uppercase tracking-wide hover:opacity-90 transition-opacity"
+                  onClick={onOpenAuth}
+                >
+                  ПОПРОБОВАТЬ БЕСПЛАТНО
+                </button>
+              ) : (
+                <Link
+                  to="/auth"
+                  className="inline-flex items-center justify-center h-12 px-8 rounded-xl bg-[#2C64ED] text-white font-medium uppercase tracking-wide hover:opacity-90 transition-opacity"
+                >
+                  ПОПРОБОВАТЬ БЕСПЛАТНО
+                </Link>
+              )}
             </div>
           </div>
           {/* Правая половина: картинка на всю высоту блока */}

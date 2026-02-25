@@ -3,8 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Container } from "./Container";
 import { ArrowRight } from "lucide-react";
 
+interface HeroProps {
+  onOpenAuth?: () => void;
+}
+
 /** Hero-секция: вопрос для продавцов UZUM, описание PROFiboard, CTA и изображение. */
-export function Hero() {
+export function Hero({ onOpenAuth }: HeroProps) {
   return (
     <section className="relative overflow-hidden bg-white pt-0 pb-4 sm:pb-5 md:pb-6 lg:pb-8">
       <Container className="relative flex flex-col gap-1 lg:gap-2">
@@ -28,14 +32,24 @@ export function Hero() {
           </div>
         </div>
         <div className="w-full flex justify-center -mt-10 lg:-mt-16">
-          <Link to="/auth">
+          {onOpenAuth ? (
             <Button
               size="lg"
               className="bg-[#3366FF] hover:bg-[#2952CC] text-white font-semibold uppercase tracking-wide rounded-lg px-6"
+              onClick={onOpenAuth}
             >
               ПОПРОБОВАТЬ <ArrowRight className="ml-2 h-4 w-4 inline" />
             </Button>
-          </Link>
+          ) : (
+            <Link to="/auth">
+              <Button
+                size="lg"
+                className="bg-[#3366FF] hover:bg-[#2952CC] text-white font-semibold uppercase tracking-wide rounded-lg px-6"
+              >
+                ПОПРОБОВАТЬ <ArrowRight className="ml-2 h-4 w-4 inline" />
+              </Button>
+            </Link>
+          )}
         </div>
       </Container>
     </section>

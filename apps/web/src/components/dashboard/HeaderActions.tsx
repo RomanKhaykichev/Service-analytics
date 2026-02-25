@@ -35,7 +35,7 @@ export function HeaderActions() {
   const handleSignOut = async () => {
     await signOut();
     toast.success(t('header.loggedOut'));
-    navigate('/auth');
+    navigate('/landing?auth=open');
   };
   const [profileOpen, setProfileOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);

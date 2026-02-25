@@ -30,7 +30,7 @@ export function Header({ onMenuClick, sidebarCollapsed }: HeaderProps) {
   const handleSignOut = async () => {
     await signOut();
     toast.success(t('header.loggedOut'));
-    navigate('/auth');
+    navigate('/landing?auth=open');
   };
 
   const getUserInitials = () => {

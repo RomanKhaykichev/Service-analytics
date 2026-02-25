@@ -2,31 +2,62 @@ import { Container } from "./Container";
 import { SectionTitle } from "./SectionTitle";
 
 const steps = [
-  { step: 1, title: "Подключите магазин", text: "Авторизуйтесь и привяжите свой магазин к сервису." },
-  { step: 2, title: "Загрузите данные", text: "Импортируйте заказы, товары и расходы за нужный период." },
-  { step: 3, title: "Смотрите отчёты", text: "Дашборды и отчёты обновляются автоматически." },
+  {
+    step: 1,
+    title: "Сформируйте 4 отчета в ЛК продавца.",
+    text: "Отчет о продажах, отчет о услугах, отчет об остатках (старого формата), отчет о хранении.",
+    image: "/how-it-works-1.png",
+  },
+  {
+    step: 2,
+    title: "Загрузите 4 отчета в PROFiboard.",
+    text: "Важно! Отчеты должны быть все одного периода. Мы рекомендуем выгружать отчеты с начала года.",
+    image: "/how-it-works-2.png",
+  },
+  {
+    step: 3,
+    title: "Отслеживайте ваши успехи",
+    text: "Используйте данные чтобы оптимизировать расходы. Следите как меняется ваша прибыль от месяца к месяцу.",
+    image: "/how-it-works-3.png",
+  },
 ];
 
-/** Секция «Как это работает». TODO: шаги и визуал — из Figma. */
+/** Секция «Как это работает» — формирование отчётов, загрузка в PROFiboard, дашборды. */
 export function HowItWorks() {
   return (
-    <section id="how-it-works" className="pt-8 sm:pt-10 md:pt-12 pb-16 sm:pb-20 md:pb-24 bg-white scroll-mt-20 sm:scroll-mt-24">
+    <section id="how-it-works" className="-mt-2 md:-mt-4 pt-0 pb-16 sm:pb-20 md:pb-24 bg-white scroll-mt-20 sm:scroll-mt-24">
       <Container>
         <SectionTitle
           title="Как это работает"
           subtitle="Три простых шага до первых отчётов"
+          className="mb-0"
+          subtitleClassName="mt-0 sm:mt-0"
         />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-10">
-          {steps.map((item, i) => (
-            <div key={item.step} className="relative text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-lg">
+        <div className="relative grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-10">
+          {/* Линия между кружком 1 и 2 (не пересекает кружки) */}
+          <div
+            className="absolute top-6 left-[calc(16.666%+1.5rem)] right-[calc(50%+1.5rem)] h-0.5 bg-border z-0 hidden md:block"
+            aria-hidden
+          />
+          {/* Линия между кружком 2 и 3 */}
+          <div
+            className="absolute top-6 left-[calc(50%+1.5rem)] right-[calc(16.666%+1.5rem)] h-0.5 bg-border z-0 hidden md:block"
+            aria-hidden
+          />
+          {steps.map((item) => (
+            <div key={item.step} className="relative z-10 flex flex-col text-center">
+              <div className="mx-auto flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-lg">
                 {item.step}
+              </div>
+              <div className="mt-4 rounded-lg border bg-muted/30 overflow-hidden h-52 md:h-56 flex items-center justify-center">
+                <img
+                  src={item.image}
+                  alt=""
+                  className="max-h-full w-auto object-contain"
+                />
               </div>
               <h3 className="mt-4 font-semibold text-foreground">{item.title}</h3>
               <p className="mt-2 text-sm text-muted-foreground">{item.text}</p>
-              {i < steps.length - 1 && (
-                <div className="hidden md:block absolute top-6 left-[calc(50%+2rem)] w-[calc(100%-4rem)] h-0.5 bg-border" aria-hidden />
-              )}
             </div>
           ))}
         </div>

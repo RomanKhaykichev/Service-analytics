@@ -1,7 +1,14 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useLanguage, type Language } from "@/contexts/LanguageContext";
 import { Container } from "./Container";
 
 const navItems = [
@@ -20,12 +27,22 @@ function LogoIcon() {
   );
 }
 
+const languages: { code: Language; label: string }[] = [
+  { code: "ru", label: "Русский" },
+  { code: "uz", label: "O'zbekcha" },
+];
+
+interface HeaderProps {
+  onOpenAuth?: () => void;
+}
+
 /** Шапка лендинга. TODO: сверить логотип, отступы и пункты меню с Figma. */
-export function Header() {
+export function Header({ onOpenAuth }: HeaderProps) {
   const [open, setOpen] = useState(false);
+  const { language, setLanguage } = useLanguage();
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border/50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+    <header className="sticky top-0 z-50 w-full border-b border-border/50 bg-[#c4ffdf]">
       <Container className="flex h-14 sm:h-16 items-center justify-between gap-4">
         <Link
           to="/landing"
@@ -49,14 +66,45 @@ export function Header() {
         </nav>
 
         <div className="flex items-center gap-3">
-          <Link to="/auth" className="hidden sm:inline-flex">
-            <Button variant="ghost" size="sm">
-              Войти
-            </Button>
-          </Link>
-          <Link to="/auth">
-            <Button size="sm">Начать</Button>
-          </Link>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="shrink-0" aria-label="Язык">
+                <Globe className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {languages.map(({ code, label }) => (
+                <DropdownMenuItem
+                  key={code}
+                  onClick={() => setLanguage(code)}
+                  className={language === code ? "bg-primary/5" : undefined}
+                >
+                  {label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {onOpenAuth ? (
+            <>
+              <Button variant="ghost" size="sm" className="hidden sm:inline-flex" onClick={onOpenAuth}>
+                Войти
+              </Button>
+              <Button size="sm" onClick={onOpenAuth}>
+                Начать
+              </Button>
+            </>
+          ) : (
+            <>
+              <Link to="/auth" className="hidden sm:inline-flex">
+                <Button variant="ghost" size="sm">
+                  Войти
+                </Button>
+              </Link>
+              <Link to="/auth">
+                <Button size="sm">Начать</Button>
+              </Link>
+            </>
+          )}
 
           <button
             type="button"
@@ -82,11 +130,17 @@ export function Header() {
                 {item.label}
               </a>
             ))}
-            <Link to="/auth" className="pt-2" onClick={() => setOpen(false)}>
-              <Button variant="outline" className="w-full">
+            {onOpenAuth ? (
+              <Button variant="outline" className="w-full mt-2" onClick={() => { setOpen(false); onOpenAuth(); }}>
                 Войти
               </Button>
-            </Link>
+            ) : (
+              <Link to="/auth" className="pt-2" onClick={() => setOpen(false)}>
+                <Button variant="outline" className="w-full">
+                  Войти
+                </Button>
+              </Link>
+            )}
           </Container>
         </div>
       )}

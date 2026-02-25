@@ -1,4 +1,4 @@
-import { Star, User } from "lucide-react";
+import { Star } from "lucide-react";
 import { Container } from "./Container";
 
 const testimonials = [
@@ -6,21 +6,25 @@ const testimonials = [
     quote:
       "Пользуюсь Profiboard уже несколько месяцев — это один из самых полезных сервисов для работы с UZUM. Раньше считал все в екселе, но понял что многое не учитывал. Очень удобно анализировать продажи, видеть реальные цифры по прибыли и понимать, какие товары действительно зарабатывают. Однозначно рекомендую.",
     author: "Манукин Илья",
+    avatar: "/testimonial-1.png",
   },
   {
     quote:
       "Отличный сервис для системной работы с маркетплейсом. помогает контролировать продажи, расходы на рекламу и хранение в одном месте. Был в шоке когда увидел что реклама съедает всю прибыль с товара) Видно, что продукт сделан продавцами для продавцов. Сервис действительно помогает расти и зарабатывать больше.",
     author: "Клещев Владислав",
+    avatar: "/testimonial-2.png",
   },
   {
     quote:
       "Удобно отслеживать остатки и вовремя отгружать товар. Можно посмотреть весь свой заработок за год. Рекомендую новичкам, очень облегчает контроль своего магазина. Спасибо.",
     author: "Хаметов Аброр",
+    avatar: "/testimonial-3.png",
   },
   {
     quote:
       "Был реально удивлён, когда через Profiboard увидел, сколько денег у меня уходило на штрафы от UZUM. Раньше даже не обращал на это внимания — казалось, мелочи, а в итоге за месяц набегала очень приличная сумма. После оптимизации штрафы сократились в разы, а прибыль заметно выросла. полностью себя окупает.",
     author: "Азизов Бобур",
+    avatar: "/testimonial-4.png",
   },
 ];
 
@@ -54,9 +58,11 @@ export function Testimonials() {
                 {t.quote}
               </p>
               <div className="mt-6 flex flex-col items-center gap-2">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                  <User className="h-5 w-5" />
-                </div>
+                <img
+                  src={t.avatar}
+                  alt=""
+                  className="h-16 w-16 rounded-full object-cover border-2 border-border"
+                />
                 <span className="text-sm font-medium text-foreground">{t.author}</span>
               </div>
             </div>
