@@ -163,7 +163,7 @@ export function SummaryFilters({
   );
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex flex-nowrap items-center gap-3">
       {showStoreFilter && (
         <Select value={store} onValueChange={onStoreChange}>
           <SelectTrigger className="w-[180px] bg-accent text-accent-foreground border-0 hover:bg-accent/90">

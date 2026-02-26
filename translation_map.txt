@@ -1,0 +1,131 @@
+русский	узбекский
+Мои продажи	Mening savdolarim (Savdolarim)
+от 10 январа до 15 февраля	10 Yanvardan 15 Fevralgacha
+накопительная выручка	Tushum
+Загрузить отчеты	Hisobotlarni yuklash
+Сводка	Hisobotlar
+По дням	Kunlik
+Товары	Tovarlar (mahsulotlar)
+Дополнительные расходы	Qo'shimcha xarajatlar
+Отгрузка	Yuklab jo'natish
+по месячно	Oylik
+ПРОДАЖИ	Savdolar
+заказы	Buyurtmalar
+в обработке	Buyurtmani qayta ishlash
+выкупы	Sotib olishlar
+возвраты	Qaytarishlar
+процент возврата заказов	Qaytarishlar foizi
+средний чек	O'rtacha chek
+ФИНАНСЫ	Moliya
+выручка	Tushum
+расходы	Xarajatlar
+прибыль	Foyda
+рентабельность продаж	Savdo rentabellik darajasi
+окупаемость инвестиций	Investitsiya rentabelligi
+тренд выручки	Tushum oshisi
+упущенная выручка	Tushum kamayishi
+РАСХОДЫ	Xarajatlar
+комиссия	Komissiya miqdori
+логистика	Logistika xizmatlari
+себестоимость продажных товаров	Sotilgan tovarlarning tannarxi
+налоги	Soliqlar
+СКЛАД	Ombor
+товаров на складе	Tovarlar ombori
+себестоимость товаров	Tovarlar tannarxi
+розничная цена	Chakana narx
+УСЛУГИ	Xizmatlar
+хранение	Saqlash xizmati
+реклама	Reklama
+штрафы	Jarimalar
+продажи по дням	Kunlik savdo
+все магазины	Barcha savdo dokonlar
+штуки	narsa
+загрузка отчетов	Hisobot yuklash
+Как это работает?	Bu qanday ishlaydi?
+Загрузите отчеты в XLSX из личного кабинета UZUM	Uzum shaxsiy kabinetidan XLSX shaklida xisobotni yuklash
+Система автоматически распознает тип отчета и импортирует данные	Tizim hisobot turini avtomatik ravishda taniydi va ma'lumotlarni import qiladi
+ВАЖНО: все отчеты должны быть за один период.	MUHIM: Barcha hisobotlar bir muddat uchun bo'lishi kerak.
+отчет по продажам	Sotuvlar bo'yicha hisoboti
+отчет по услугам	Xizmatlar bo'yicha hisoboti
+отчет по хранению	Saqlash hisoboti
+Остатки(старый формат)	Qoldiqlar( eski format)
+перетащите файл или нажмите	Faylni sudrab tashlang yoki bosing
+Закрыть	Yopish
+Загрузить	Yuklash
+Помощь	Yordam
+Видео-уроки	Video- darsliklar
+поддержка	Qo'llab-quvvatlash Xizmati
+Мой аккаунт	Mening akkauntim
+профиль	Profil
+тариф (ный план)	Tarif rejasi
+продлить тариф	Tarif rejani yangilash
+язык	Til
+выйти	Chiqish
+график заказов и продаж	Buyurtmalar va savdo jadvali
+данные по дням	Kundalik ma'lumotlar
+дата	Sana
+чистая прибыль	Sof foyda
+поиск по названию и артикулу	Nom va SKU bo'yicha qidirish
+наименование	Tovar nomi
+цена	Narx
+оборачиваемость	Aylanma
+остаток	Qoldiqlar
+габаритная группа	O'lchamlar guruhi
+сгруппировать по карточкам	Kartalar kesimida guruhlash
+штрихкод	Shtrixkod
+хранение сутки/cум	Saqlash vaqti/kun/sum
+магазин	Savdo do'kon
+Товар	Tovar
+наименование	Tovar nomi
+тип товара	Tovar turi
+ID товара	Tovar Idsi
+Комментарий	Izoh
+оставить комментарий к товару	Buyurtmaga izoh
+маржинальность	Umumiy daromadning marginalligi
+от общей выручки	Umumiy tushumdan ulushi
+параметры товара	Tovar parametrlari
+Здесь можно в ручную добавить любые дополнительные расходы, которые не передаются по выгрузке или через API из маркетплейса.	Bu yerda siz marketpleysdan yoki API orqali o'tkazilmagan har qanday qo'shimcha xarajatlarni qo'lda qo'shishingiz mumkin.
+Примеры расходов: Самовыкупы, зарплата, внешняя реклама, своя логистика итд.	Xarajatlar misollari: O'z-o'zini sotib olish, ish haqi, tashqi reklama, ichki logistika va boshqalar.
+Расходы будут учитываться во всех отчетах с финансами для выбраной даты, магазина или товара (если указаны)	Xarajatlar tanlangan sana, do'kon yoki mahsulot (agar ko'rsatilgan bo'lsa) uchun barcha moliyaviy hisobotlarga kiritiladi
+Если не указаны, расходы будут добавлены в месячный отчет в общем.	Agar ko'rsatilmagan bo'lsa, xarajatlar oylik hisobotga to'liq qo'shiladi
+сумма	Miqdor
+действие	Harakat
+добавить расход	Xarajatlar qo'shish
+Заполните форму для добавления нового расхода	Yangi xarajatlar qo'shish uchun shaklni to'ldiring
+тип расхода	Xarajatlar turi
+не выбрано	Tanlanmagan
+Добавьте комментарий (опционально)	Izoh qo'shish (ixtiyoriy)
+отмена	Bekor qilish
+добавить	Qo'shish
+упаковка	Qadoqlash
+аренда	Ijara
+прочее	Boshqa
+дней до отгрузки	Yetkazib berishdan oldingi kunlar
+количество дней	Kunlar soni
+Укажите через сколько дней планируется отгрузка товара начиная с даты загрузки последних отчетов.	Oxirgi hisobotlar yuklangan sanadan boshlab mahsulot necha kun jo'natilishi rejalashtirilganligini ko'rsating
+учитывать остатки на складах?	Ombor qoldiqlarini hisobga olish?
+да	Ha
+нет	Yo'q
+рассчитать	Hisoblash
+рекомендации по отгрузке	Yuklab jo'natish bo'yicha tavsiyalar
+на складе	Omborda
+продаж в день	Kunlik savdo
+рекомендуемое количество	Tavsiya etilgan miqdor
+запланированно к отгрузке	Yuklab jo'natishga rejalashtirilgan miqdor
+выгрузить в Excel	Excelga yuklab olish
+финансовые показатели по месяцам	Oy bo'yicha moliyaviy ko'rsatkichlar
+год	Yil
+показатель	Ko'rsatkich
+всего продано	Jami sotilgan
+январь	Yanvar
+февраль	Fevral
+март	Mart
+апрель	Aprel
+май	May
+июнь	Iyun
+июль	Iyul
+август	Avgust
+сентябрь	Sentabr
+октябрь	Oktabr
+ноябрь	Noyabr
+декабрь	Dekabr

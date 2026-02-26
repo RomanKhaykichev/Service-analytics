@@ -73,7 +73,8 @@ function formatChartDateLabel(dateISO: string, granularity: DailySummaryGranular
 }
 
 export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, shop = null, taxPercent = 1 }: DailyViewProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const isUz = language === "uz";
   const CHART_SERIES = CHART_SERIES_KEYS.map((s) => ({ ...s, label: t(s.labelKey) }));
   const columns = [
     { key: "dateFormatted", label: t('daily.date') },
@@ -348,7 +349,8 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
                     <TableHead
                       key={col.key}
                       className={cn(
-                        "text-muted-foreground px-2 py-1 whitespace-nowrap bg-violet-50/80 dark:bg-violet-950/30",
+                        "text-muted-foreground px-2 py-1 bg-violet-50/80 dark:bg-violet-950/30",
+                        isUz ? "whitespace-normal break-words min-w-0" : "whitespace-nowrap",
                         col.key === "dateFormatted" ? "text-left" : "text-center"
                       )}
                     >
@@ -356,10 +358,11 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
                         onClick={() => handleSort(col.key as SortColumn)}
                         className={cn(
                           "flex items-center gap-0.5 hover:text-foreground transition-colors w-full",
+                          isUz && "flex-wrap justify-center min-h-[2.5rem]",
                           col.key === "dateFormatted" ? "justify-start" : "justify-center"
                         )}
                       >
-                        {col.label}
+                        <span className={cn(isUz && "whitespace-normal break-words", col.key === "dateFormatted" ? "text-left" : "text-center")}>{col.label}</span>
                         <span className="flex flex-col">
                           <ChevronUp
                             className={cn(
