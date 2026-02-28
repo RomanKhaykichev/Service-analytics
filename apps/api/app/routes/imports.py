@@ -4,14 +4,21 @@ from sqlalchemy import text
 from uuid import UUID
 from typing import Optional
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import logging
 import io
 import json
 from app.db import get_db, qname
 from app.deps import require_user
+from app.settings import get_settings
 from app.utils.barcode import barcode_norm_sql
+from app.utils.column_mappings import (
+    map_headers_to_canonical,
+    DuplicateCanonicalError,
+    MissingRequiredColumnsError,
+)
+from app.utils.value_mappings import apply_value_mappings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -34,6 +41,30 @@ def table_exists(db: Session, full_name: str) -> bool:
     except Exception as e:
         logger.warning(f"Error checking table existence for {full_name}: {e}")
         return False
+
+
+def ensure_dev_user_exists(db: Session, user_id: UUID) -> None:
+    """
+    In dev mode, if user_id is the default dev user and not in app.users, insert them.
+    Fixes FK violation when using DEFAULT_DEV_USER_ID without having signed up.
+    Does not commit — caller's transaction is used.
+    """
+    settings = get_settings()
+    if settings.APP_ENV.lower() not in ("dev", "development"):
+        return
+    if str(user_id) != settings.DEFAULT_DEV_USER_ID:
+        return
+    try:
+        db.execute(
+            text(f"""
+                INSERT INTO {qname("users")} (id, email, full_name, is_active, created_at, updated_at)
+                VALUES (CAST(:uid AS uuid), 'dev@local', 'Dev User', true, now(), now())
+                ON CONFLICT (id) DO NOTHING
+            """),
+            {"uid": str(user_id)},
+        )
+    except Exception as e:
+        logger.warning("ensure_dev_user_exists: %s", e)
 
 # Маппинги колонок (из import/import_batch.py)
 SHEETS = {
@@ -148,8 +179,9 @@ def norm(s):
 
 
 def _norm_col_leftout_old(s) -> str:
-    """Normalize column name for left-out-report_old validation: trim, collapse spaces, lower."""
-    return " ".join(str(s).replace("\n", " ").replace("\r", " ").replace("\u00a0", " ").strip().lower().split())
+    """Normalize column name for left-out-report_old validation: trim, collapse spaces, lower, normalize apostrophes."""
+    s = str(s).replace("\n", " ").replace("\r", " ").replace("\u00a0", " ").replace("\u02bb", "'").replace("\u2019", "'")
+    return " ".join(s.strip().lower().split())
 
 
 # Required column names for left-out-report_old (after _norm_col_leftout_old): Штрихкод, В продаже, Себест., Стоимость продажи
@@ -159,12 +191,16 @@ LEFTOUT_OLD_REQUIRED_NORMALIZED = {"штрихкод", "в продаже", "с�
 def validate_leftout_old_xlsx(file_bytes: bytes) -> None:
     """
     Strict validation: accept only files that look like left-out-report_old.
-    Raises HTTPException(400) with diagnostic detail if the file is not valid.
+    Accepts both RU and UZ headers (UZ mapped to canonical via column_mappings).
+    Raises HTTPException(400) if the file is not valid.
     Call this BEFORE any DB operations (before delete_old_data/create_batch).
     """
+    from app.utils.column_mappings import UZ_TO_RU_LEFTOUT_OLD
+
     buf = io.BytesIO(file_bytes)
     xl = pd.ExcelFile(buf, engine="openpyxl")
     sheet_names = xl.sheet_names
+    required_lower = LEFTOUT_OLD_REQUIRED_NORMALIZED  # {"штрихкод", "в продаже", ...}
 
     for sheet_name in sheet_names:
         for header_row in range(30):
@@ -183,12 +219,33 @@ def validate_leftout_old_xlsx(file_bytes: bytes) -> None:
                 continue
             normalized = [_norm_col_leftout_old(c) for c in cols]
             norm_set = set(normalized)
-            if "штрихкод" not in norm_set or "в продаже" not in norm_set:
+            # RU: required headers present as-is
+            if required_lower <= norm_set:
+                return  # valid
+            # UZ: map normalized headers to canonical (RU) and check coverage
+            mapped_canonical_lower = set()
+            for h in norm_set:
+                if h in required_lower:
+                    mapped_canonical_lower.add(h)
+                elif h in UZ_TO_RU_LEFTOUT_OLD:
+                    mapped_canonical_lower.add(UZ_TO_RU_LEFTOUT_OLD[h].lower())
+            if required_lower <= mapped_canonical_lower:
+                return  # valid (UZ file)
+            # Quick check: need at least штрихкод and в продаже (RU or UZ)
+            if "штрихкод" not in norm_set and "shtrixkod" not in norm_set and not any(
+                UZ_TO_RU_LEFTOUT_OLD.get(h, "").lower() == "штрихкод" for h in norm_set
+            ):
                 continue
-            # Found header with Штрихкод and В продаже — check all required
-            missing = LEFTOUT_OLD_REQUIRED_NORMALIZED - norm_set
+            if "в продаже" not in norm_set and "sotuvda" not in norm_set and not any(
+                UZ_TO_RU_LEFTOUT_OLD.get(h, "").lower() == "в продаже" for h in norm_set
+            ):
+                continue
+            missing = required_lower - mapped_canonical_lower
             if missing:
-                logger.warning(f"left-out-report_old validation: missing {sorted(missing)}, found {sorted(norm_set)}")
+                logger.warning(
+                    "left-out-report_old validation: missing %s, found %s, mapped %s",
+                    sorted(missing), sorted(norm_set), sorted(mapped_canonical_lower),
+                )
                 raise HTTPException(status_code=400, detail="Неверный формат left-out-report_old")
             return  # valid
 
@@ -207,9 +264,14 @@ def read_excel_as_str(file_content: bytes, sheet: str, file_type: str = None) ->
     else:
         sheet_used = sheet
         if sheet not in xl.sheet_names:
-            raise ValueError(
-                f"Лист '{sheet}' не найден в файле. Доступные листы: {xl.sheet_names}"
-            )
+            # UZ (or other) files may have different sheet names; use first sheet as fallback
+            if xl.sheet_names:
+                sheet_used = xl.sheet_names[0]
+                logger.info("Sheet '%s' not found, using first sheet: %s", sheet, sheet_used)
+            else:
+                raise ValueError(
+                    f"Лист '{sheet}' не найден в файле. Доступные листы: {xl.sheet_names}"
+                )
     converters = {}
     if file_type in ("leftout", "storage", "leftout_old"):
         converters = {
@@ -229,6 +291,14 @@ def read_excel_as_str(file_content: bytes, sheet: str, file_type: str = None) ->
     df = df.loc[:, [c for c in df.columns if c and not str(c).startswith("Unnamed")]]
     # Normalize column names (trim + collapse spaces)
     df.columns = [norm(c) for c in df.columns]
+    # Map UZ (or other) headers to canonical RU so existing pipeline is unchanged
+    required_canonical = REQUIRED.get(file_type, [])
+    if required_canonical:
+        try:
+            rename_dict, _ = map_headers_to_canonical(file_type, list(df.columns), required_canonical)
+            df = df.rename(columns=rename_dict)
+        except (DuplicateCanonicalError, MissingRequiredColumnsError) as e:
+            raise ValueError(str(e))
     # Canonicalize known variants for storage/leftout: "магазин" / " Магазин " -> "Магазин" (not for leftout_old)
     if file_type in ("leftout", "storage"):
         cols = list(df.columns)
@@ -237,12 +307,68 @@ def read_excel_as_str(file_content: bytes, sheet: str, file_type: str = None) ->
                 cols[i] = "Магазин"
                 break
         df.columns = cols
+    # Ensure barcode/SKU string after possible UZ rename
+    if file_type in ("leftout", "storage", "leftout_old"):
+        for col in ("Штрихкод", "SKU"):
+            if col in df.columns:
+                df[col] = df[col].apply(lambda x: str(x).strip() if pd.notna(x) else "")
     df = df.applymap(lambda x: str(x).strip() if isinstance(x, str) else x)
     df = df.dropna(how="all")
     
     # Filter rows with empty barcode for leftout/storage/leftout_old
     if file_type in ("leftout", "storage", "leftout_old") and "Штрихкод" in df.columns:
         df = df[df["Штрихкод"].notna() & (df["Штрихкод"].astype(str).str.strip() != "")]
+    
+    # Нормализация значений UZ -> RU для метрик (статусы, источник, услуга, тип операции)
+    df = apply_value_mappings(df, file_type)
+    
+    # Универсальная нормализация дат (разное отображение Excel): серийный номер 1900/1904, DD.MM.YYYY, DD.MM.YYYY HH:MM,
+    # YYYY-MM-DD, запятая в числе. Результат — YYYY-MM-DD; иначе строки отбрасываются в populate_facts (date_created IS NULL).
+    def normalize_date_cell(x):
+        if pd.isna(x) or x == "" or (isinstance(x, str) and not x.strip()):
+            return ""
+        s = str(x).strip()
+        if isinstance(x, pd.Timestamp):
+            try:
+                return x.strftime("%Y-%m-%d")
+            except Exception:
+                return s
+        # Число (int/float или строка типа "45321" / "45321.5" / "45321,5" — не "15.01.2026")
+        try:
+            if isinstance(x, (int, float)):
+                n = int(x)
+            else:
+                s_num = s.replace(",", ".").replace(" ", "")
+                if s_num.count(".") > 1:
+                    raise ValueError("looks like DD.MM.YYYY")
+                if not (s_num.replace(".", "").replace("-", "").isdigit() and len(s_num.replace(".", "").replace("-", "")) >= 4):
+                    raise ValueError("not a serial number")
+                n = int(float(s_num))
+            if n <= 0:
+                return ""
+            d = datetime(1899, 12, 30) + timedelta(days=n)
+            if d.year < 2024:
+                d = datetime(1904, 1, 1) + timedelta(days=n)
+            return d.strftime("%Y-%m-%d")
+        except (ValueError, OverflowError, TypeError):
+            pass
+        # Строка-дата: DD.MM.YYYY, DD.MM.YYYY HH:MM, YYYY-MM-DD, с другим отображением Excel — в YYYY-MM-DD
+        try:
+            parsed = pd.to_datetime(s, dayfirst=True, errors="coerce")
+            if pd.notna(parsed):
+                return parsed.strftime("%Y-%m-%d")
+        except Exception:
+            pass
+        return s
+    if file_type == "sales":
+        for col in ("Дата создания", "Дата получения"):
+            if col in df.columns:
+                df = df.copy()
+                df[col] = df[col].apply(normalize_date_cell)
+    elif file_type == "expenses":
+        if "Дата списания" in df.columns:
+            df = df.copy()
+            df["Дата списания"] = df["Дата списания"].apply(normalize_date_cell)
     
     return df
 
@@ -564,12 +690,22 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                     lower(trim(s.status)) AS status,
                     CASE
                         WHEN s.created_at_raw ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}' THEN s.created_at_raw::timestamptz
-                        WHEN s.created_at_raw ~ '^\\d{{2}}\\.\\d{{2}}\\.\\d{{4}}' THEN to_timestamp(s.created_at_raw, 'DD.MM.YYYY')::timestamptz
+                        WHEN s.created_at_raw ~ '^\\d{{2}}\\.\\d{{2}}\\.\\d{{4}}' THEN to_timestamp(substring(trim(s.created_at_raw) from '^[0-9]{{2}}\\.[0-9]{{2}}\\.[0-9]{{4}}'), 'DD.MM.YYYY')::timestamptz
+                        WHEN (s.created_at_raw ~ '^\\d+(\\.\\d*)?$' OR s.created_at_raw ~ '^\\d+,\\d*$') AND replace(s.created_at_raw, ',', '.')::numeric > 0 THEN (
+                            CASE WHEN (timestamp '1899-12-30' + (replace(s.created_at_raw, ',', '.')::numeric * interval '1 day'))::date < '2024-01-01'::date
+                                THEN (timestamp '1904-01-01' + (replace(s.created_at_raw, ',', '.')::numeric * interval '1 day'))::timestamptz
+                                ELSE (timestamp '1899-12-30' + (replace(s.created_at_raw, ',', '.')::numeric * interval '1 day'))::timestamptz
+                            END)
                         ELSE NULL
                     END AS date_created,
                     CASE
                         WHEN s.received_at_raw ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}' THEN s.received_at_raw::timestamptz
-                        WHEN s.received_at_raw ~ '^\\d{{2}}\\.\\d{{2}}\\.\\d{{4}}' THEN to_timestamp(s.received_at_raw, 'DD.MM.YYYY')::timestamptz
+                        WHEN s.received_at_raw ~ '^\\d{{2}}\\.\\d{{2}}\\.\\d{{4}}' THEN to_timestamp(substring(trim(s.received_at_raw) from '^[0-9]{{2}}\\.[0-9]{{2}}\\.[0-9]{{4}}'), 'DD.MM.YYYY')::timestamptz
+                        WHEN (s.received_at_raw ~ '^\\d+(\\.\\d*)?$' OR s.received_at_raw ~ '^\\d+,\\d*$') AND replace(s.received_at_raw, ',', '.')::numeric > 0 THEN (
+                            CASE WHEN (timestamp '1899-12-30' + (replace(s.received_at_raw, ',', '.')::numeric * interval '1 day'))::date < '2024-01-01'::date
+                                THEN (timestamp '1904-01-01' + (replace(s.received_at_raw, ',', '.')::numeric * interval '1 day'))::timestamptz
+                                ELSE (timestamp '1899-12-30' + (replace(s.received_at_raw, ',', '.')::numeric * interval '1 day'))::timestamptz
+                            END)
                         ELSE NULL
                     END AS date_received,
                     s.order_no,
@@ -820,7 +956,12 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                     user_id, upload_batch_id, source, service, status, operation_id,
                     CASE
                         WHEN written_off_raw ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}' THEN written_off_raw::timestamptz
-                        WHEN written_off_raw ~ '^\\d{{2}}\\.\\d{{2}}\\.\\d{{4}}' THEN to_timestamp(written_off_raw, 'DD.MM.YYYY')::timestamptz
+                        WHEN written_off_raw ~ '^\\d{{2}}\\.\\d{{2}}\\.\\d{{4}}' THEN to_timestamp(substring(trim(written_off_raw) from '^[0-9]{{2}}\\.[0-9]{{2}}\\.[0-9]{{4}}'), 'DD.MM.YYYY')::timestamptz
+                        WHEN (written_off_raw ~ '^\\d+(\\.\\d*)?$' OR written_off_raw ~ '^\\d+,\\d*$') AND replace(written_off_raw, ',', '.')::numeric > 0 THEN (
+                            CASE WHEN (timestamp '1899-12-30' + (replace(written_off_raw, ',', '.')::numeric * interval '1 day'))::date < '2024-01-01'::date
+                                THEN (timestamp '1904-01-01' + (replace(written_off_raw, ',', '.')::numeric * interval '1 day'))::timestamptz
+                                ELSE (timestamp '1899-12-30' + (replace(written_off_raw, ',', '.')::numeric * interval '1 day'))::timestamptz
+                            END)
                         ELSE NULL
                     END AS date_written_off,
                     NULLIF(replace(replace(cost_raw, ' ', ''), ',', '.'), '')::numeric AS cost_sum,
@@ -1217,6 +1358,7 @@ async def import_xlsx(
     
     # Start transaction - all operations in one transaction
     try:
+        ensure_dev_user_exists(db, user_id)
         # Step 1: Delete old data ONLY for this report type (overwrite per reportType)
         # This keeps other report types (e.g. inventory vs sales) intact.
         try:
@@ -1541,6 +1683,7 @@ async def import_xlsx_batch(
     
     # Start transaction - all operations in one transaction
     try:
+        ensure_dev_user_exists(db, user_id)
         # Step 1: Delete ALL old data for this user (overwrite mode) - ONCE
         try:
             delete_all_user_data(db, user_id)

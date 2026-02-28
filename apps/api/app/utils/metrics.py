@@ -9,15 +9,16 @@ def get_status_conditions() -> Dict[str, str]:
     """
     Get SQL status conditions used in KPI calculations.
     Returns the same conditions for both KPI and Charts to ensure consistency.
-    
-    Returns:
-        dict with keys: 'processing', 'completed', 'cancelled', 'revenue'
+    Поддерживаются RU и UZ значения (на случай данных, загруженных до маппинга значений).
     """
+    # Выручка/выкупы: RU или UZ эквиваленты «завершен» и «в обработке»
+    revenue_ru = "(lower(trim(status)) IN ('завершен', 'завершён') OR lower(trim(status)) = 'в обработке')"
+    revenue_uz = " OR (lower(trim(status)) LIKE '%yetkazilgan%' OR lower(trim(status)) LIKE '%yakunlangan%' OR lower(trim(status)) LIKE '%yakunlandi%' OR lower(trim(status)) LIKE '%qayta ishlashda%' OR lower(trim(status)) LIKE '%qayta ishlanmoqda%' OR lower(trim(status)) LIKE '%jarayonda%')"
     return {
-        'processing': "lower(trim(status)) = 'в обработке'",
-        'completed': "lower(trim(status)) IN ('завершен', 'завершён')",
-        'cancelled': "lower(trim(status)) IN ('отменен', 'отменён')",
-        'revenue': "(lower(trim(status)) IN ('завершен', 'завершён') OR lower(trim(status)) = 'в обработке')",
+        'processing': "(lower(trim(status)) = 'в обработке' OR lower(trim(status)) LIKE '%qayta ishlashda%' OR lower(trim(status)) LIKE '%qayta ishlanmoqda%' OR lower(trim(status)) LIKE '%jarayonda%')",
+        'completed': "(lower(trim(status)) IN ('завершен', 'завершён') OR lower(trim(status)) LIKE '%yetkazilgan%' OR lower(trim(status)) LIKE '%yakunlangan%' OR lower(trim(status)) LIKE '%yakunlandi%')",
+        'cancelled': "(lower(trim(status)) IN ('отменен', 'отменён') OR lower(trim(status)) LIKE '%bekor qilindi%' OR lower(trim(status)) LIKE '%rad etildi%')",
+        'revenue': "(" + revenue_ru + revenue_uz + ")",
     }
 
 

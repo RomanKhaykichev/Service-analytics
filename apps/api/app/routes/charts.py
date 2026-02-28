@@ -12,10 +12,9 @@ from app.settings import get_settings
 from app.routes.kpi import get_data_end_date, period_range, normalize_period, resolve_date_range
 from app.utils.statuses import get_status_sql_condition
 
-# SQL condition for "status = Завершен" (completed)
-_STATUS_COMPLETED_SQL = " (status ILIKE '%заверш%' OR status ILIKE '%достав%' OR status ILIKE '%получ%' OR status ILIKE '%выдан%') "
-# SQL condition for revenue: "status = Завершен" OR "status = В обработке"
-_STATUS_REVENUE_SQL = " ((status ILIKE '%заверш%' OR status ILIKE '%достав%' OR status ILIKE '%получ%' OR status ILIKE '%выдан%') OR status ILIKE '%обработ%') "
+# Условия по статусу: RU + UZ (Yetkazilgan=Завершен, Qayta ishlanmoqda=В обработке) — из get_status_sql_condition
+_STATUS_COMPLETED_SQL = " (" + get_status_sql_condition("completed") + ") "
+_STATUS_REVENUE_SQL = " ((" + get_status_sql_condition("completed") + ") OR (" + get_status_sql_condition("processing") + ")) "
 from app.utils.metrics import get_status_conditions, get_sales_metrics_sql, get_profit_sql, get_avg_check_sql
 from app.utils.barcode import barcode_norm_sql
 from app.utils.shop_filter import normalize_shop, shop_filter_condition, storage_barcode_filter_sql
@@ -125,7 +124,7 @@ async def get_revenue_daily(
                           ORDER BY sl2.upload_batch_id DESC NULLS LAST
                           LIMIT 1
                       )
-                      AND NULLIF(trim(sl.data->>'ID товара'), '') = :product_id
+                      AND NULLIF(trim(COALESCE(sl.data->>'ID товара', sl.data->>'Tovar identifikatori')), '') = :product_id
                 )
             """
         
@@ -698,10 +697,13 @@ async def get_uzum_services_daily(
 
 
 def _parse_turnover(data: dict) -> Optional[float]:
-    """Из data (jsonb) извлечь оборачиваемость; ключи: Оборачиваемость, дней / Оборачиваемость."""
+    """Из data (jsonb) извлечь оборачиваемость; ключи RU и UZ (Aylanib turish, Aylanma, kunlar и т.д.)."""
     if not data:
         return None
-    raw = data.get("Оборачиваемость, дней") or data.get("Оборачиваемость")
+    raw = (
+        data.get("Оборачиваемость, дней") or data.get("Оборачиваемость")
+        or data.get("Aylanib turish") or data.get("Aylanma, kunlar") or data.get("Aylanish (kun)")
+    )
     if raw is None:
         return None
     try:
@@ -717,6 +719,19 @@ def _str_val(v) -> Optional[str]:
     if v is None:
         return None
     return str(v).strip() or None
+
+
+def _get_data_ru_uz(data: dict, ru_keys: list, uz_keys: list):
+    """Взять значение из data по первому найденному ключу: сначала RU, затем UZ (сопоставление рус–узб)."""
+    if not data:
+        return None
+    for k in ru_keys:
+        if k in data and data[k] is not None:
+            return data[k]
+    for k in uz_keys:
+        if k in data and data[k] is not None:
+            return data[k]
+    return None
 
 
 @router.get("/charts/shipment-recommendations", response_model=ShipmentRecommendationsResponse)
@@ -787,12 +802,16 @@ async def get_shipment_recommendations(
                 continue
             barcode_raw = _str_val(row[1]) if len(row) > 1 else None
             in_sale_raw = _str_val(row[2]) if len(row) > 2 else None
-            product_name = _str_val(data.get("Наименование") or data.get("Название товара"))
+            product_name = _str_val(_get_data_ru_uz(data, ["Наименование", "Название товара"], ["Nomi", "Mahsulot nomi", "Tovarning nomi"]))
             sku = _str_val(data.get("SKU"))
             barcode = _str_val(data.get("Штрихкод")) or barcode_raw
-            stock = _str_val(data.get("Общий остаток") or data.get("В продаже")) or in_sale_raw
-            sales_per_day = _str_val(data.get("Среднесуточные продажи"))
-            to_ship = _str_val(data.get("К отправке"))
+            stock = _str_val(_get_data_ru_uz(data, ["Общий остаток", "В продаже"], ["Umumiy qoldiq", "Sotuvda"])) or in_sale_raw
+            sales_per_day = _str_val(_get_data_ru_uz(
+                data,
+                ["Среднесуточные продажи", "Среднесуточные продажи FBO за 15 дней, шт"],
+                ["15 kun ichida FBO o'rtacha kunlik sotuvlari, dona", "15 kun ichida FBO oʻrtacha kunlik sotuvlari, dona", "Sutkalik o'rtacha sotuvlar", "Sutkalik oʻrtacha sotuvlar"],
+            ))
+            to_ship = _str_val(_get_data_ru_uz(data, ["К отправке"], ["Yuborishga", "Yuborishga mavjud"]))
             items.append(ShipmentRecommendationItem(
                 product_name=product_name,
                 sku=sku,
@@ -1203,7 +1222,7 @@ async def get_products_table(
             if not barcode_norm and barcode_raw:
                 barcode_norm = (barcode_raw or "").replace(" ", "").strip()
 
-            product_id = _str_val(data.get("ID товара"))
+            product_id = _str_val(data.get("ID товара") or data.get("Tovar identifikatori"))
             product_name = _str_val(data.get("Наименование") or data.get("Название товара"))
             sku = _str_val(data.get("SKU"))
             price = _parse_num(data.get("Стоимость продажи (сумы)"))
@@ -1310,7 +1329,7 @@ async def get_product_card_all_time_metrics(
                       ORDER BY sl2.upload_batch_id DESC NULLS LAST
                       LIMIT 1
                   )
-                  AND NULLIF(trim(sl.data->>'ID товара'), '') = :product_id
+                  AND NULLIF(trim(COALESCE(sl.data->>'ID товара', sl.data->>'Tovar identifikatori')), '') = :product_id
             )
         """
         # По товару: выручка, cogs, commission, logistics (статусы «Завершен» и «В обработке»), без фильтра по датам
