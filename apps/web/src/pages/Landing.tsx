@@ -9,6 +9,7 @@ import { Testimonials } from "@/components/landing/Testimonials";
 import { FAQ } from "@/components/landing/FAQ";
 import { CtaGreenBlock } from "@/components/landing/CtaGreenBlock";
 import { Footer } from "@/components/landing/Footer";
+import { PromoTrialDialog } from "@/components/landing/PromoTrialDialog";
 import { AuthDialog } from "./Auth";
 
 /**
@@ -21,10 +22,17 @@ export default function Landing() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [authOpen, setAuthOpen] = useState(false);
   const [authDefaultTab, setAuthDefaultTab] = useState<AuthTab>('signin');
+  const [promoOpen, setPromoOpen] = useState(false);
 
   const openAuth = (tab: AuthTab = 'signin') => {
     setAuthDefaultTab(tab);
     setAuthOpen(true);
+  };
+
+  const openPromo = () => setPromoOpen(true);
+  const handlePromoTryFree = () => {
+    setPromoOpen(false);
+    openAuth('signup');
   };
 
   // Открыть окно входа при переходе с ?auth=open (например после выхода)
@@ -38,17 +46,18 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <Header onOpenAuth={openAuth} />
+      <Header onOpenAuth={openAuth} onOpenPromo={openPromo} />
       <main className="flex-1">
-        <Hero onOpenAuth={openAuth} />
+        <Hero onOpenAuth={openAuth} onOpenPromo={openPromo} />
         <ChartPreviewBlock />
         <Features />
         <HowItWorks />
         <Testimonials />
         <FAQ />
-        <CtaGreenBlock onOpenAuth={openAuth} />
+        <CtaGreenBlock onOpenAuth={openAuth} onOpenPromo={openPromo} />
       </main>
       <Footer />
+      <PromoTrialDialog open={promoOpen} onOpenChange={setPromoOpen} onTryFree={handlePromoTryFree} />
       <AuthDialog open={authOpen} onOpenChange={setAuthOpen} defaultTab={authDefaultTab} />
     </div>
   );

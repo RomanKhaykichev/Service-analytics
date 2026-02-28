@@ -20,6 +20,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -119,6 +129,8 @@ export default function Admin() {
   const [notesModal, setNotesModal] = useState<{ tenantId: string; notes: string } | null>(null);
   const [passwordModal, setPasswordModal] = useState<{ tenantId: string; newPassword: string } | null>(null);
   const [extendTrialModal, setExtendTrialModal] = useState<{ tenantId: string; days: number } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<null | { type: "disable" | "delete"; tenantId: string }>(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
   // Период для графика регистраций/заходов (по умолчанию 30 дней)
   const [chartPeriodDays, setChartPeriodDays] = useState(30);
   const [chartFrom, setChartFrom] = useState<string>(() => {
@@ -191,13 +203,7 @@ export default function Admin() {
   }, [accessDenied, fetchTenants]);
 
   const handleDisable = async (tenantId: string) => {
-    if (!confirm("Отключить тенанта? Пользователь не сможет входить.")) return;
-    try {
-      await apiPost(`/api/admin/tenants/${tenantId}/disable`, {});
-      fetchTenants();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+    setConfirmAction({ type: "disable", tenantId });
   };
 
   const handleEnable = async (tenantId: string) => {
@@ -251,13 +257,7 @@ export default function Admin() {
   };
 
   const handleDeleteTenant = async (tenantId: string) => {
-    if (!confirm("Удалить аккаунт и все загруженные данные безвозвратно?")) return;
-    try {
-      await apiDelete(`/api/admin/tenants/${tenantId}`);
-      fetchTenants();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+    setConfirmAction({ type: "delete", tenantId });
   };
 
   if (accessDenied) {
@@ -275,6 +275,28 @@ export default function Admin() {
     );
   }
 
+  const runConfirmAction = async () => {
+    if (!confirmAction) return;
+    setConfirmLoading(true);
+    try {
+      if (confirmAction.type === "disable") {
+        await apiPost(`/api/admin/tenants/${confirmAction.tenantId}/disable`, {});
+        toast.success("Тенант отключён");
+      } else {
+        await apiDelete(`/api/admin/tenants/${confirmAction.tenantId}`);
+        toast.success("Тенант удалён");
+      }
+      setConfirmAction(null);
+      fetchTenants();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      toast.error(msg || "Ошибка");
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
   return (
     <MainLayout>
       <Breadcrumb items={[{ label: t("header.adminPanel") }]} />
@@ -283,6 +305,39 @@ export default function Admin() {
         <h1 className="text-2xl font-bold text-foreground">{t("header.adminPanel")}</h1>
       </div>
       <p className="text-muted-foreground mb-6">Мониторинг клиентов, импортов и здоровья системы.</p>
+
+      <AlertDialog
+        open={confirmAction != null}
+        onOpenChange={(open) => {
+          if (!open && !confirmLoading) setConfirmAction(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmAction?.type === "delete" ? "Удалить тенанта?" : "Отключить тенанта?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmAction?.type === "delete"
+                ? "Действие необратимо: аккаунт и все загруженные данные будут удалены."
+                : "Пользователь не сможет входить в систему, пока вы не включите аккаунт обратно."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={confirmLoading}>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={confirmLoading}
+              className={confirmAction?.type === "delete" ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : undefined}
+              onClick={(e) => {
+                e.preventDefault();
+                runConfirmAction();
+              }}
+            >
+              {confirmLoading ? "Подождите…" : confirmAction?.type === "delete" ? "Удалить" : "Отключить"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {error && (
         <Alert variant="destructive" className="mb-4">
@@ -572,7 +627,7 @@ export default function Admin() {
             <Skeleton className="h-64 w-full" />
           ) : tenants ? (
             <>
-              <Table>
+              <Table className="[&_th]:h-10 [&_th]:py-2 [&_th]:px-3 [&_td]:py-2 [&_td]:px-3">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Аккаунт</TableHead>
@@ -619,7 +674,7 @@ export default function Admin() {
                               : "—"}
                         </TableCell>
                         <TableCell className="text-center">{row.last_login_at ? row.last_login_at.slice(0, 10) : "—"}</TableCell>
-                        <TableCell className="text-center">{row.imports_30d} успешно, {row.failed_imports_30d} ошибок</TableCell>
+                        <TableCell className="text-center">{row.imports_30d}</TableCell>
                         <TableCell className="text-center">
                           <Button
                             size="sm"

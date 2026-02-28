@@ -138,11 +138,11 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
     <Card className={cn('w-full max-w-md', cardClassName)}>
       <CardHeader className="text-center pb-2">
         {activeTab === 'signin' && (
-          <div className="flex justify-center mb-3">
+          <div className="flex justify-center mb-0.5">
             <img src="/favicon.png" alt="" className="h-12 w-12 object-contain" />
           </div>
         )}
-        <CardTitle className="text-2xl"><span className="font-bold">PROFi</span>board</CardTitle>
+        <CardTitle className="text-2xl font-normal"><span className="font-bold">PROFi</span><span className="font-normal">board</span></CardTitle>
         <CardDescription>
           Аналитический сервис для продавцов маркетплейса
         </CardDescription>

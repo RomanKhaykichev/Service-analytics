@@ -21,6 +21,7 @@ import { Progress } from "@/components/ui/progress";
 // TODO: Replace supabase with backend API calls
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { getAuthHeaders, getApiBaseUrl } from "@/lib/api";
 
 interface UploadedFile {
   name: string;
@@ -142,16 +143,13 @@ export function ReportUploadDialog() {
       const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes
 
       try {
-        // TODO: Replace with actual backend API endpoint
-        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-        const userId = localStorage.getItem('user_id') || '00000000-0000-0000-0000-000000000001';
-        
+        const API_URL = getApiBaseUrl();
         const response = await fetch(
-          `${API_URL}/api/import-xlsx`, // TODO: Create this endpoint
+          `${API_URL}/api/import-xlsx`,
           {
             method: 'POST',
             headers: {
-              'X-User-Id': userId,
+              ...getAuthHeaders(),
             },
             body: formData,
             signal: controller.signal,
@@ -160,10 +158,17 @@ export function ReportUploadDialog() {
 
         clearTimeout(timeoutId);
 
-        const result = await response.json();
+        let result: { detail?: string; error?: string; rowsImported?: number } = {};
+        try {
+          result = await response.json();
+        } catch {
+          // ответ может быть не JSON (например HTML при 500)
+        }
 
         if (!response.ok || result.error) {
-          throw new Error(result.detail || result.error || 'Upload failed');
+          const raw = result.detail ?? result.error ?? (response.status === 401 ? 'Требуется вход в аккаунт' : 'Ошибка загрузки');
+          const msg = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.map((e: any) => e?.msg || e).join(', ') : String(raw);
+          throw new Error(msg);
         }
 
         setUploadedFiles(prev => ({

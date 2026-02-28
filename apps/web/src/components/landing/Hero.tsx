@@ -5,10 +5,11 @@ import { ArrowRight } from "lucide-react";
 
 interface HeroProps {
   onOpenAuth?: (tab: 'signin' | 'signup') => void;
+  onOpenPromo?: () => void;
 }
 
 /** Hero-секция: вопрос для продавцов UZUM, описание PROFiboard, CTA и изображение. */
-export function Hero({ onOpenAuth }: HeroProps) {
+export function Hero({ onOpenAuth, onOpenPromo }: HeroProps) {
   return (
     <section className="relative overflow-hidden bg-white pt-0 pb-4 sm:pb-5 md:pb-6 lg:pb-8">
       <Container className="relative flex flex-col gap-1 lg:gap-2">
@@ -32,11 +33,11 @@ export function Hero({ onOpenAuth }: HeroProps) {
           </div>
         </div>
         <div className="w-full flex justify-center -mt-10 lg:-mt-16">
-          {onOpenAuth ? (
+          {onOpenPromo || onOpenAuth ? (
             <Button
               size="lg"
               className="bg-[#3366FF] hover:bg-[#2952CC] text-white font-semibold uppercase tracking-wide rounded-lg px-6"
-              onClick={() => onOpenAuth('signup')}
+              onClick={() => (onOpenPromo ? onOpenPromo() : onOpenAuth?.('signup'))}
             >
               ПОПРОБОВАТЬ <ArrowRight className="ml-2 h-4 w-4 inline" />
             </Button>

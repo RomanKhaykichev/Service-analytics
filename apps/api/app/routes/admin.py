@@ -683,30 +683,36 @@ async def admin_tenants_list(
                     """), {"uid": uid, "bid": str(b[0])}).fetchone()
                 last_import_status = "success" if has_any else "failed"
 
+            # Импорты 30д = только количество загрузок (upload_batch) за 30 дней
+            r30_count = db.execute(text(f"""
+                SELECT COUNT(*) FROM {qname('upload_batch')} b
+                WHERE b.user_id = :uid AND b.created_at >= :d30
+            """), {"uid": uid, "d30": today - timedelta(days=30)}).fetchone()
+            if r30_count:
+                imports_30d = r30_count[0] or 0
             if has_import_file_attempts:
-                r30 = db.execute(text(f"""
-                    SELECT COUNT(*) FILTER (WHERE a.status = 'success'),
-                           COUNT(*) FILTER (WHERE a.status = 'failed')
+                r30_failed = db.execute(text(f"""
+                    SELECT COUNT(*) FILTER (WHERE a.status = 'failed')
                     FROM {qname('import_file_attempts')} a
                     JOIN {qname('upload_batch')} b ON b.upload_batch_id = a.upload_batch_id
                     WHERE b.user_id = :uid AND a.created_at >= :d30
                 """), {"uid": uid, "d30": today - timedelta(days=30)}).fetchone()
+                if r30_failed:
+                    failed_30d = r30_failed[0] or 0
             else:
-                r30 = db.execute(text(f"""
-                    SELECT COUNT(*),
-                           COUNT(*) FILTER (WHERE NOT (
+                r30_failed = db.execute(text(f"""
+                    SELECT COUNT(*) FROM {qname('upload_batch')} b
+                    WHERE b.user_id = :uid AND b.created_at >= :d30
+                      AND NOT (
                              EXISTS (SELECT 1 FROM {qname('fact_sales')} fs WHERE fs.user_id = b.user_id AND fs.upload_batch_id = b.upload_batch_id)
                              OR EXISTS (SELECT 1 FROM {qname('fact_expenses')} fe WHERE fe.user_id = b.user_id AND fe.upload_batch_id = b.upload_batch_id)
                              OR EXISTS (SELECT 1 FROM {qname('fact_leftout_snapshot')} fl WHERE fl.user_id = b.user_id AND fl.upload_batch_id = b.upload_batch_id)
                              OR EXISTS (SELECT 1 FROM {qname('fact_storage_snapshot')} fss WHERE fss.user_id = b.user_id AND fss.upload_batch_id = b.upload_batch_id)
                              OR EXISTS (SELECT 1 FROM {qname('fact_leftout_old_snapshot')} flo WHERE flo.user_id = b.user_id AND flo.upload_batch_id = b.upload_batch_id)
-                           ))
-                    FROM {qname('upload_batch')} b
-                    WHERE b.user_id = :uid AND b.created_at >= :d30
+                           )
                 """), {"uid": uid, "d30": today - timedelta(days=30)}).fetchone()
-            if r30:
-                imports_30d = r30[0] or 0
-                failed_30d = r30[1] or 0
+                if r30_failed:
+                    failed_30d = r30_failed[0] or 0
 
             # Data freshness: max date_created from fact_sales for this user
             df = db.execute(text(f"""
@@ -855,30 +861,36 @@ async def admin_tenant_detail(
                         SELECT 1 FROM {qname('fact_leftout_old_snapshot')} WHERE user_id = :uid AND upload_batch_id = :bid LIMIT 1
                     """), {"uid": uid, "bid": last_batch_id}).fetchone()
                 last_status = "success" if has_any else "failed"
+            # Импорты 30д = только количество загрузок (upload_batch) за 30 дней
+            r30_count = db.execute(text(f"""
+                SELECT COUNT(*) FROM {qname('upload_batch')} b
+                WHERE b.user_id = :uid AND b.created_at >= :d30
+            """), {"uid": uid, "d30": date.today() - timedelta(days=30)}).fetchone()
+            if r30_count:
+                imports_30d = r30_count[0] or 0
             if has_import_file_attempts_detail:
-                r30 = db.execute(text(f"""
-                    SELECT COUNT(*) FILTER (WHERE a.status = 'success'),
-                           COUNT(*) FILTER (WHERE a.status = 'failed')
+                r30_failed = db.execute(text(f"""
+                    SELECT COUNT(*) FILTER (WHERE a.status = 'failed')
                     FROM {qname('import_file_attempts')} a
                     JOIN {qname('upload_batch')} b ON b.upload_batch_id = a.upload_batch_id
                     WHERE b.user_id = :uid AND a.created_at >= :d30
                 """), {"uid": uid, "d30": date.today() - timedelta(days=30)}).fetchone()
+                if r30_failed:
+                    failed_30d = r30_failed[0] or 0
             else:
-                r30 = db.execute(text(f"""
-                    SELECT COUNT(*),
-                           COUNT(*) FILTER (WHERE NOT (
+                r30_failed = db.execute(text(f"""
+                    SELECT COUNT(*) FROM {qname('upload_batch')} b
+                    WHERE b.user_id = :uid AND b.created_at >= :d30
+                      AND NOT (
                              EXISTS (SELECT 1 FROM {qname('fact_sales')} fs WHERE fs.user_id = b.user_id AND fs.upload_batch_id = b.upload_batch_id)
                              OR EXISTS (SELECT 1 FROM {qname('fact_expenses')} fe WHERE fe.user_id = b.user_id AND fe.upload_batch_id = b.upload_batch_id)
                              OR EXISTS (SELECT 1 FROM {qname('fact_leftout_snapshot')} fl WHERE fl.user_id = b.user_id AND fl.upload_batch_id = b.upload_batch_id)
                              OR EXISTS (SELECT 1 FROM {qname('fact_storage_snapshot')} fss WHERE fss.user_id = b.user_id AND fss.upload_batch_id = b.upload_batch_id)
                              OR EXISTS (SELECT 1 FROM {qname('fact_leftout_old_snapshot')} flo WHERE flo.user_id = b.user_id AND flo.upload_batch_id = b.upload_batch_id)
-                           ))
-                    FROM {qname('upload_batch')} b
-                    WHERE b.user_id = :uid AND b.created_at >= :d30
+                           )
                 """), {"uid": uid, "d30": date.today() - timedelta(days=30)}).fetchone()
-            if r30:
-                imports_30d = r30[0] or 0
-                failed_30d = r30[1] or 0
+                if r30_failed:
+                    failed_30d = r30_failed[0] or 0
             df = db.execute(text(f"""
                 SELECT (CURRENT_DATE - MAX(date_created)::date) FROM {qname('fact_sales')} WHERE user_id = :uid
             """), {"uid": uid}).fetchone()

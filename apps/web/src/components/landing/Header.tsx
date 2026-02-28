@@ -18,15 +18,6 @@ const navItems = [
   { label: "Вопросы", href: "#faq" },
 ];
 
-/** Зелёный треугольник логотипа PROFiboard */
-function LogoIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="flex-shrink-0">
-      <path d="M10 2L18 18H2L10 2Z" fill="currentColor" className="text-green-500" />
-    </svg>
-  );
-}
-
 const languages: { code: Language; label: string }[] = [
   { code: "ru", label: "Русский" },
   { code: "uz", label: "O'zbekcha" },
@@ -34,10 +25,11 @@ const languages: { code: Language; label: string }[] = [
 
 interface HeaderProps {
   onOpenAuth?: (tab: 'signin' | 'signup') => void;
+  onOpenPromo?: () => void;
 }
 
 /** Шапка лендинга. TODO: сверить логотип, отступы и пункты меню с Figma. */
-export function Header({ onOpenAuth }: HeaderProps) {
+export function Header({ onOpenAuth, onOpenPromo }: HeaderProps) {
   const [open, setOpen] = useState(false);
   const { language, setLanguage } = useLanguage();
 
@@ -49,7 +41,7 @@ export function Header({ onOpenAuth }: HeaderProps) {
           className="flex items-center gap-2 text-foreground"
           onClick={() => setOpen(false)}
         >
-          <LogoIcon />
+          <img src="/favicon.png" alt="" className="h-5 w-5 flex-shrink-0 object-contain" />
           <span className="text-lg"><span className="font-bold">PROFi</span><span className="font-normal">board</span></span>
         </Link>
 
@@ -84,12 +76,14 @@ export function Header({ onOpenAuth }: HeaderProps) {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          {onOpenAuth ? (
+          {onOpenAuth || onOpenPromo ? (
             <>
-              <Button variant="ghost" size="sm" className="hidden sm:inline-flex" onClick={() => onOpenAuth('signin')}>
-                Войти
-              </Button>
-              <Button size="sm" onClick={() => onOpenAuth('signup')}>
+              {onOpenAuth && (
+                <Button variant="ghost" size="sm" className="hidden sm:inline-flex" onClick={() => onOpenAuth('signin')}>
+                  Войти
+                </Button>
+              )}
+              <Button size="sm" onClick={() => (onOpenPromo ? onOpenPromo() : onOpenAuth?.('signup'))}>
                 Начать
               </Button>
             </>

@@ -4,7 +4,7 @@
   grid-template-columns: 1.1fr 0.9fr;
   align-items: stretch;
 
-  background: #9cffc9;
+  background: #c4ffdf;
   border-radius: 40px;
   overflow: hidden;
 
@@ -46,7 +46,7 @@
   width: 180px;
   height: 100%;
 
-  background: #9cffc9;
+  background: #c4ffdf;
   z-index: 3;
 
   /* Маска волны: чередуем "выемки" кругами */

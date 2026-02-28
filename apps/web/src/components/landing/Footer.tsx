@@ -2,15 +2,6 @@ import { Link } from "react-router-dom";
 import { Container } from "./Container";
 import { Send, Camera } from "lucide-react";
 
-/** Зелёный треугольник логотипа PROFiboard */
-function LogoIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="flex-shrink-0">
-      <path d="M10 2L18 18H2L10 2Z" fill="currentColor" className="text-green-500" />
-    </svg>
-  );
-}
-
 const legalLinks = [
   { label: "Политика конфиденциальности", href: "/privacy" },
   { label: "Публичная оферта", href: "/offer" },
@@ -27,7 +18,7 @@ export function Footer() {
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <span className="flex items-center gap-1.5 font-normal text-foreground text-lg">
-                <LogoIcon />
+                <img src="/favicon.png" alt="" className="h-5 w-5 flex-shrink-0 object-contain" />
                 <span><span className="font-bold">PROFi</span>board</span>
               </span>
               <span className="flex items-center gap-1.5 ml-1">
