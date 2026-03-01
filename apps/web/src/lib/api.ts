@@ -159,6 +159,22 @@ function buildUrl(baseUrl: string, path: string, params?: Record<string, any>): 
   return url.toString();
 }
 
+const VISITOR_KEY_STORAGE = "profiboard_visitor_key";
+
+/** Ключ посетителя для трекинга воронки (лендинг, промо). Один на сессию. */
+export function getVisitorKey(): string {
+  try {
+    let k = sessionStorage.getItem(VISITOR_KEY_STORAGE);
+    if (!k) {
+      k = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `v_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      sessionStorage.setItem(VISITOR_KEY_STORAGE, k);
+    }
+    return k;
+  } catch {
+    return `v_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  }
+}
+
 /**
  * POST without auth (for login/register).
  */

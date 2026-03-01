@@ -1,4 +1,6 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { useAuth } from '@/hooks/useAuth';
+import { apiPatch } from '@/lib/api';
 
 export type Language = 'ru' | 'uz';
 
@@ -126,7 +128,27 @@ const translations: Record<Language, Record<string, string>> = {
     'language.title': 'Выбор языка',
     'language.russian': 'Русский',
     'language.uzbek': 'Узбекский',
-    
+
+    // Pricing / Tariff dialog
+    'pricing.extendTitle': 'Продлить тариф',
+    'pricing.chooseTariff': 'Выберите тариф',
+    'pricing.subscription1Month': 'Подписка 1 месяц',
+    'pricing.upTo5Stores': 'до 5 магазинов',
+    'pricing.upTo10Stores': 'до 10 магазинов',
+    'pricing.dataAnyPeriod': 'данные за любой период',
+    'pricing.select': 'Выбрать',
+    'pricing.sum': 'сум',
+    'pricing.month1': '1 месяц',
+    'pricing.month3': '3 месяца',
+    'pricing.month6': '6 месяцев',
+    'pricing.year1': '1 год',
+    'pricing.savings': 'Экономия',
+    'pricing.popular': 'Популярный',
+    'pricing.tryFree': 'Попробуй бесплатно',
+    'pricing.tryFreeDesc': '10 дней полного доступа без оплаты',
+    'pricing.startFree': 'Начать бесплатно',
+    'pricing.cancelAnytime': 'Отмена подписки доступна в любой момент',
+
     // Report upload
     'report.uploadReports': 'Загрузить отчёты',
     'report.sales': 'Продажи',
@@ -391,6 +413,7 @@ const translations: Record<Language, Record<string, string>> = {
     'shipment.recommendedQty': 'Рекомендуемое кол-во',
     'shipment.plannedToShip': 'Запланировано к отгрузке',
     'shipment.exportedRows': 'Выгружено {0} строк',
+    'shipment.exportError': 'Ошибка при выгрузке',
     'monthly.jan': 'Янв',
     'monthly.feb': 'Фев',
     'monthly.mar': 'Мар',
@@ -528,7 +551,27 @@ const translations: Record<Language, Record<string, string>> = {
     'language.title': 'Tilni tanlash',
     'language.russian': 'Ruscha',
     'language.uzbek': "O'zbekcha",
-    
+
+    // Pricing / Tariff dialog
+    'pricing.extendTitle': 'Tarifni uzaytirish',
+    'pricing.chooseTariff': 'Tarifni tanlang',
+    'pricing.subscription1Month': 'Obuna 1 oy',
+    'pricing.upTo5Stores': "gacha 5 do'kon",
+    'pricing.upTo10Stores': "gacha 10 do'kon",
+    'pricing.dataAnyPeriod': "istalgan davr uchun ma'lumotlar",
+    'pricing.select': "Tanlash",
+    'pricing.sum': "so'm",
+    'pricing.month1': '1 oy',
+    'pricing.month3': '3 oy',
+    'pricing.month6': '6 oy',
+    'pricing.year1': '1 yil',
+    'pricing.savings': 'Tejash',
+    'pricing.popular': 'Mashhur',
+    'pricing.tryFree': "Bepul sinab ko'ring",
+    'pricing.tryFreeDesc': "To'lovsiz 10 kun to'liq kirish",
+    'pricing.startFree': "Bepul boshlash",
+    'pricing.cancelAnytime': "Obunani istalgan vaqtda bekor qilish mumkin",
+
     // Report upload
     'report.uploadReports': 'Hisobotlarni yuklash',
     'report.sales': 'Savdolar',
@@ -785,6 +828,7 @@ const translations: Record<Language, Record<string, string>> = {
     'shipment.recommendedQty': 'Tavsiya etilgan miqdor',
     'shipment.plannedToShip': 'Yuklashga rejalashtirilgan',
     'shipment.exportedRows': '{0} qator yuklandi',
+    'shipment.exportError': 'Yuklab olishda xatolik',
     'monthly.jan': 'Yan',
     'monthly.feb': 'Fev',
     'monthly.mar': 'Mar',
@@ -809,10 +853,27 @@ const translations: Record<Language, Record<string, string>> = {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const [language, setLanguageState] = useState<Language>(() => {
     const saved = localStorage.getItem('app-language');
     return (saved as Language) || 'ru';
   });
+  const initialUserLangApplied = useRef(false);
+
+  // При загрузке/входе: подставляем язык из аккаунта пользователя
+  useEffect(() => {
+    if (!user) {
+      initialUserLangApplied.current = false;
+      return;
+    }
+    const pl = user.preferred_language;
+    if (pl === 'ru' || pl === 'uz') {
+      if (!initialUserLangApplied.current) {
+        initialUserLangApplied.current = true;
+        setLanguageState(pl);
+      }
+    }
+  }, [user?.id, user?.preferred_language]);
 
   useEffect(() => {
     localStorage.setItem('app-language', language);
@@ -820,6 +881,11 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
+    if (user) {
+      apiPatch('/api/auth/me', { preferred_language: lang }).catch(() => {
+        // при ошибке сетевого запроса язык уже сменён локально
+      });
+    }
   };
 
   const t = (key: string): string => {

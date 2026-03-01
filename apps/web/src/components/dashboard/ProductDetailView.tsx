@@ -12,6 +12,7 @@ import { useRevenueDaily } from "@/hooks/useRevenueDaily";
 import { formatCurrency, formatQuantity, formatPercent, formatTrend, formatMoneyNoDecimals } from "@/lib/formatters";
 import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { getSizeGroupColorClass } from "@/lib/utils";
 interface ProductVariant {
   char1: string; // Хар-ка 1 = 3 часть из SKU
   char2: string; // Хар-ка 2 = 4 часть из SKU
@@ -465,11 +466,7 @@ export function ProductDetailView({
                           <td className="px-3 py-2 text-center text-foreground">{variant.stock != null ? formatNumber(variant.stock) : "—"}</td>
                           <td className="px-3 py-2 text-center">
                             {variant.size_group && variant.size_group !== "-" ? (
-                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                variant.size_group === "СГТ" ? "bg-success/20 text-success" : 
-                                variant.size_group === "МГТ" ? "bg-warning/20 text-warning" : 
-                                "bg-destructive/20 text-destructive"
-                              }`}>
+                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${getSizeGroupColorClass(variant.size_group)}`}>
                                 {variant.size_group}
                               </span>
                             ) : (

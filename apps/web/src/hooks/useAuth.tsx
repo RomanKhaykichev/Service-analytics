@@ -15,6 +15,7 @@ interface User {
   full_name?: string;
   phone?: string;
   is_admin?: boolean;
+  preferred_language?: string | null; // 'ru' | 'uz'
   user_metadata?: {
     full_name?: string;
   };
@@ -35,7 +36,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 interface AuthResponse {
   access_token: string;
   refresh_token: string;
-  user: { id: string; email?: string | null; full_name?: string | null; phone?: string | null; is_admin?: boolean };
+  user: { id: string; email?: string | null; full_name?: string | null; phone?: string | null; is_admin?: boolean; preferred_language?: string | null };
 }
 
 function mapUser(u: AuthResponse['user']): User {
@@ -45,6 +46,7 @@ function mapUser(u: AuthResponse['user']): User {
     full_name: u.full_name ?? undefined,
     phone: u.phone ?? undefined,
     is_admin: u.is_admin ?? false,
+    preferred_language: u.preferred_language ?? undefined,
     user_metadata: u.full_name ? { full_name: u.full_name } : undefined,
   };
 }
@@ -66,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     (async () => {
       try {
-        const data = await apiGet<{ id: string; email?: string | null; full_name?: string | null; phone?: string | null; is_admin?: boolean }>('/api/auth/me');
+        const data = await apiGet<{ id: string; email?: string | null; full_name?: string | null; phone?: string | null; is_admin?: boolean; preferred_language?: string | null }>('/api/auth/me');
         if (!cancelled) {
           const u: User = mapUser(data);
           setUser(u);

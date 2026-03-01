@@ -30,7 +30,8 @@ export function HeaderActions() {
   const { t } = useLanguage();
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
-  const [pricingOpen, setPricingOpen] = useState(false);
+  const [tariffOpen, setTariffOpen] = useState(false);
+  const [extendTariffOpen, setExtendTariffOpen] = useState(false);
 
   const handleSignOut = async () => {
     await signOut();
@@ -98,11 +99,11 @@ export function HeaderActions() {
               </Link>
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem className="cursor-pointer" onClick={() => setPricingOpen(true)}>
+          <DropdownMenuItem className="cursor-pointer" onClick={() => setTariffOpen(true)}>
             <CreditCard className="w-4 h-4 mr-2" />
             {t('header.tariff')}
           </DropdownMenuItem>
-          <DropdownMenuItem className="cursor-pointer text-primary" onClick={() => setPricingOpen(true)}>
+          <DropdownMenuItem className="cursor-pointer text-primary" onClick={() => setExtendTariffOpen(true)}>
             <CreditCard className="w-4 h-4 mr-2" />
             {t('header.extendTariff')}
           </DropdownMenuItem>
@@ -119,8 +120,10 @@ export function HeaderActions() {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* Pricing Dialog */}
-      <PricingDialog open={pricingOpen} onOpenChange={setPricingOpen} />
+      {/* Тариф — полное окно с 4 планами и «Попробуй бесплатно» */}
+      <PricingDialog open={tariffOpen} onOpenChange={setTariffOpen} variant="tariff" />
+      {/* Продлить тариф — упрощённое окно «Тариф закончился» */}
+      <PricingDialog open={extendTariffOpen} onOpenChange={setExtendTariffOpen} variant="extend" />
 
       {/* Profile Dialog */}
       <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />

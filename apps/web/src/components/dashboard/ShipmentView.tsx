@@ -57,7 +57,7 @@ export function ShipmentView({
   calculatedRecommendedByKey,
   setCalculatedRecommended,
 }: ShipmentViewProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { data, isLoading, error } = useShipmentRecommendations(shop);
   const items = data?.items ?? [];
   const [calculateLoading, setCalculateLoading] = useState(false);
@@ -94,27 +94,37 @@ export function ShipmentView({
   };
 
   const handleExportXLSX = () => {
-    const rows = items.map((row) => {
-      const key = rowKey(row);
-      const recommendedDisplay =
-        key && calculatedRecommendedByKey[key] !== undefined
-          ? String(calculatedRecommendedByKey[key])
-          : row.recommended_qty;
-      return {
-        [t('shipment.product')]: row.product_name ?? "",
-        [t('shipment.article')]: row.sku ?? "",
-        [t('product.barcode')]: row.barcode ?? "",
-        [t('shipment.inStock')]: row.stock ?? "",
-        [t('shipment.salesPerDay')]: row.sales_per_day ?? "",
-        [t('shipment.recommendedQty')]: recommendedDisplay,
-        [t('shipment.plannedToShip')]: row.to_ship ?? "",
-      };
-    });
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, t('shipment.recommendations'));
-    XLSX.writeFile(workbook, `отгрузка_${new Date().toISOString().split("T")[0]}.xlsx`);
-    toast.success(t('shipment.exportedRows').replace('{0}', String(rows.length)));
+    try {
+      const rows = items.map((row) => {
+        const key = rowKey(row);
+        const recommendedDisplay =
+          key && calculatedRecommendedByKey[key] !== undefined
+            ? String(calculatedRecommendedByKey[key])
+            : row.recommended_qty;
+        return {
+          [t('shipment.product')]: row.product_name ?? "",
+          [t('shipment.article')]: row.sku ?? "",
+          [t('product.barcode')]: row.barcode ?? "",
+          [t('shipment.inStock')]: row.stock ?? "",
+          [t('shipment.salesPerDay')]: row.sales_per_day ?? "",
+          [t('shipment.recommendedQty')]: recommendedDisplay,
+          [t('shipment.plannedToShip')]: row.to_ship ?? "",
+        };
+      });
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      const workbook = XLSX.utils.book_new();
+      // Excel: имя листа не более 31 символа
+      const sheetNameRaw = t('shipment.recommendations');
+      const sheetName = sheetNameRaw.length > 31 ? sheetNameRaw.slice(0, 31) : sheetNameRaw;
+      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+      const dateStr = new Date().toISOString().split("T")[0];
+      const fileName = language === "uz" ? `yuklab_jonatish_${dateStr}.xlsx` : `отгрузка_${dateStr}.xlsx`;
+      XLSX.writeFile(workbook, fileName);
+      toast.success(t('shipment.exportedRows').replace('{0}', String(rows.length)));
+    } catch (err) {
+      console.error("Shipment export error:", err);
+      toast.error(t('shipment.exportError'));
+    }
   };
 
   return (

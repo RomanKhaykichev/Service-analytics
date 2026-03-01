@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import { Shield, Users, UserPlus, Activity, Upload, AlertCircle, BarChart3, Pencil, Trash2, UserMinus, CalendarPlus } from "lucide-react";
+import { Shield, Users, UserPlus, AlertCircle, Pencil, Trash2, UserMinus, CalendarPlus, Upload, BarChart3 } from "lucide-react";
 import { Tooltip as UITooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { Breadcrumb } from "@/components/shared/Breadcrumb";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,7 +37,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  BarChart,
+  ComposedChart,
   Bar,
   Line,
   XAxis,
@@ -47,42 +46,10 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  ComposedChart,
-  LabelList,
 } from "recharts";
+import { useNavigate } from "react-router-dom";
 import { apiGet, apiPatch, apiPost, apiDelete } from "@/lib/api";
 import { toast } from "sonner";
-
-const fmt = (v: number | null | undefined) => (v != null ? String(v) : "—");
-
-interface AdminKPIs {
-  active_customers_mau_30d?: number | null;
-  new_signups_7d?: number | null;
-  new_signups_30d?: number | null;
-  activated_pct?: number | null;
-  paid_count?: number | null;
-  trial_count?: number | null;
-  expired_count?: number | null;
-  mrr?: number | null;
-  revenue_30d?: number | null;
-  imports_24h?: number | null;
-  import_success_rate_7d?: number | null;
-  queue_pending?: number | null;
-  queue_running?: number | null;
-  queue_failed?: number | null;
-  oldest_pending_minutes?: number | null;
-  api_errors_5xx_24h?: number | null;
-}
-
-interface AdminOverview {
-  kpis: AdminKPIs;
-  registrations_per_day: Array<{ date: string; count: number }>;
-  visits_per_day: Array<{ date: string; count: number }>;
-  total_visits_per_day?: Array<{ date: string; count: number }>;
-  imports_per_day: Array<{ date: string; success: number; failed: number }>;
-  data_freshness_buckets: Array<{ bucket: string; count: number }>;
-  subscription_analytics?: Array<{ month: string; active_users: number; revenue: number }>;
-}
 
 interface TenantRow {
   tenant_id: string;
@@ -112,12 +79,47 @@ interface TenantsResponse {
   total_count: number;
 }
 
+interface DashboardFunnel {
+  visited_site: number;
+  tried: number;
+  registered: number;
+  paid: number;
+  conversion_pct: number;
+}
+
+interface DashboardFiles {
+  total: number;
+  errors: number;
+  error_pct: number;
+}
+
+interface DashboardTotals {
+  registered: number;
+  paid_subscription: number;
+  inactive_30d: number;
+}
+
+interface MonthlyRow {
+  month: string;
+  month_label: string;
+  profit: number;
+  registrations: number;
+  payments: number;
+  active_users: number;
+}
+
+interface DashboardMetrics {
+  funnel: DashboardFunnel;
+  files: DashboardFiles;
+  totals: DashboardTotals;
+  monthly: MonthlyRow[];
+}
+
 export default function Admin() {
   const { t } = useLanguage();
   const { user } = useAuth();
-  const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const navigate = useNavigate();
   const [tenants, setTenants] = useState<TenantsResponse | null>(null);
-  const [loadingOverview, setLoadingOverview] = useState(true);
   const [loadingTenants, setLoadingTenants] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
@@ -131,42 +133,41 @@ export default function Admin() {
   const [extendTrialModal, setExtendTrialModal] = useState<{ tenantId: string; days: number } | null>(null);
   const [confirmAction, setConfirmAction] = useState<null | { type: "disable" | "delete"; tenantId: string }>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
-  // Период для графика регистраций/заходов (по умолчанию 30 дней)
-  const [chartPeriodDays, setChartPeriodDays] = useState(30);
-  const [chartFrom, setChartFrom] = useState<string>(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 30);
-    return d.toISOString().slice(0, 10);
-  });
-  const [chartTo, setChartTo] = useState<string>(() => new Date().toISOString().slice(0, 10));
-  const [subscriptionChartPeriod, setSubscriptionChartPeriod] = useState<"day" | "week" | "month">("month");
+  const [dashboardMetrics, setDashboardMetrics] = useState<DashboardMetrics | null>(null);
+  const [loadingMetrics, setLoadingMetrics] = useState(true);
+  const [funnelMonth, setFunnelMonth] = useState<string>("all");
 
-  const fetchOverview = useCallback(async () => {
-    setLoadingOverview(true);
-    setError(null);
-    setAccessDenied(false);
+  const fetchDashboardMetrics = useCallback(async (month?: string) => {
+    setLoadingMetrics(true);
     try {
-      const data = await apiGet<AdminOverview>("/api/admin/overview", {
-        from: chartFrom,
-        to: chartTo,
-        subscription_period: subscriptionChartPeriod,
-      });
-      setOverview(data);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes("403") || msg.includes("Admin")) {
-        setAccessDenied(true);
-      } else {
-        setError(msg);
-      }
+      const params = month && month !== "all" ? { funnel_month: month } : {};
+      const data = await apiGet<DashboardMetrics>("/api/admin/dashboard-metrics", params);
+      setDashboardMetrics(data);
+    } catch {
+      setDashboardMetrics(null);
     } finally {
-      setLoadingOverview(false);
+      setLoadingMetrics(false);
     }
-  }, [chartFrom, chartTo, subscriptionChartPeriod]);
+  }, []);
+
+  const funnelMonthOptions = (() => {
+    const options: { value: string; label: string }[] = [{ value: "all", label: "Общее" }];
+    const now = new Date();
+    const monthLabels = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"];
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const y = d.getFullYear();
+      const m = d.getMonth() + 1;
+      const value = `${y}-${String(m).padStart(2, "0")}`;
+      options.push({ value, label: `${monthLabels[m - 1]} ${y}` });
+    }
+    return options;
+  })();
 
   const fetchTenants = useCallback(async () => {
     setLoadingTenants(true);
     setError(null);
+    setAccessDenied(false);
     try {
       const params: Record<string, string | number> = {
         page,
@@ -179,28 +180,22 @@ export default function Admin() {
       setTenants(data);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (!msg.includes("403")) setError(msg);
+      if (msg.includes("403") || msg.includes("Admin")) {
+        setAccessDenied(true);
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoadingTenants(false);
     }
   }, [page, pageSize, sort, search, planFilter]);
 
   useEffect(() => {
-    fetchOverview();
-  }, [fetchOverview]);
-
-  const applyChartPeriod = (days: number) => {
-    setChartPeriodDays(days);
-    const to = new Date();
-    const from = new Date(to);
-    from.setDate(from.getDate() - days);
-    setChartFrom(from.toISOString().slice(0, 10));
-    setChartTo(to.toISOString().slice(0, 10));
-  };
-
-  useEffect(() => {
-    if (!accessDenied) fetchTenants();
-  }, [accessDenied, fetchTenants]);
+    if (!accessDenied) {
+      fetchTenants();
+      fetchDashboardMetrics();
+    }
+  }, [accessDenied, fetchTenants, fetchDashboardMetrics]);
 
   const handleDisable = async (tenantId: string) => {
     setConfirmAction({ type: "disable", tenantId });
@@ -263,7 +258,6 @@ export default function Admin() {
   if (accessDenied) {
     return (
       <MainLayout>
-        <Breadcrumb items={[{ label: t("header.adminPanel") }]} />
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Доступ запрещён</AlertTitle>
@@ -297,14 +291,24 @@ export default function Admin() {
     }
   };
 
+  const handleExitToService = () => {
+    navigate("/");
+  };
+
   return (
     <MainLayout>
-      <Breadcrumb items={[{ label: t("header.adminPanel") }]} />
-      <div className="mb-6 flex items-center gap-2">
-        <Shield className="h-7 w-7" />
-        <h1 className="text-2xl font-bold text-foreground">{t("header.adminPanel")}</h1>
+      <div className="flex items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-2">
+          <Shield className="h-7 w-7" />
+          <h1 className="text-2xl font-bold text-foreground">{t("header.adminPanel")}</h1>
+        </div>
+        <Button
+          onClick={handleExitToService}
+          className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg shadow-md hover:shadow-lg transition-shadow shrink-0"
+        >
+          Выйти
+        </Button>
       </div>
-      <p className="text-muted-foreground mb-6">Мониторинг клиентов, импортов и здоровья системы.</p>
 
       <AlertDialog
         open={confirmAction != null}
@@ -347,253 +351,237 @@ export default function Admin() {
         </Alert>
       )}
 
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 mb-6">
-        {loadingOverview ? (
-          Array.from({ length: 8 }).map((_, i) => (
-            <Card key={i}>
-              <CardHeader className="pb-2">
-                <Skeleton className="h-4 w-24" />
+      {/* Метрики: воронка | всего + файлы | таблица по месяцам */}
+      {!accessDenied && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4 mb-6 items-stretch">
+            {/* Колонка 1: Воронка пользователей */}
+            <Card className="flex flex-col min-h-[280px]">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2 shrink-0">
+                <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+                  Воронка пользователей
+                </CardTitle>
+                <Select
+                  value={funnelMonth}
+                  onValueChange={(v) => {
+                    setFunnelMonth(v);
+                    fetchDashboardMetrics(v);
+                  }}
+                >
+                  <SelectTrigger className="w-[140px] h-8 text-xs">
+                    <SelectValue placeholder="Общее" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {funnelMonthOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </CardHeader>
-              <CardContent>
-                <Skeleton className="h-8 w-16" />
+              <CardContent className="space-y-1 flex-1">
+                {loadingMetrics ? (
+                  <Skeleton className="h-24 w-full" />
+                ) : dashboardMetrics ? (
+                  (() => {
+                    const maxVal = Math.max(
+                      dashboardMetrics.funnel.visited_site,
+                      dashboardMetrics.funnel.tried,
+                      dashboardMetrics.funnel.registered,
+                      dashboardMetrics.funnel.paid,
+                      1
+                    );
+                    const rows = [
+                      { n: dashboardMetrics.funnel.visited_site, label: "Зашли на сайт", pct: null as number | null },
+                      { n: dashboardMetrics.funnel.tried, label: "Попробовали", pct: dashboardMetrics.funnel.visited_site ? Math.round((dashboardMetrics.funnel.tried / dashboardMetrics.funnel.visited_site) * 100) : 0 },
+                      { n: dashboardMetrics.funnel.registered, label: "Зарегистрировались", pct: dashboardMetrics.funnel.tried ? Math.round((dashboardMetrics.funnel.registered / dashboardMetrics.funnel.tried) * 100) : 0 },
+                      { n: dashboardMetrics.funnel.paid, label: "Оплатили", pct: dashboardMetrics.funnel.registered ? Math.round((dashboardMetrics.funnel.paid / dashboardMetrics.funnel.registered) * 100) : 0 },
+                    ];
+                    return (
+                      <>
+                        {rows.map(({ n, label, pct }, i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <span className="font-bold w-8 shrink-0">{n}</span>
+                            <div className="flex-1 min-w-0 flex justify-center">
+                              <div
+                                className="h-8 flex items-center justify-center text-white text-sm font-medium rounded min-w-[60px]"
+                                style={{
+                                  background: "hsl(var(--primary))",
+                                  width: `${Math.max((n / maxVal) * 100, n > 0 ? 8 : 0)}%`,
+                                }}
+                              >
+                                {label}
+                              </div>
+                            </div>
+                            <span className="text-sm font-medium text-muted-foreground shrink-0 w-10 text-right">{pct != null ? `${pct}%` : ""}</span>
+                          </div>
+                        ))}
+                        <p className="text-sm font-bold text-primary pt-2">
+                          Конверсия: {dashboardMetrics.funnel.conversion_pct}%
+                        </p>
+                      </>
+                    );
+                  })()
+                ) : null}
               </CardContent>
             </Card>
-          ))
-        ) : overview ? (
-          <>
-            <Card>
-              <CardHeader className="pb-2 flex flex-row items-center gap-2">
-                <Users className="h-4 w-4" />
-                <CardTitle className="text-sm font-medium">Active (MAU 30d)</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">{fmt(overview.kpis.active_customers_mau_30d)}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2 flex flex-row items-center gap-2">
-                <UserPlus className="h-4 w-4" />
-                <CardTitle className="text-sm font-medium">Signups 7d / 30d</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">
-                  {fmt(overview.kpis.new_signups_7d)} / {fmt(overview.kpis.new_signups_30d)}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Activated %</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">
-                  {overview.kpis.activated_pct != null ? `${overview.kpis.activated_pct.toFixed(1)}%` : "—"}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Paid / Trial / Expired</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-lg font-bold">
-                  {fmt(overview.kpis.paid_count)} / {fmt(overview.kpis.trial_count)} / {fmt(overview.kpis.expired_count)}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2 flex flex-row items-center gap-2">
-                <Upload className="h-4 w-4" />
-                <CardTitle className="text-sm font-medium">Импорты за 24ч</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">{fmt(overview.kpis.imports_24h)}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Успешность импорта 7д %</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">
-                  {overview.kpis.import_success_rate_7d != null
-                    ? `${overview.kpis.import_success_rate_7d.toFixed(1)}%`
-                    : "—"}
-                </p>
-              </CardContent>
-            </Card>
-          </>
-        ) : null}
-      </div>
 
-      {/* Charts */}
-      {overview && !loadingOverview && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5" />
-                Регистрации и заходы по дням
-              </CardTitle>
-              <div className="flex gap-1">
-                {[7, 30, 90].map((d) => (
-                  <Button
-                    key={d}
-                    size="sm"
-                    variant={chartPeriodDays === d ? "default" : "outline"}
-                    onClick={() => applyChartPeriod(d)}
-                  >
-                    {d} дн.
-                  </Button>
-                ))}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {(() => {
-                const regMap = new Map(overview.registrations_per_day.map((r) => [r.date, r.count]));
-                const visMap = new Map((overview.visits_per_day || []).map((v) => [v.date, v.count]));
-                const totalVisMap = new Map((overview.total_visits_per_day || []).map((v) => [v.date, v.count]));
-                const allDates = new Set([...regMap.keys(), ...visMap.keys(), ...totalVisMap.keys()]);
-                const merged = Array.from(allDates)
-                  .sort()
-                  .map((date) => ({
-                    date,
-                    registrations: regMap.get(date) ?? 0,
-                    visits: visMap.get(date) ?? 0,
-                    total_visits: totalVisMap.get(date) ?? 0,
-                  }));
-                return merged.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={280}>
-                    <BarChart data={merged} margin={{ top: 20, right: 8, left: 4, bottom: 4 }}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                      <YAxis allowDecimals={false} />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="registrations" fill="hsl(var(--primary))" name="Регистрации" barSize={28}>
-                        <LabelList dataKey="registrations" position="top" fontSize={10} formatter={(v: number) => (v > 0 ? v : "")} />
-                      </Bar>
-                      <Bar dataKey="visits" fill="hsl(var(--chart-2))" name="Зашли на сайт" barSize={28}>
-                        <LabelList dataKey="visits" position="top" fontSize={10} formatter={(v: number) => (v > 0 ? v : "")} />
-                      </Bar>
-                      <Bar dataKey="total_visits" fill="hsl(var(--chart-3))" name="Посещения" barSize={28}>
-                        <LabelList dataKey="total_visits" position="top" fontSize={10} formatter={(v: number) => (v > 0 ? v : "")} />
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+            {/* Колонка 2: Всего зарегистрировано (сверху) + Загружено файлов (снизу), ширина по заголовку */}
+            <div className="flex flex-col gap-2 min-h-[280px] w-max max-w-full">
+              <Card className="flex-1 min-h-0 flex flex-col">
+                <CardHeader className="pb-2 shrink-0">
+                  <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+                    <Users className="h-4 w-4 text-primary" />
+                    Всего зарегистрировано
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="flex-1">
+                  {loadingMetrics ? (
+                    <Skeleton className="h-16 w-full" />
+                  ) : dashboardMetrics ? (
+                    <>
+                      <p className="text-2xl font-bold">{dashboardMetrics.totals.registered}</p>
+                      <p className="text-sm text-muted-foreground">Платная подписка: {dashboardMetrics.totals.paid_subscription}</p>
+                      <p className="text-sm text-muted-foreground">Неактивны более 30 дней: {dashboardMetrics.totals.inactive_30d}</p>
+                    </>
+                  ) : null}
+                </CardContent>
+              </Card>
+              <Card className="flex-1 min-h-0 flex flex-col">
+                <CardHeader className="pb-2 shrink-0">
+                  <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+                    <Upload className="h-4 w-4 text-primary" />
+                    Загружено файлов
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="flex-1">
+                  {loadingMetrics ? (
+                    <Skeleton className="h-16 w-full" />
+                  ) : dashboardMetrics ? (
+                    <>
+                      <p className="text-2xl font-bold">{dashboardMetrics.files.total}</p>
+                      <p className="text-sm text-muted-foreground">Из них ошибок: {dashboardMetrics.files.errors}</p>
+                      <p className="text-sm text-muted-foreground">Процент ошибки: {dashboardMetrics.files.error_pct}%</p>
+                    </>
+                  ) : null}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Колонка 3: Таблица по месяцам (прибыль), та же ширина, прокрутка при избытке данных */}
+            <Card className="flex flex-col min-h-[280px] min-w-0">
+              <CardHeader className="pb-2 shrink-0">
+                <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+                  Прибыль по месяцам
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex-1 min-h-0 overflow-auto p-0">
+                {dashboardMetrics && dashboardMetrics.monthly.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="px-3">Месяц</TableHead>
+                        <TableHead className="text-center px-3">Прибыль</TableHead>
+                        <TableHead className="text-center px-3" title="Количество зарегистрированных пользователей за месяц">Регистрации</TableHead>
+                        <TableHead className="text-center px-3">Оплат</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {dashboardMetrics.monthly.map((row) => (
+                        <TableRow key={row.month}>
+                          <TableCell className="px-3">{row.month_label}</TableCell>
+                          <TableCell className="text-center px-3">
+                            {row.profit > 0 ? `${Number(row.profit).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} сум` : "0"}
+                          </TableCell>
+                          <TableCell className="text-center px-3">{row.registrations}</TableCell>
+                          <TableCell className="text-center px-3">{row.payments}</TableCell>
+                        </TableRow>
+                      ))}
+                      <TableRow className="font-semibold bg-muted/50">
+                        <TableCell className="px-3">Всего</TableCell>
+                        <TableCell className="text-center px-3">
+                          {dashboardMetrics.monthly.reduce((s, r) => s + r.profit, 0).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} сум
+                        </TableCell>
+                        <TableCell className="text-center px-3">
+                          {dashboardMetrics.monthly.reduce((s, r) => s + r.registrations, 0)}
+                        </TableCell>
+                        <TableCell className="text-center px-3">
+                          {dashboardMetrics.monthly.reduce((s, r) => s + r.payments, 0)}
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
                 ) : (
-                  <p className="text-muted-foreground text-sm">Нет данных за выбранный период</p>
-                );
-              })()}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="h-5 w-5" />
-                Импорты по дням
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {overview.imports_per_day.length > 0 ? (
-                <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={overview.imports_per_day}>
+                  <div className="p-4 text-sm text-muted-foreground">Нет данных</div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* График Аналитика подписок: доход (столбцы) + подписчики (линия) */}
+          {dashboardMetrics && dashboardMetrics.monthly.length > 0 && (
+            <Card className="mb-6">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <BarChart3 className="h-5 w-5 text-primary" />
+                  Аналитика подписок
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={320}>
+                  <ComposedChart
+                    data={dashboardMetrics.monthly}
+                    margin={{ top: 8, right: 8, left: 4, bottom: 4 }}
+                  >
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                    <YAxis allowDecimals={false} />
+                    <XAxis dataKey="month_label" tick={{ fontSize: 10 }} />
+                    <YAxis
+                      yAxisId="left"
+                      tick={{ fontSize: 10 }}
+                      tickFormatter={(v) => (v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}k` : String(v))}
+                      label={{ value: "Доход (сум)", angle: -90, position: "insideLeft", style: { fontSize: 11 } }}
+                    />
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      tick={{ fontSize: 10 }}
+                      label={{ value: "Подписчики", angle: 90, position: "insideRight", style: { fontSize: 11 } }}
+                    />
                     <Tooltip
-                      formatter={(value: number, name: string) => [value, name]}
-                      labelFormatter={(label) => `Дата: ${label}`}
+                      formatter={(value: number, name: string) => [
+                        name === "Доход (сум)" ? Number(value).toLocaleString("ru-RU", { maximumFractionDigits: 0 }) : value,
+                        name,
+                      ]}
+                      labelFormatter={(label) => label}
                     />
                     <Legend />
-                    <Bar dataKey="success" stackId="a" fill="#22c55e" name="Успешно загружено" />
-                    <Bar dataKey="failed" stackId="a" fill="#ef4444" name="Ошибка загрузки (error reading)" />
-                  </BarChart>
+                    <Bar
+                      yAxisId="left"
+                      dataKey="profit"
+                      fill="hsl(var(--primary))"
+                      name="Доход (сум)"
+                      barSize={24}
+                      radius={[2, 2, 0, 0]}
+                    />
+                    <Line
+                      yAxisId="right"
+                      type="monotone"
+                      dataKey="active_users"
+                      stroke="hsl(var(--primary))"
+                      strokeWidth={2}
+                      name="Подписчики"
+                      dot={{ r: 4, fill: "hsl(var(--background))", stroke: "hsl(var(--primary))" }}
+                    />
+                  </ComposedChart>
                 </ResponsiveContainer>
-              ) : (
-                <p className="text-muted-foreground text-sm">Нет данных</p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+              </CardContent>
+            </Card>
+          )}
+        </>
       )}
 
-      {/* Data freshness buckets */}
-      {overview && overview.data_freshness_buckets.length > 0 && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Свежесть данных (дней назад)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={overview.data_freshness_buckets}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="bucket" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="count" fill="hsl(var(--chart-2))" name="Тенантов" />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Аналитика подписок по месяцам */}
-      {overview && (
-        <Card className="mb-6">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5 text-primary" />
-              Аналитика подписок
-            </CardTitle>
-            <Select
-              value={subscriptionChartPeriod}
-              onValueChange={(v: "day" | "week" | "month") => {
-                setSubscriptionChartPeriod(v);
-              }}
-            >
-              <SelectTrigger className="w-[130px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="day">День</SelectItem>
-                <SelectItem value="week">Неделя</SelectItem>
-                <SelectItem value="month">Месяц</SelectItem>
-              </SelectContent>
-            </Select>
-          </CardHeader>
-          <CardContent>
-            {(overview.subscription_analytics?.length ?? 0) > 0 ? (
-              <ResponsiveContainer width="100%" height={280}>
-                <ComposedChart
-                  data={overview.subscription_analytics}
-                  margin={{ top: 8, right: 8, left: 4, bottom: 4 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" tick={{ fontSize: 10 }} />
-                  <YAxis
-                    yAxisId="left"
-                    tick={{ fontSize: 10 }}
-                    allowDecimals={false}
-                    domain={(dataMin: number, dataMax: number) => [0, Math.max((dataMax ?? 0) + 1, 2)]}
-                    name="Пользователи"
-                  />
-                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} tickFormatter={(v) => (v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}k` : String(v))} />
-                  <Tooltip formatter={(value: number, name: string) => [name === "Доход" ? Number(value).toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : value, name]} />
-                  <Legend />
-                  <Bar yAxisId="left" dataKey="active_users" fill="hsl(var(--primary))" name="Пользователи" barSize={24} radius={[2, 2, 0, 0]} />
-                  <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="hsl(var(--chart-2))" strokeWidth={2} name="Доход" dot={{ r: 3 }} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-muted-foreground text-sm py-8">Нет данных</p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Tenants table */}
+      {/* Таблица Пользователи */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

@@ -24,7 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
+import { cn, getSizeGroupColorClass } from "@/lib/utils";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { ProductDetailView } from "./ProductDetailView";
 import { useQuery } from "@tanstack/react-query";
@@ -580,24 +580,9 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
                     {product.stock != null ? formatNumber(product.stock) : "—"}
                   </TableCell>
                   <TableCell className="text-center">
-                    {(() => {
-                      const sg = (product.size_group ?? "").trim().toUpperCase();
-                      const isSGT = sg === "СГТ";
-                      const isMGT = sg === "МГТ";
-                      const isBGT = sg === "БГТ";
-                      const bgClass = isSGT
-                        ? "bg-green-100 text-green-800"
-                        : isMGT
-                          ? "bg-orange-100 text-orange-800"
-                          : isBGT
-                            ? "bg-red-100 text-red-800"
-                            : "bg-muted/60 text-muted-foreground";
-                      return (
-                        <span className={`inline-block px-2 py-0.5 rounded-md text-sm font-medium ${bgClass}`}>
-                          {product.size_group ?? "—"}
-                        </span>
-                      );
-                    })()}
+                    <span className={cn("inline-block px-2 py-0.5 rounded-md text-sm font-medium", getSizeGroupColorClass(product.size_group))}>
+                      {product.size_group ?? "—"}
+                    </span>
                   </TableCell>
                   <TableCell className="text-center">
                     {product.cogs ? (

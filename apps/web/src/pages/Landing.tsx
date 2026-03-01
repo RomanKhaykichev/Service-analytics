@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
+import { apiPostNoAuth, getVisitorKey } from "@/lib/api";
 import { Header } from "@/components/landing/Header";
 import { Hero } from "@/components/landing/Hero";
 import { ChartPreviewBlock } from "@/components/landing/ChartPreviewBlock";
@@ -34,6 +35,11 @@ export default function Landing() {
     setPromoOpen(false);
     openAuth('signup');
   };
+
+  // Учёт визита на лендинг для воронки админки
+  useEffect(() => {
+    apiPostNoAuth("/api/track/landing-visit", { visitor_key: getVisitorKey() }).catch(() => {});
+  }, []);
 
   // Открыть окно входа при переходе с ?auth=open (например после выхода)
   useEffect(() => {

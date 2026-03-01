@@ -5,6 +5,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { BarChart3, Calendar, Store, Check } from "lucide-react";
+import { apiPostNoAuth, getVisitorKey } from "@/lib/api";
 
 interface PromoTrialDialogProps {
   open: boolean;
@@ -17,7 +18,12 @@ interface PromoTrialDialogProps {
  * По кнопке «Попробовать бесплатно» закрывает окно и вызывает onTryFree (открытие регистрации).
  */
 export function PromoTrialDialog({ open, onOpenChange, onTryFree }: PromoTrialDialogProps) {
-  const handleTryFree = () => {
+  const handleTryFree = async () => {
+    try {
+      await apiPostNoAuth("/api/track/promo-try", { visitor_key: getVisitorKey() });
+    } catch {
+      // ignore
+    }
     onOpenChange(false);
     onTryFree();
   };
