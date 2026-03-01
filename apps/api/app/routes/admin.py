@@ -107,6 +107,42 @@ class TenantRow(BaseModel):
     last_login_at: Optional[str] = None  # дата последнего входа
 
 
+class DashboardFunnel(BaseModel):
+    visited_site: int  # Зашли на сайт (уникальные пользователи с визитом)
+    tried: int  # Попробовали (с хотя бы одной загрузкой)
+    registered: int  # Зарегистрировали
+    paid: int  # Оплатили (план paid или кол-во оплат — здесь кол-во пользователей на платной подписке)
+    conversion_pct: float  # Конверсия % (paid/registered*100)
+
+
+class DashboardFiles(BaseModel):
+    total: int  # Всего загружено файлов
+    errors: int  # Из них ошибок
+    error_pct: float  # Процент ошибки
+
+
+class DashboardTotals(BaseModel):
+    registered: int  # Всего зарегистрировано
+    paid_subscription: int  # Платная подписка (пользователей)
+    inactive_30d: int  # Неактивны более 30 дней
+
+
+class MonthlyRow(BaseModel):
+    month: str  # "YYYY-MM"
+    month_label: str  # "Фев 2026"
+    profit: float  # Прибыль (сумма оплат за месяц)
+    registrations: int
+    payments: int  # Количество оплат (операций)
+    active_users: int  # Подписчики (активные пользователи за месяц — заходили или загружали данные)
+
+
+class DashboardMetricsResponse(BaseModel):
+    funnel: DashboardFunnel
+    files: DashboardFiles
+    totals: DashboardTotals
+    monthly: list[MonthlyRow]
+
+
 class TenantsListResponse(BaseModel):
     tenants: list[TenantRow]
     total_count: int
@@ -512,6 +548,270 @@ async def admin_overview(
         data_freshness_buckets=data_freshness_buckets,
         subscription_analytics=subscription_analytics,
     )
+
+
+# Месячные названия для метки (рус)
+_MONTH_LABELS = (
+    "Янв", "Фев", "Мар", "Апр", "Май", "Июн",
+    "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек",
+)
+
+
+def _parse_funnel_month(month_str: Optional[str]) -> Optional[tuple[date, date]]:
+    """Parse YYYY-MM into (first_day, last_day) of month. Return None for «Общее»."""
+    if not month_str or not month_str.strip():
+        return None
+    parts = month_str.strip().split("-")
+    if len(parts) != 2:
+        return None
+    try:
+        y, m = int(parts[0]), int(parts[1])
+        if m < 1 or m > 12:
+            return None
+        from_m = date(y, m, 1)
+        if m == 12:
+            to_m = from_m.replace(year=y + 1, month=1) - timedelta(days=1)
+        else:
+            to_m = from_m.replace(month=m + 1) - timedelta(days=1)
+        return (from_m, to_m)
+    except (ValueError, TypeError):
+        return None
+
+
+@router.get("/admin/dashboard-metrics", response_model=DashboardMetricsResponse)
+async def admin_dashboard_metrics(
+    funnel_month: Optional[str] = Query(None, description="Воронка за месяц: YYYY-MM или пусто для «Общее»"),
+    _: UUID = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Метрики для блока над таблицей пользователей: воронка, файлы, всего, таблица по месяцам."""
+    schema = settings.DB_SCHEMA
+    today = date.today()
+    d30 = today - timedelta(days=30)
+    funnel_range = _parse_funnel_month(funnel_month)
+
+    funnel_visited = 0
+    funnel_tried = 0
+    funnel_registered = 0
+    funnel_paid = 0
+    try:
+        if funnel_range is None:
+            # Общее: без фильтра по дате
+            r = db.execute(text(f"SELECT COUNT(*) FROM {qname('users')}")).fetchone()
+            funnel_registered = r[0] or 0 if r else 0
+
+            r = db.execute(text("""
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = :s AND table_name = 'landing_visits'
+            """), {"s": schema}).fetchone()
+            if r:
+                r2 = db.execute(text(f"""
+                    SELECT COUNT(DISTINCT visitor_key) FROM {qname('landing_visits')}
+                """)).fetchone()
+                funnel_visited = r2[0] or 0 if r2 else 0
+
+            r = db.execute(text("""
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = :s AND table_name = 'promo_try_clicks'
+            """), {"s": schema}).fetchone()
+            if r:
+                r2 = db.execute(text(f"""
+                    SELECT COUNT(DISTINCT visitor_key) FROM {qname('promo_try_clicks')}
+                """)).fetchone()
+                funnel_tried = r2[0] or 0 if r2 else 0
+
+            r2 = db.execute(text("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = :s AND table_name = 'users' AND column_name = 'paid_amount'
+            """), {"s": schema}).fetchone()
+            if r2:
+                r3 = db.execute(text(f"""
+                    SELECT COUNT(*) FROM {qname('users')}
+                    WHERE COALESCE(paid_amount, 0) > 0
+                """)).fetchone()
+                funnel_paid = r3[0] or 0 if r3 else 0
+            else:
+                r3 = db.execute(text(f"""
+                    SELECT COUNT(*) FROM {qname('users')}
+                    WHERE COALESCE(LOWER(TRIM(plan)), 'trial') = 'paid'
+                """)).fetchone()
+                funnel_paid = r3[0] or 0 if r3 else 0
+        else:
+            from_m, to_m = funnel_range
+            # За месяц: фильтр по датам
+            r = db.execute(text(f"""
+                SELECT COUNT(*) FROM {qname('users')}
+                WHERE created_at::date >= :from_d AND created_at::date <= :to_d
+            """), {"from_d": from_m, "to_d": to_m}).fetchone()
+            funnel_registered = r[0] or 0 if r else 0
+
+            r = db.execute(text("""
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = :s AND table_name = 'landing_visits'
+            """), {"s": schema}).fetchone()
+            if r:
+                r2 = db.execute(text(f"""
+                    SELECT COUNT(DISTINCT visitor_key) FROM {qname('landing_visits')}
+                    WHERE created_at::date >= :from_d AND created_at::date <= :to_d
+                """), {"from_d": from_m, "to_d": to_m}).fetchone()
+                funnel_visited = r2[0] or 0 if r2 else 0
+
+            r = db.execute(text("""
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = :s AND table_name = 'promo_try_clicks'
+            """), {"s": schema}).fetchone()
+            if r:
+                r2 = db.execute(text(f"""
+                    SELECT COUNT(DISTINCT visitor_key) FROM {qname('promo_try_clicks')}
+                    WHERE created_at::date >= :from_d AND created_at::date <= :to_d
+                """), {"from_d": from_m, "to_d": to_m}).fetchone()
+                funnel_tried = r2[0] or 0 if r2 else 0
+
+            try:
+                r3 = db.execute(text(f"""
+                    SELECT COUNT(DISTINCT user_id) FROM {qname('user_payments')}
+                    WHERE paid_at::date >= :from_d AND paid_at::date <= :to_d
+                """), {"from_d": from_m, "to_d": to_m}).fetchone()
+                funnel_paid = r3[0] or 0 if r3 else 0
+            except Exception:
+                funnel_paid = 0
+    except Exception as e:
+        logger.warning("Admin dashboard_metrics funnel: %s", e)
+        db.rollback()
+
+    conversion_pct = (funnel_paid / funnel_registered * 100) if funnel_registered else 0.0
+    funnel = DashboardFunnel(
+        visited_site=funnel_visited,
+        tried=funnel_tried,
+        registered=funnel_registered,
+        paid=funnel_paid,
+        conversion_pct=round(conversion_pct, 1),
+    )
+
+    files_total = 0
+    files_errors = 0
+    try:
+        r = db.execute(text("""
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = :s AND table_name = 'import_file_attempts'
+        """), {"s": schema}).fetchone()
+        if r:
+            row = db.execute(text(f"""
+                SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'failed')
+                FROM {qname('import_file_attempts')}
+            """)).fetchone()
+            if row:
+                files_total = row[0] or 0
+                files_errors = row[1] or 0
+        else:
+            row = db.execute(text(f"SELECT COUNT(*) FROM {qname('upload_batch')}")).fetchone()
+            files_total = row[0] or 0 if row else 0
+            # Ошибки = батчи без данных в fact-таблицах (упрощённо не считаем по батчам — 0)
+            files_errors = 0
+    except Exception as e:
+        logger.warning("Admin dashboard_metrics files: %s", e)
+        db.rollback()
+    error_pct = (files_errors / files_total * 100) if files_total else 0.0
+    files = DashboardFiles(total=files_total, errors=files_errors, error_pct=round(error_pct, 1))
+
+    totals_paid = funnel_paid
+    inactive_30d = 0
+    try:
+        r = db.execute(text("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = :s AND table_name = 'users' AND column_name = 'last_login_at'
+        """), {"s": schema}).fetchone()
+        if r:
+            r2 = db.execute(text(f"""
+                SELECT COUNT(*) FROM {qname('users')}
+                WHERE last_login_at IS NULL OR last_login_at::date < :d30
+            """), {"d30": d30}).fetchone()
+            inactive_30d = r2[0] or 0 if r2 else 0
+        else:
+            inactive_30d = funnel_registered
+    except Exception as e:
+        logger.warning("Admin dashboard_metrics totals: %s", e)
+        db.rollback()
+    totals = DashboardTotals(
+        registered=funnel_registered,
+        paid_subscription=totals_paid,
+        inactive_30d=inactive_30d,
+    )
+
+    monthly: list[MonthlyRow] = []
+    try:
+        db.rollback()
+        end_date = today
+        for i in range(12):  # i=0 — текущий месяц, i=1 — предыдущий, …
+            m = end_date.month - i
+            y = end_date.year
+            while m < 1:
+                m += 12
+                y -= 1
+            from_m = date(y, m, 1)
+            if m == 12:
+                to_m = from_m.replace(year=from_m.year + 1, month=1) - timedelta(days=1)
+            else:
+                to_m = from_m.replace(month=from_m.month + 1) - timedelta(days=1)
+            if to_m > end_date:
+                to_m = end_date
+            month_key = from_m.strftime("%Y-%m")
+            month_label = f"{_MONTH_LABELS[from_m.month - 1]} {from_m.year}"
+
+            reg_count = 0
+            rev = 0.0
+            pay_count = 0
+            active_users = 0
+            # Дата регистрации в UTC, чтобы февраль и другие месяцы считались одинаково независимо от TZ сервера
+            r = db.execute(text(f"""
+                SELECT COUNT(*) FROM {qname('users')}
+                WHERE (created_at AT TIME ZONE 'UTC')::date >= :from_d AND (created_at AT TIME ZONE 'UTC')::date <= :to_d
+            """), {"from_d": from_m, "to_d": to_m}).fetchone()
+            if r:
+                reg_count = r[0] or 0
+            try:
+                r2 = db.execute(text(f"""
+                    SELECT COALESCE(SUM(amount), 0), COUNT(*)
+                    FROM {qname('user_payments')}
+                    WHERE paid_at::date >= :from_d AND paid_at::date <= :to_d
+                """), {"from_d": from_m, "to_d": to_m}).fetchone()
+                if r2:
+                    rev = float(r2[0] or 0)
+                    pay_count = int(r2[1] or 0)
+            except Exception:
+                pass
+            try:
+                r3 = db.execute(text("""
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = :s AND table_name = 'users' AND column_name = 'last_login_at'
+                """), {"s": schema}).fetchone()
+                if r3:
+                    r4 = db.execute(text(f"""
+                        SELECT COUNT(DISTINCT id) FROM {qname('users')}
+                        WHERE last_login_at::date >= :from_d AND last_login_at::date <= :to_d AND is_active = true
+                    """), {"from_d": from_m, "to_d": to_m}).fetchone()
+                    active_users = r4[0] or 0 if r4 else 0
+                else:
+                    r4 = db.execute(text(f"""
+                        SELECT COUNT(DISTINCT user_id) FROM {qname('upload_batch')}
+                        WHERE created_at::date >= :from_d AND created_at::date <= :to_d
+                    """), {"from_d": from_m, "to_d": to_m}).fetchone()
+                    active_users = r4[0] or 0 if r4 else 0
+            except Exception:
+                pass
+            monthly.append(MonthlyRow(
+                month=month_key,
+                month_label=month_label,
+                profit=round(rev, 0),
+                registrations=reg_count,
+                payments=pay_count,
+                active_users=active_users,
+            ))
+    except Exception as e:
+        logger.warning("Admin dashboard_metrics monthly: %s", e)
+        db.rollback()
+
+    return DashboardMetricsResponse(funnel=funnel, files=files, totals=totals, monthly=monthly)
 
 
 @router.get("/admin/tenants", response_model=TenantsListResponse)
