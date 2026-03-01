@@ -420,6 +420,12 @@ async def update_profile(
                 )
         user.phone = new_phone
 
+    if request.preferred_language is not None:
+        pl = (request.preferred_language.strip() or None) if request.preferred_language else None
+        if pl and pl not in ("ru", "uz"):
+            pl = None
+        user.preferred_language = pl
+
     try:
         db.commit()
         db.refresh(user)

@@ -37,6 +37,7 @@ class UpdateProfileRequest(BaseModel):
     full_name: Optional[str] = None
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
+    preferred_language: Optional[str] = None  # 'ru' | 'uz'
 
     @field_validator("email", mode="before")
     @classmethod
@@ -62,6 +63,7 @@ class UserResponse(BaseModel):
     is_active: bool
     created_at: datetime
     is_admin: bool = False
+    preferred_language: Optional[str] = None  # 'ru' | 'uz'
 
     class Config:
         from_attributes = True
