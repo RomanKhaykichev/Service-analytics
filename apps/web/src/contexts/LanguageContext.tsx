@@ -433,6 +433,31 @@ const translations: Record<Language, Record<string, string>> = {
     'alert.stockZeroDesc': 'По данным left-out-report_old на складе 0. Проверь выгрузку «Склад» или фильтр магазина.',
     'alert.stockZeroReasonAll': 'По последней выгрузке склада (left-out-report_old) сумма «В продаже» = 0. Проверь файл склада/остатков.',
     'common.snapshot': 'Срез',
+    // Stock daily chart tooltips
+    'stockDaily.title': 'Складские остатки по дням',
+    'stockDaily.noData': 'Нет данных по складу за период',
+    'stockDaily.orders': 'Заказы',
+    'stockDaily.stock': 'Товары на складе',
+    'stockDaily.stockAxis': 'Товары на складе, шт',
+    // Category chart
+    'categoryChart.title': 'Продажи по категориям',
+    'categoryChart.subtitle': 'Топ категории за месяц',
+    'categoryChart.tooltipSales': 'Продажи',
+    // Analytics revenue chart
+    'analytics.revenueOrdersTitle': 'Выручка и заказы',
+    'analytics.revenueOrdersSubtitle': 'Динамика за период',
+    // Sidebar
+    'sidebar.toggle': 'Свернуть/развернуть меню',
+    // Admin subscriptions and tooltips
+    'admin.subscriptions.title': 'Аналитика подписок',
+    'admin.subscriptions.revenue': 'Доход (сум)',
+    'admin.subscriptions.subscribers': 'Подписчики',
+    'admin.monthly.registrationsHelp': 'Количество зарегистрированных пользователей за месяц',
+    'admin.tooltip.disableTenant': 'Отключить',
+    'admin.tooltip.enableTenant': 'Включить',
+    'admin.tooltip.extendTrial': 'Добавить дни триала',
+    'admin.tooltip.changePassword': 'Изменить / сбросить пароль',
+    'admin.tooltip.deleteTenant': 'Удалить аккаунт и данные',
   },
   uz: {
     // Navigation
@@ -847,6 +872,31 @@ const translations: Record<Language, Record<string, string>> = {
     'alert.stockZeroDesc': 'left-out-report_old ma\'lumotlariga ko\'ra omborda 0. «Ombor» yuklash yoki do\'kon filtrini tekshiring.',
     'alert.stockZeroReasonAll': 'Oxirgi ombor yuklashida (left-out-report_old) «Sotuvda» summa = 0. Ombor/qoldiq faylini tekshiring.',
     'common.snapshot': 'Kesim',
+    // Stock daily chart tooltips
+    'stockDaily.title': 'Ombordagi qoldiqlar kunlar bo‘yicha',
+    'stockDaily.noData': 'Tanlangan davr uchun ombor bo‘yicha maʼlumot yo‘q',
+    'stockDaily.orders': 'Buyurtmalar',
+    'stockDaily.stock': 'Ombordagi tovarlar',
+    'stockDaily.stockAxis': 'Ombordagi tovarlar, dona',
+    // Category chart
+    'categoryChart.title': 'Toifalar bo‘yicha savdolar',
+    'categoryChart.subtitle': 'Oy bo‘yicha eng yaxshi toifalar',
+    'categoryChart.tooltipSales': 'Savdolar',
+    // Analytics revenue chart
+    'analytics.revenueOrdersTitle': 'Daromad va buyurtmalar',
+    'analytics.revenueOrdersSubtitle': 'Davr bo‘yicha dinamikasi',
+    // Sidebar
+    'sidebar.toggle': 'Menyuni yopish/ochish',
+    // Admin subscriptions and tooltips
+    'admin.subscriptions.title': 'Obunalar tahlili',
+    'admin.subscriptions.revenue': 'Daromad (so\'m)',
+    'admin.subscriptions.subscribers': 'Obunachilar',
+    'admin.monthly.registrationsHelp': 'Oylik ro‘yxatdan o‘tgan foydalanuvchilar soni',
+    'admin.tooltip.disableTenant': 'O‘chirish',
+    'admin.tooltip.enableTenant': 'Yoqish',
+    'admin.tooltip.extendTrial': 'Sinov muddatini uzaytirish',
+    'admin.tooltip.changePassword': 'Parolni o‘zgartirish / tiklash',
+    'admin.tooltip.deleteTenant': 'Akkaunt va maʼlumotlarni o‘chirish',
   },
 };
 

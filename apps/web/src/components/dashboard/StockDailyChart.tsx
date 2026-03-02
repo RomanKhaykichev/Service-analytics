@@ -9,6 +9,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface StockDailyChartProps {
   points?: Array<{
@@ -19,6 +20,7 @@ interface StockDailyChartProps {
 }
 
 export function StockDailyChart({ points }: StockDailyChartProps) {
+  const { t } = useLanguage();
   const [hiddenLines, setHiddenLines] = useState<Set<string>>(new Set());
 
   // Normalize points: convert YYYY-MM-DD to DD.MM format and ensure numbers
@@ -66,8 +68,8 @@ export function StockDailyChart({ points }: StockDailyChartProps) {
               style={{ backgroundColor: entry.color }}
             />
             <span className="text-xs text-muted-foreground">
-              {entry.dataKey === "orders" && "Заказы"}
-              {entry.dataKey === "stock" && "Товары на складе"}
+              {entry.dataKey === "orders" && t("stockDaily.orders")}
+              {entry.dataKey === "stock" && t("stockDaily.stock")}
             </span>
           </button>
         ))}
@@ -79,9 +81,13 @@ export function StockDailyChart({ points }: StockDailyChartProps) {
   if (data.length === 0) {
     return (
       <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
-        <h3 className="font-semibold text-foreground mb-4">Складские остатки по дням</h3>
+        <h3 className="font-semibold text-foreground mb-4">
+          {t("stockDaily.title")}
+        </h3>
         <div className="h-72 flex items-center justify-center">
-          <p className="text-muted-foreground">Нет данных по складу за период</p>
+          <p className="text-muted-foreground">
+            {t("stockDaily.noData")}
+          </p>
         </div>
       </div>
     );
@@ -89,7 +95,9 @@ export function StockDailyChart({ points }: StockDailyChartProps) {
 
   return (
     <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
-      <h3 className="font-semibold text-foreground mb-4">Складские остатки по дням</h3>
+      <h3 className="font-semibold text-foreground mb-4">
+        {t("stockDaily.title")}
+      </h3>
       <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data}>
@@ -108,7 +116,7 @@ export function StockDailyChart({ points }: StockDailyChartProps) {
               tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
               axisLine={{ stroke: "hsl(var(--border))" }}
               label={{
-                value: "Заказы, шт",
+                value: t("chart.ordersPcs"),
                 angle: -90,
                 position: "insideLeft",
                 style: { fill: "hsl(var(--muted-foreground))", fontSize: 11 },
@@ -120,7 +128,7 @@ export function StockDailyChart({ points }: StockDailyChartProps) {
               tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
               axisLine={{ stroke: "hsl(var(--border))" }}
               label={{
-                value: "Товары на складе, шт",
+                value: t("stockDaily.stockAxis"),
                 angle: 90,
                 position: "insideRight",
                 style: { fill: "hsl(var(--muted-foreground))", fontSize: 11 },
@@ -133,8 +141,11 @@ export function StockDailyChart({ points }: StockDailyChartProps) {
                 borderRadius: "8px",
               }}
               formatter={(value: number, name: string) => {
-                if (name === "orders") return [value, "Заказы"];
-                if (name === "stock") return [`${value.toLocaleString("ru-RU")} шт`, "Товары на складе"];
+                if (name === "orders") return [value, t("stockDaily.orders")];
+                if (name === "stock") {
+                  const piecesLabel = t("common.pieces");
+                  return [`${value.toLocaleString("ru-RU")} ${piecesLabel}`, t("stockDaily.stock")];
+                }
                 return [value, name];
               }}
             />

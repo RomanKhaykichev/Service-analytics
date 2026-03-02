@@ -8,6 +8,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const data = [
   { date: "01.12", revenue: 420000, orders: 1850, avgCheck: 227 },
@@ -20,12 +21,17 @@ const data = [
 ];
 
 export function RevenueChart() {
+  const { t } = useLanguage();
   return (
     <div className="chart-container animate-fade-in">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="font-semibold text-foreground">Выручка и заказы</h3>
-          <p className="text-sm text-muted-foreground">Динамика за период</p>
+          <h3 className="font-semibold text-foreground">
+            {t("analytics.revenueOrdersTitle")}
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            {t("analytics.revenueOrdersSubtitle")}
+          </p>
         </div>
       </div>
 
@@ -59,12 +65,20 @@ export function RevenueChart() {
               }}
               labelStyle={{ color: "hsl(var(--foreground))", fontWeight: 600 }}
               formatter={(value: number, name: string) => [
-                name === "revenue" ? `${(value / 1000).toFixed(0)}K сум` : value,
-                name === "revenue" ? "Выручка" : "Заказы"
+                name === "revenue"
+                  ? `${(value / 1000).toFixed(0)}K ${t("common.sum")}`
+                  : value,
+                name === "revenue"
+                  ? t("summary.finance.revenue")
+                  : t("daily.orders"),
               ]}
             />
-            <Legend 
-              formatter={(value) => value === "revenue" ? "Выручка" : "Заказы"}
+            <Legend
+              formatter={(value) =>
+                value === "revenue"
+                  ? t("summary.finance.revenue")
+                  : t("daily.orders")
+              }
             />
             <Line
               yAxisId="left"

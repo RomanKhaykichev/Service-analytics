@@ -1,0 +1,12 @@
+===  RU   seller-storage-report_4_shops_28.02.2026 11_15_16.xlsx  ===
+All headers: ['Магазин', 'Название товара', 'ID товара', 'SKU', 'Штрихкод', 'Габаритная группа', 'Среднесуточные остатки FBO за 15 дней, шт', 'Среднесуточные продажи FBO за 15 дней, шт', 'Оборачиваемость, дней', 'Хранение', 'За хранение 1 единицы 1 день, сум', 'Остатки FBO (всего в продаже и на СДХ), шт', 'Всего за хранение 1 день, сум', 'Всего за хранение последние 30 дней, сум']
+Size group column: 'Габаритная группа'
+Unique values: ['МГТ', 'СГТ']
+Value counts: {'МГТ': 125, 'СГТ': 33}
+
+===  UZ   seller-storage-report_4_shops_28.02.2026 11_21_47.xlsx  ===
+All headers: ['Do‘kon', 'Tovarning nomi', 'Tovarning ID', 'SKU', 'Shtrixkod', 'Gabarit guruhi', '15 kun ichida FBO o‘rtacha kunlik qoldiqlari, dona', '15 kun ichida FBO o‘rtacha kunlik sotuvlari, dona', 'Aylanma, kunlar', 'Saqlash', '1 ta birlikni 1 kun saqlash evaziga, so‘m', 'FBO qoldiqlari (jami sotuvda va OUMSda), dona', '1 kun saqlash evaziga jami, so‘m', 'Oxirgi 30 kun saqlash evaziga jami, so‘m']
+Size group column: 'Gabarit guruhi'
+Unique values: ['KGT', 'OʻGT']
+Value counts: {'KGT': 125, 'OʻGT': 33}
+

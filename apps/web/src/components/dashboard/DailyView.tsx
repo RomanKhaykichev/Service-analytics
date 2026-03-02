@@ -390,7 +390,7 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
                 {filteredAndSortedData.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={columns.length} className="text-center text-muted-foreground py-8">
-                      Нет данных за выбранный период
+                      {t('daily.noDataPeriod')}
                     </TableCell>
                   </TableRow>
                 ) : (

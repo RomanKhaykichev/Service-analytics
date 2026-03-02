@@ -431,10 +431,10 @@ export default function Admin() {
             <div className="flex flex-col gap-2 min-h-[280px] w-max max-w-full">
               <Card className="flex-1 min-h-0 flex flex-col">
                 <CardHeader className="pb-2 shrink-0">
-                  <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-2">
-                    <Users className="h-4 w-4 text-primary" />
-                    Всего зарегистрировано
-                  </CardTitle>
+          <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+            <Users className="h-4 w-4 text-primary" />
+            Всего зарегистрировано
+          </CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1">
                   {loadingMetrics ? (
@@ -483,7 +483,12 @@ export default function Admin() {
                       <TableRow>
                         <TableHead className="px-3">Месяц</TableHead>
                         <TableHead className="text-center px-3">Прибыль</TableHead>
-                        <TableHead className="text-center px-3" title="Количество зарегистрированных пользователей за месяц">Регистрации</TableHead>
+                        <TableHead
+                          className="text-center px-3"
+                          title={t("admin.monthly.registrationsHelp")}
+                        >
+                          Регистрации
+                        </TableHead>
                         <TableHead className="text-center px-3">Оплат</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -513,7 +518,9 @@ export default function Admin() {
                     </TableBody>
                   </Table>
                 ) : (
-                  <div className="p-4 text-sm text-muted-foreground">Нет данных</div>
+                  <div className="p-4 text-sm text-muted-foreground">
+                    Нет данных
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -525,7 +532,7 @@ export default function Admin() {
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <BarChart3 className="h-5 w-5 text-primary" />
-                  Аналитика подписок
+                  {t("admin.subscriptions.title")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -539,20 +546,46 @@ export default function Admin() {
                     <YAxis
                       yAxisId="left"
                       tick={{ fontSize: 10 }}
-                      tickFormatter={(v) => (v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(0)}k` : String(v))}
-                      label={{ value: "Доход (сум)", angle: -90, position: "insideLeft", style: { fontSize: 11 } }}
+                      tickFormatter={(v) =>
+                        v >= 1e6
+                          ? `${(v / 1e6).toFixed(1)}M`
+                          : v >= 1e3
+                          ? `${(v / 1e3).toFixed(0)}k`
+                          : String(v)
+                      }
+                      label={{
+                        value: t("admin.subscriptions.revenue"),
+                        angle: -90,
+                        position: "insideLeft",
+                        style: { fontSize: 11 },
+                      }}
                     />
                     <YAxis
                       yAxisId="right"
                       orientation="right"
                       tick={{ fontSize: 10 }}
-                      label={{ value: "Подписчики", angle: 90, position: "insideRight", style: { fontSize: 11 } }}
+                      label={{
+                        value: t("admin.subscriptions.subscribers"),
+                        angle: 90,
+                        position: "insideRight",
+                        style: { fontSize: 11 },
+                      }}
                     />
                     <Tooltip
-                      formatter={(value: number, name: string) => [
-                        name === "Доход (сум)" ? Number(value).toLocaleString("ru-RU", { maximumFractionDigits: 0 }) : value,
-                        name,
-                      ]}
+                      formatter={(value: number, _name: string, entry: any) => {
+                        if (entry?.dataKey === "profit") {
+                          return [
+                            Number(value).toLocaleString("ru-RU", {
+                              maximumFractionDigits: 0,
+                            }),
+                            t("admin.subscriptions.revenue"),
+                          ];
+                        }
+                        if (entry?.dataKey === "active_users") {
+                          return [value, t("admin.subscriptions.subscribers")];
+                        }
+                        return [value, entry?.name];
+                      }}
                       labelFormatter={(label) => label}
                     />
                     <Legend />
@@ -560,7 +593,7 @@ export default function Admin() {
                       yAxisId="left"
                       dataKey="profit"
                       fill="hsl(var(--primary))"
-                      name="Доход (сум)"
+                      name={t("admin.subscriptions.revenue")}
                       barSize={24}
                       radius={[2, 2, 0, 0]}
                     />
@@ -570,7 +603,7 @@ export default function Admin() {
                       dataKey="active_users"
                       stroke="hsl(var(--primary))"
                       strokeWidth={2}
-                      name="Подписчики"
+                      name={t("admin.subscriptions.subscribers")}
                       dot={{ r: 4, fill: "hsl(var(--background))", stroke: "hsl(var(--primary))" }}
                     />
                   </ComposedChart>
@@ -680,37 +713,75 @@ export default function Admin() {
                               {row.is_active ? (
                                 <UITooltip>
                                   <TooltipTrigger asChild>
-                                    <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleDisable(row.tenant_id)}>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-8 w-8"
+                                      onClick={() => handleDisable(row.tenant_id)}
+                                    >
                                       <UserMinus className="h-4 w-4" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Отключить</TooltipContent>
+                                  <TooltipContent>
+                                    {t("admin.tooltip.disableTenant")}
+                                  </TooltipContent>
                                 </UITooltip>
                               ) : (
                                 <UITooltip>
                                   <TooltipTrigger asChild>
-                                    <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleEnable(row.tenant_id)}>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-8 w-8"
+                                      onClick={() => handleEnable(row.tenant_id)}
+                                    >
                                       <UserPlus className="h-4 w-4" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Включить</TooltipContent>
+                                  <TooltipContent>
+                                    {t("admin.tooltip.enableTenant")}
+                                  </TooltipContent>
                                 </UITooltip>
                               )}
                               <UITooltip>
                                 <TooltipTrigger asChild>
-                                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setExtendTrialModal({ tenantId: row.tenant_id, days: 7 })}>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8"
+                                    onClick={() =>
+                                      setExtendTrialModal({
+                                        tenantId: row.tenant_id,
+                                        days: 7,
+                                      })
+                                    }
+                                  >
                                     <CalendarPlus className="h-4 w-4" />
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent>Добавить дни триала</TooltipContent>
+                                <TooltipContent>
+                                  {t("admin.tooltip.extendTrial")}
+                                </TooltipContent>
                               </UITooltip>
                               <UITooltip>
                                 <TooltipTrigger asChild>
-                                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setPasswordModal({ tenantId: row.tenant_id, newPassword: "" })}>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8"
+                                    onClick={() =>
+                                      setPasswordModal({
+                                        tenantId: row.tenant_id,
+                                        newPassword: "",
+                                      })
+                                    }
+                                  >
                                     <Pencil className="h-4 w-4" />
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent>Изменить / сбросить пароль</TooltipContent>
+                                <TooltipContent>
+                                  {t("admin.tooltip.changePassword")}
+                                </TooltipContent>
                               </UITooltip>
                               <UITooltip>
                                 <TooltipTrigger asChild>
@@ -723,7 +794,9 @@ export default function Admin() {
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent>Удалить аккаунт и данные</TooltipContent>
+                                <TooltipContent>
+                                  {t("admin.tooltip.deleteTenant")}
+                                </TooltipContent>
                               </UITooltip>
                             </div>
                           )}

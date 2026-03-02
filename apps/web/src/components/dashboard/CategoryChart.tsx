@@ -8,6 +8,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const data = [
   { name: "Электроника", sales: 4200000, color: "hsl(var(--primary))" },
@@ -17,12 +18,17 @@ const data = [
 ];
 
 export function CategoryChart() {
+  const { t } = useLanguage();
   return (
     <div className="chart-container animate-fade-in">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="font-semibold text-foreground">Продажи по категориям</h3>
-          <p className="text-sm text-muted-foreground">Топ категории за месяц</p>
+          <h3 className="font-semibold text-foreground">
+            {t("categoryChart.title")}
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            {t("categoryChart.subtitle")}
+          </p>
         </div>
       </div>
 
@@ -49,7 +55,10 @@ export function CategoryChart() {
                 border: "1px solid hsl(var(--border))",
                 borderRadius: "8px",
               }}
-              formatter={(value: number) => [`${(value / 1000000).toFixed(1)}M сум`, "Продажи"]}
+              formatter={(value: number) => [
+                `${(value / 1000000).toFixed(1)}M ${t("common.sum")}`,
+                t("categoryChart.tooltipSales"),
+              ]}
             />
             <Bar dataKey="sales" radius={[0, 4, 4, 0]}>
               {data.map((entry, index) => (
