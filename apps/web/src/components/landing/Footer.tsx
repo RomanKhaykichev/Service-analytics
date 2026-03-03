@@ -1,15 +1,26 @@
 import { Link } from "react-router-dom";
 import { Container } from "./Container";
 import { Send, Camera } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
-const legalLinks = [
+const legalLinksRu = [
   { label: "Политика конфиденциальности", href: "/privacy" },
   { label: "Публичная оферта", href: "/offer" },
   { label: "Пользовательское соглашение", href: "/terms" },
 ];
 
+const legalLinksUz = [
+  { label: "Maxfiylik siyosati", href: "/privacy" },
+  { label: "Ommaviy oferta", href: "/offer" },
+  { label: "Foydalanuvchi kelishuvi", href: "/terms" },
+];
+
 /** Подвал лендинга по макету: лого PROFiboard, соцсети, контакты слева; юридические ссылки справа. */
 export function Footer() {
+  const { language } = useLanguage();
+  const legalLinks = language === "uz" ? legalLinksUz : legalLinksRu;
+  const contactsLabel = language === "uz" ? "Aloqa:" : "Контакты:";
+
   return (
     <footer className="bg-zinc-100 py-10 sm:py-12">
       <Container>
@@ -43,7 +54,7 @@ export function Footer() {
               </span>
             </div>
             <p className="text-sm text-zinc-500">
-              Контакты: +0000000000 00000@gmail.com
+              {contactsLabel} +0000000000 00000@gmail.com
             </p>
           </div>
           {/* Справа: юридические ссылки */}

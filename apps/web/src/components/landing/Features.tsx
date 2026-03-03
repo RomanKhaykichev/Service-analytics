@@ -1,8 +1,9 @@
 import { FileText, CircleDollarSign, Package } from "lucide-react";
 import { Container } from "./Container";
 import { SectionTitle } from "./SectionTitle";
+import { useLanguage } from "@/contexts/LanguageContext";
 
-const features = [
+const featuresRu = [
   {
     icon: FileText,
     title: "кажется что продажи есть, но прибыли нет?",
@@ -23,14 +24,55 @@ const features = [
   },
 ];
 
+const featuresUz = [
+  {
+    icon: FileText,
+    title: "Savdo bor, lekin foyda yo‘qdek tuyuladimi?",
+    description:
+      "Servis sizning moliyaviy ko‘rsatkichlaringiz bo‘yicha oy/hafta/kun kesimidagi to‘liq tahlilni ko‘rsatadi. Savdolarni kuzating, ko‘proq foyda olish uchun xarajatlarni optimallashtiring.",
+  },
+  {
+    icon: CircleDollarSign,
+    title: "BUST TOP reklama qancha yeyayotganini tushunmayapsizmi?",
+    description:
+      "Haftalik reklama kampaniyalari arzondek ko‘rinadi, lekin oy oxirida bu jiddiy summa bo‘lishi mumkin. Reklamangizni tahlil qiling va ortiqcha xarajatlar bo‘lsa, optimallashtiring.",
+  },
+  {
+    icon: Package,
+    title: "Mahsulot omborda yotib, pullik saqlashga o‘tib ketayaptimi?",
+    description:
+      "Tovarlariingiz gabarit guruhi o‘zgarishini va pullik saqlashga o‘tishini nazorat qiling. Ombor uchun ortiqcha to‘lamaslik uchun kerakli miqdorda tovar jo‘nating.",
+  },
+];
+
 /** Секция «Возможности»: 3 карточки сверху, заголовок и подзаголовок снизу (как раньше). */
 export function Features() {
+  const { language } = useLanguage();
+  const features = language === "uz" ? featuresUz : featuresRu;
+  const title = language === "uz" ? "Imkoniyatlar" : "Возможности";
+  const subtitle =
+    language === "uz"
+      ? "Biznesingizni bitta servisda to‘liq nazorat qilish uchun kerak bo‘lgan hamma narsa"
+      : "Всё необходимое для контроля бизнеса в одном сервисе";
+  const innerTitle =
+    language === "uz" ? "Shaxsiy kabinetingizning ichki analitikasi" : "внутренняя аналитика";
+  const innerSubtitle =
+    language === "uz" ? "sizning shaxsiy kabinetingiz" : "вашего личного кабинета";
+  const topParagraph =
+    language === "uz"
+      ? "Biz marketpleyslardagi savdolaringizni tahlil qilish uchun moslashuvchan jadvallar va filtrlar bilan o‘nlab qulay hisobotlarni tayyorlab qo‘yganmiz."
+      : "Мы подготовили десятки удобных отчетов, позволяющих решить любые задачи по анализу ваших продаж на маркетплейсах с настраиваемыми таблицами и гибкими фильтрами.";
+  const bottomParagraph =
+    language === "uz"
+      ? "Savdolaringizni va foydangizni barcha xarajatlarni hisobga olgan holda kuzatib boring. Tovar yetkazib berishni savdo dinamikasi va qoldiqlarni inobatga olgan holda rejalashtiring."
+      : "Отслеживайте свои продажи и прибыль с учетом всех издержек. Планируйте поставки товаров с учетом динамики продаж и остатков.";
+
   return (
     <section id="features" className="pt-16 sm:pt-20 md:pt-24 pb-8 sm:pb-10 md:pb-12 bg-white">
       <Container>
         <SectionTitle
-          title="Возможности"
-          subtitle="Всё необходимое для контроля бизнеса в одном сервисе"
+          title={title}
+          subtitle={subtitle}
         />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
           {features.map((item, i) => (
@@ -48,14 +90,13 @@ export function Features() {
         </div>
         <SectionTitle
           className="mt-12 sm:mt-14 md:mt-16 mb-0"
-          title="внутренняя аналитика"
-          subtitle="вашего личного кабинета"
+          title={innerTitle}
+          subtitle={innerSubtitle}
           titleClassName="text-3xl sm:text-4xl md:text-5xl"
           subtitleClassName="mt-1 text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-foreground tracking-tight max-w-2xl mx-auto"
         />
         <p className="mt-6 sm:mt-8 text-center text-muted-foreground max-w-5xl mx-auto text-base sm:text-lg">
-          Мы подготовили десятки удобных отчетов, позволяющих решить любые задачи по анализу ваших
-          продаж на маркетплейсах с настраиваемыми таблицами и гибкими фильтрами.
+          {topParagraph}
         </p>
         <div className="mt-8 sm:mt-10 flex justify-center max-w-5xl w-full mx-auto overflow-hidden rounded-2xl border-2 border-[#7F7F7F]">
           <img
@@ -65,9 +106,7 @@ export function Features() {
           />
         </div>
         <p className="mt-8 sm:mt-10 text-center font-bold text-foreground max-w-5xl mx-auto text-lg sm:text-xl md:text-2xl leading-relaxed">
-          Отслеживайте свои продажи и прибыль с учетом всех издержек.
-          <br />
-          Планируйте поставки товаров с учетом динамики продаж и остатков.
+          {bottomParagraph}
         </p>
       </Container>
     </section>

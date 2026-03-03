@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 from sqlalchemy.exc import IntegrityError
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from uuid import UUID
 import logging
 from app.db import get_db, qname
@@ -89,6 +89,22 @@ async def register(
         db.add(user)
         db.flush()  # Get user.id
 
+        # Set initial trial period: 10 days from registration
+        # Используем raw SQL, так как план/триал-колонки добавлены миграцией/ensure_auth_tables и не описаны в ORM-модели.
+        try:
+            now_utc = datetime.now(timezone.utc)
+            trial_ends = now_utc + timedelta(days=10)
+            db.execute(
+                text(
+                    f"UPDATE {qname('users')} "
+                    "SET trial_ends_at = :end, plan = COALESCE(plan, 'trial') "
+                    "WHERE id = :uid"
+                ),
+                {"end": trial_ends, "uid": user.id},
+            )
+        except Exception as e:
+            logger.debug("trial_ends_at update skipped: %s", e)
+
         # Create auth identity (store provider as string for varchar column)
         password_hash = hash_password(request.password)
         auth_identity = AuthIdentity(
@@ -105,7 +121,6 @@ async def register(
 
         # Store refresh token hash
         refresh_token_hash = hash_token(refresh_token)
-        from datetime import timedelta
         from app.settings import get_settings
         settings = get_settings()
         expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TTL_DAYS)

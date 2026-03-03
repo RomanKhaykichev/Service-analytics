@@ -1,6 +1,7 @@
 import { Container } from "./Container";
+import { useLanguage } from "@/contexts/LanguageContext";
 
-const faqItems = [
+const faqItemsRu = [
   {
     question: "Как это работает?",
     answer:
@@ -23,6 +24,29 @@ const faqItems = [
   },
 ];
 
+const faqItemsUz = [
+  {
+    question: "Bu qanday ishlaydi?",
+    answer:
+      "Yil boshidan boshlab 4 ta asosiy hisobotni yuklaysiz va foyda hamda xarajatlaringiz bo‘yicha qulay ko‘rinishda ma’lumot olasiz, filtrlash va tahlil qilish imkoniyati bilan. Biz umumiy hisobot tayyorlaganmiz, shunda oyma‑oy dinamikani kuzatishingiz mumkin. Agar ma’lumotlarni yangilamoqchi bo‘lsangiz, shunchaki yil boshidan yangi hisobotlarni yuklang va vaziyat qanday o‘zgarganini ko‘ring.",
+  },
+  {
+    question: "Sizlarda qo‘llab-quvvatlash xizmati bormi?",
+    answer:
+      "HA, bizning javob beruvchi qo‘llab‑quvvatlash xizmati mijozlarimizning deyarli barcha savollarini TG yoki email orqali hal qilishga tayyor.",
+  },
+  {
+    question: "Hisobotlarni yuklash qanchalik xavfsiz?",
+    answer:
+      "Maxfiylik biz uchun birinchi o‘rinda. Mijozlarimizning shaxsiy kabinetlaridan olingan ma’lumotlarni oshkor qilmaymiz va ularni shaxsga bog‘lanmagan holda saqlaymiz — bu oferta shartnomasida mustahkamlangan. Har bir yangi yuklashdan so‘ng eski ma’lumotlaringiz o‘chiriladi. PROFiboard — avtorizatsiyadan o‘tgan analitika servisi va to‘liq xavfsiz. Yuklash orqali uzatilgan ma’lumotlar API orqali uzatilgan ma’lumotlarga tengdir.",
+  },
+  {
+    question: "Qanchadan beri ishlayapsizlar?",
+    answer:
+      "PROFiboard dastlab 2023 yilda ichki foydalanish uchun ishlab chiqilgan. Servisning ommaviy versiyasi 2026 yilda paydo bo‘ldi. Uch yil davomida ko‘plab sotuvislar hisobotlar bilan qiynalayotganini ko‘rdik va servisni ommaga ochishga qaror qildik. Kelajakda sotuvchiga “pul’sni ushlab turish” va zarariga savdo qilmaslikka yordam beradigan ko‘plab yangilanishlarni rejalashtirganmiz. Bizga qo‘shiling!",
+  },
+];
+
 /** Один блок вопрос-ответ */
 function FAQBlock({ question, answer }: { question: string; answer: string }) {
   return (
@@ -40,11 +64,16 @@ const faqGridOrder = [0, 2, 1, 3];
 
 /** Секция «Часто задаваемые вопросы» — сетка 2×2, строки выровнены. */
 export function FAQ() {
+  const { language } = useLanguage();
+  const faqItems = language === "uz" ? faqItemsUz : faqItemsRu;
+  const heading =
+    language === "uz" ? "Ko‘p so‘raladigan savollar" : "Часто задаваемые вопросы";
+
   return (
     <section id="faq" className="pt-16 sm:pt-20 md:pt-24 pb-8 sm:pb-10 md:pb-12 bg-white">
       <Container>
         <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-foreground tracking-tight text-center mb-10 md:mb-12 lg:mb-14">
-          Часто задаваемые вопросы
+          {heading}
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-10 md:gap-x-12 md:gap-y-12 max-w-5xl mx-auto text-left items-start">
           {faqGridOrder.map((index) => {

@@ -14,6 +14,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Loader2, Eye, EyeOff } from 'lucide-react';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export interface AuthFormContentProps {
   defaultTab?: 'signin' | 'signup';
@@ -25,6 +26,7 @@ export interface AuthFormContentProps {
 /** Форма входа/регистрации без обёртки страницы. Используется на странице /auth и в модалке на лендинге. */
 export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassName }: AuthFormContentProps) {
   const { signIn, signUp } = useAuth();
+  const { language } = useLanguage();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -52,12 +54,16 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
     e.preventDefault();
 
     if (!validateEmail(email)) {
-      toast.error('Введите корректный email');
+      toast.error(language === 'uz' ? 'To‘g‘ri email kiriting' : 'Введите корректный email');
       return;
     }
 
     if (!validatePassword(password)) {
-      toast.error('Пароль должен быть не менее 6 символов');
+      toast.error(
+        language === 'uz'
+          ? 'Parol kamida 6 ta belgidan iborat bo‘lishi kerak'
+          : 'Пароль должен быть не менее 6 символов',
+      );
       return;
     }
 
@@ -68,18 +74,26 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
     if (error) {
       const msg = error.message || '';
       if (msg.includes('Invalid login credentials') || (msg.includes('Invalid') && msg.includes('password'))) {
-        toast.error('Неверный email или пароль');
+        toast.error(language === 'uz' ? 'Email yoki parol noto‘g‘ri' : 'Неверный email или пароль');
       } else if (msg.includes('Email not confirmed')) {
-        toast.error('Подтвердите email перед входом');
+        toast.error(
+          language === 'uz'
+            ? 'Kirishdan oldin emailingizni tasdiqlang'
+            : 'Подтвердите email перед входом',
+        );
       } else if (msg.includes('подключиться') || msg.includes('Failed to fetch')) {
-        toast.error('Не удалось подключиться к API. Запустите сервер в папке apps/api (uvicorn на порту 8000) и откройте сайт через npm run dev.');
+        toast.error(
+          language === 'uz'
+            ? "API bilan ulanish imkoni bo'lmadi. Iltimos, apps/api papkasida serverni (8000-port) ishga tushiring va saytni npm run dev orqali oching."
+            : 'Не удалось подключиться к API. Запустите сервер в папке apps/api (uvicorn на порту 8000) и откройте сайт через npm run dev.',
+        );
       } else {
-        toast.error(msg || 'Ошибка входа');
+        toast.error(msg || (language === 'uz' ? 'Kirishda xatolik' : 'Ошибка входа'));
       }
       return;
     }
 
-    toast.success('Добро пожаловать!');
+    toast.success(language === 'uz' ? 'Xush kelibsiz!' : 'Добро пожаловать!');
     onSuccess();
   };
 
@@ -87,22 +101,30 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
     e.preventDefault();
 
     if (!fullName.trim()) {
-      toast.error('Введите ваше имя');
+      toast.error(language === 'uz' ? 'Ismingizni kiriting' : 'Введите ваше имя');
       return;
     }
 
     if (!validateEmail(email)) {
-      toast.error('Введите корректный email');
+      toast.error(language === 'uz' ? 'To‘g‘ri email kiriting' : 'Введите корректный email');
       return;
     }
 
     if (!validatePassword(password)) {
-      toast.error('Пароль должен быть не менее 6 символов');
+      toast.error(
+        language === 'uz'
+          ? 'Parol kamida 6 ta belgidan iborat bo‘lishi kerak'
+          : 'Пароль должен быть не менее 6 символов',
+      );
       return;
     }
 
     if (!consentProcessing) {
-      toast.error('Необходимо дать согласие на обработку персональных данных');
+      toast.error(
+        language === 'uz'
+          ? 'Shaxsiy maʼlumotlarni qayta ishlashga rozilik berish kerak'
+          : 'Необходимо дать согласие на обработку персональных данных',
+      );
       return;
     }
 
@@ -114,23 +136,45 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
       const msg = (error.message || '').trim();
       if (msg.includes('already exists') || msg.includes('already registered')) {
         if (msg.toLowerCase().includes('phone')) {
-          toast.error('Пользователь с таким номером телефона уже зарегистрирован');
+          toast.error(
+            language === 'uz'
+              ? 'Bu telefon raqami bilan foydalanuvchi allaqachon ro‘yxatdan o‘tgan'
+              : 'Пользователь с таким номером телефона уже зарегистрирован',
+          );
         } else {
-          toast.error('Пользователь с таким email уже зарегистрирован');
+          toast.error(
+            language === 'uz'
+              ? 'Bu email bilan foydalanuvchi allaqachon ro‘yxatdan o‘tgan'
+              : 'Пользователь с таким email уже зарегистрирован',
+          );
         }
       } else if (msg.includes('Consent') || msg.includes('consent')) {
-        toast.error('Необходимо дать согласие на обработку персональных данных');
+        toast.error(
+          language === 'uz'
+            ? 'Shaxsiy maʼlumotlarni qayta ishlashga rozilik berish kerak'
+            : 'Необходимо дать согласие на обработку персональных данных',
+        );
       } else if (msg.includes('valid email') || msg.includes('Invalid email') || /validation|email.*format/i.test(msg)) {
-        toast.error('Введите корректный email');
+        toast.error(language === 'uz' ? 'To‘g‘ri email kiriting' : 'Введите корректный email');
       } else if (msg.includes('подключиться к серверу') || msg.includes('Failed to fetch')) {
-        toast.error('Не удалось подключиться к API. Запустите сервер (apps/api) и обновите страницу.');
+        toast.error(
+          language === 'uz'
+            ? "API bilan ulanish imkoni bo'lmadi. Iltimos, serverni (apps/api) ishga tushiring va sahifani qayta yuklang."
+            : 'Не удалось подключиться к API. Запустите сервер (apps/api) и обновите страницу.',
+        );
       } else {
-        toast.error(msg || 'Ошибка регистрации');
+        toast.error(
+          msg || (language === 'uz' ? 'Ro‘yxatdan o‘tishda xatolik' : 'Ошибка регистрации'),
+        );
       }
       return;
     }
 
-    toast.success('Регистрация успешна! Добро пожаловать!');
+    toast.success(
+      language === 'uz'
+        ? 'Ro‘yxatdan o‘tish muvaffaqiyatli yakunlandi! Xush kelibsiz!'
+        : 'Регистрация успешна! Добро пожаловать!',
+    );
     onSuccess();
   };
 
@@ -142,17 +186,26 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
             <img src="/favicon.png" alt="" className="h-12 w-12 object-contain" />
           </div>
         )}
-        <CardTitle className="text-2xl font-normal"><span className="font-bold">PROFi</span><span className="font-normal">board</span></CardTitle>
+        <CardTitle className="text-2xl font-normal">
+          <span className="font-bold">PROFi</span>
+          <span className="font-normal">board</span>
+        </CardTitle>
         <CardDescription>
-          Аналитический сервис для продавцов маркетплейса
+          {language === 'uz'
+            ? 'Marketpleys sotuvchilari uchun analitik servis'
+            : 'Аналитический сервис для продавцов маркетплейса'}
         </CardDescription>
       </CardHeader>
 
       <CardContent className="pt-0">
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'signin' | 'signup')} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="signin">Вход</TabsTrigger>
-            <TabsTrigger value="signup">Регистрация</TabsTrigger>
+            <TabsTrigger value="signin">
+              {language === 'uz' ? 'Kirish' : 'Вход'}
+            </TabsTrigger>
+            <TabsTrigger value="signup">
+              {language === 'uz' ? "Ro'yxatdan o'tish" : 'Регистрация'}
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="signin">
@@ -170,7 +223,9 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="signin-password">Пароль</Label>
+                <Label htmlFor="signin-password">
+                  {language === 'uz' ? 'Parol' : 'Пароль'}
+                </Label>
                 <div className="relative">
                   <Input
                     id="signin-password"
@@ -200,10 +255,10 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Вход...
+                    {language === 'uz' ? 'Kirish...' : 'Вход...'}
                   </>
                 ) : (
-                  'Войти'
+                  (language === 'uz' ? 'Kirish' : 'Войти')
                 )}
               </Button>
             </form>
@@ -214,7 +269,7 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
               <Input
                 id="signup-name"
                 type="text"
-                placeholder="Имя Фамилия"
+                placeholder={language === 'uz' ? 'Ism Familiya' : 'Имя Фамилия'}
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 disabled={loading}
@@ -223,7 +278,11 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
               <Input
                 id="signup-email"
                 type="email"
-                placeholder="Ваша почта (example@mail.com)"
+                placeholder={
+                  language === 'uz'
+                    ? 'Sizning emailingiz (example@mail.com)'
+                    : 'Ваша почта (example@mail.com)'
+                }
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={loading}
@@ -242,7 +301,11 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
                 <Input
                   id="signup-password"
                   type={showPassword ? 'text' : 'password'}
-                  placeholder="Пароль (минимум 6 символов)"
+                placeholder={
+                  language === 'uz'
+                    ? 'Parol (kamida 6 ta belgi)'
+                    : 'Пароль (минимум 6 символов)'
+                }
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={loading}
@@ -270,14 +333,32 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
                   disabled={loading}
                   className="mt-0.5"
                 />
-                <label htmlFor="signup-consent" className="text-xs text-muted-foreground leading-snug cursor-pointer">
-                  Нажимая на кнопку «Зарегистрироваться», Вы даете согласие на обработку своих персональных данных и соглашаетесь с{' '}
-                  <a href="/privacy" className="text-primary underline underline-offset-2 hover:opacity-90" target="_blank" rel="noopener noreferrer">
-                    политикой конфиденциальности
+                <label
+                  htmlFor="signup-consent"
+                  className="text-xs text-muted-foreground leading-snug cursor-pointer"
+                >
+                  {language === 'uz'
+                    ? "«Ro'yxatdan o'tish» tugmasini bosish orqali siz shaxsiy maʼlumotlaringizni qayta ishlashga rozilik bildirasiz va "
+                    : 'Нажимая на кнопку «Зарегистрироваться», Вы даете согласие на обработку своих персональных данных и соглашаетесь с '}
+                  <a
+                    href="/privacy"
+                    className="text-primary underline underline-offset-2 hover:opacity-90"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {language === 'uz'
+                      ? 'maxfiylik siyosati'
+                      : 'политикой конфиденциальности'}
                   </a>
-                  {' '}и{' '}
-                  <a href="/offer" className="text-primary underline underline-offset-2 hover:opacity-90" target="_blank" rel="noopener noreferrer">
-                    договором оферты
+                  {' '}
+                  {language === 'uz' ? 'va ' : 'и '}
+                  <a
+                    href="/offer"
+                    className="text-primary underline underline-offset-2 hover:opacity-90"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {language === 'uz' ? 'oferta shartnomasi' : 'договором оферты'}
                   </a>
                   .
                 </label>
@@ -287,10 +368,10 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Регистрация...
+                    {language === 'uz' ? "Ro'yxatdan o'tish..." : 'Регистрация...'}
                   </>
                 ) : (
-                  'Зарегистрироваться'
+                  (language === 'uz' ? "Ro'yxatdan o'tish" : 'Зарегистрироваться')
                 )}
               </Button>
             </form>

@@ -1,7 +1,8 @@
 import { Container } from "./Container";
 import { SectionTitle } from "./SectionTitle";
+import { useLanguage } from "@/contexts/LanguageContext";
 
-const steps = [
+const stepsRu = [
   {
     step: 1,
     title: "Сформируйте 4 отчета в ЛК продавца.",
@@ -22,14 +23,43 @@ const steps = [
   },
 ];
 
+const stepsUz = [
+  {
+    step: 1,
+    title: "Sotuvchi LK’sida 4 ta hisobotni shakllantiring.",
+    text: "Savdolar hisobotini, xizmatlar bo‘yicha hisobotni, qoldiqlar hisobotini (eski format), saqlash bo‘yicha hisobotni yuklab oling.",
+    image: "/how-it-works-1.png",
+  },
+  {
+    step: 2,
+    title: "Ushbu 4 ta hisobotni PROFiboard’ga yuklang.",
+    text: "Muhim! Hisobotlarning barchasi bir davr uchun bo‘lishi kerak. Biz hisobotlarni yil boshidan boshlab yuklashni tavsiya qilamiz.",
+    image: "/how-it-works-2.png",
+  },
+  {
+    step: 3,
+    title: "Natijalaringizni kuzatib boring.",
+    text: "Ma’lumotlardan xarajatlarni optimallashtirish uchun foydalaning. Foydangiz oyma‑oy qanday o‘zgarayotganini kuzating.",
+    image: "/how-it-works-3.png",
+  },
+];
+
 /** Секция «Как это работает» — формирование отчётов, загрузка в PROFiboard, дашборды. */
 export function HowItWorks() {
+  const { language } = useLanguage();
+  const steps = language === "uz" ? stepsUz : stepsRu;
+  const title = language === "uz" ? "Bu qanday ishlaydi" : "Как это работает";
+  const subtitle =
+    language === "uz"
+      ? "Birinchi hisobotlargacha atigi uchta oddiy qadam"
+      : "Три простых шага до первых отчётов";
+
   return (
     <section id="how-it-works" className="-mt-2 md:-mt-4 pt-0 pb-16 sm:pb-20 md:pb-24 bg-white scroll-mt-20 sm:scroll-mt-24">
       <Container>
         <SectionTitle
-          title="Как это работает"
-          subtitle="Три простых шага до первых отчётов"
+          title={title}
+          subtitle={subtitle}
           className="mb-0"
           subtitleClassName="mt-0 sm:mt-0"
         />

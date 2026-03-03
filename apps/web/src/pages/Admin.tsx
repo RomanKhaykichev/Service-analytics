@@ -697,13 +697,41 @@ export default function Admin() {
                         <TableCell className="text-center">{row.last_login_at ? row.last_login_at.slice(0, 10) : "—"}</TableCell>
                         <TableCell className="text-center">{row.imports_30d}</TableCell>
                         <TableCell className="text-center">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setNotesModal({ tenantId: row.tenant_id, notes: row.notes ?? "" })}
-                          >
-                            {row.notes ? (row.notes.length > 20 ? `${row.notes.slice(0, 20)}…` : row.notes) : "Edit"}
-                          </Button>
+                          {row.notes && row.notes.trim() ? (
+                            <UITooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="bg-zinc-300 text-zinc-800 hover:bg-zinc-400"
+                                  onClick={() =>
+                                    setNotesModal({
+                                      tenantId: row.tenant_id,
+                                      notes: row.notes ?? "",
+                                    })
+                                  }
+                                >
+                                  Note
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs break-words">
+                                {row.notes}
+                              </TooltipContent>
+                            </UITooltip>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                setNotesModal({
+                                  tenantId: row.tenant_id,
+                                  notes: row.notes ?? "",
+                                })
+                              }
+                            >
+                              Edit
+                            </Button>
+                          )}
                         </TableCell>
                         <TableCell className="text-center">
                           {row.owner_email && row.owner_email === user?.email ? (

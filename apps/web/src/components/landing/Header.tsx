@@ -11,12 +11,23 @@ import {
 import { useLanguage, type Language } from "@/contexts/LanguageContext";
 import { Container } from "./Container";
 
-const navItems = [
-  { label: "Возможности", href: "#features" },
-  { label: "Как это работает", href: "#how-it-works" },
-  { label: "Отзывы", href: "#testimonials" },
-  { label: "Вопросы", href: "#faq" },
-];
+const navItemsByLanguage: Record<
+  Language,
+  { label: string; href: string }[]
+> = {
+  ru: [
+    { label: "Возможности", href: "#features" },
+    { label: "Как это работает", href: "#how-it-works" },
+    { label: "Отзывы", href: "#testimonials" },
+    { label: "Вопросы", href: "#faq" },
+  ],
+  uz: [
+    { label: "Imkoniyatlar", href: "#features" },
+    { label: "Qanday ishlaydi", href: "#how-it-works" },
+    { label: "Sharhlar", href: "#testimonials" },
+    { label: "Savollar", href: "#faq" },
+  ],
+};
 
 const languages: { code: Language; label: string }[] = [
   { code: "ru", label: "Русский" },
@@ -24,7 +35,7 @@ const languages: { code: Language; label: string }[] = [
 ];
 
 interface HeaderProps {
-  onOpenAuth?: (tab: 'signin' | 'signup') => void;
+  onOpenAuth?: (tab: "signin" | "signup") => void;
   onOpenPromo?: () => void;
 }
 
@@ -32,6 +43,12 @@ interface HeaderProps {
 export function Header({ onOpenAuth, onOpenPromo }: HeaderProps) {
   const [open, setOpen] = useState(false);
   const { language, setLanguage } = useLanguage();
+
+  const navItems = navItemsByLanguage[language];
+  const signInLabel = language === "uz" ? "Kirish" : "Войти";
+  const startLabel = language === "uz" ? "Boshlash" : "Начать";
+  const languageAriaLabel = language === "uz" ? "Til" : "Язык";
+  const menuAriaLabel = language === "uz" ? "Menyu" : "Меню";
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/50 bg-[#c4ffdf]">
@@ -41,8 +58,15 @@ export function Header({ onOpenAuth, onOpenPromo }: HeaderProps) {
           className="flex items-center gap-2 text-foreground"
           onClick={() => setOpen(false)}
         >
-          <img src="/favicon.png" alt="" className="h-5 w-5 flex-shrink-0 object-contain" />
-          <span className="text-lg"><span className="font-bold">PROFi</span><span className="font-normal">board</span></span>
+          <img
+            src="/favicon.png"
+            alt=""
+            className="h-5 w-5 flex-shrink-0 object-contain"
+          />
+          <span className="text-lg">
+            <span className="font-bold">PROFi</span>
+            <span className="font-normal">board</span>
+          </span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-6">
@@ -60,7 +84,12 @@ export function Header({ onOpenAuth, onOpenPromo }: HeaderProps) {
         <div className="flex items-center gap-3">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="shrink-0" aria-label="Язык">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="shrink-0"
+                aria-label={languageAriaLabel}
+              >
                 <Globe className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
@@ -79,23 +108,33 @@ export function Header({ onOpenAuth, onOpenPromo }: HeaderProps) {
           {onOpenAuth || onOpenPromo ? (
             <>
               {onOpenAuth && (
-                <Button variant="ghost" size="sm" className="hidden sm:inline-flex" onClick={() => onOpenAuth('signin')}>
-                  Войти
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="hidden sm:inline-flex"
+                  onClick={() => onOpenAuth("signin")}
+                >
+                  {signInLabel}
                 </Button>
               )}
-              <Button size="sm" onClick={() => (onOpenPromo ? onOpenPromo() : onOpenAuth?.('signup'))}>
-                Начать
+              <Button
+                size="sm"
+                onClick={() =>
+                  onOpenPromo ? onOpenPromo() : onOpenAuth?.("signup")
+                }
+              >
+                {startLabel}
               </Button>
             </>
           ) : (
             <>
               <Link to="/auth" className="hidden sm:inline-flex">
                 <Button variant="ghost" size="sm">
-                  Войти
+                  {signInLabel}
                 </Button>
               </Link>
               <Link to="/auth">
-                <Button size="sm">Начать</Button>
+                <Button size="sm">{startLabel}</Button>
               </Link>
             </>
           )}
@@ -104,7 +143,7 @@ export function Header({ onOpenAuth, onOpenPromo }: HeaderProps) {
             type="button"
             className="md:hidden p-2 rounded-md hover:bg-muted"
             onClick={() => setOpen(!open)}
-            aria-label="Меню"
+            aria-label={menuAriaLabel}
           >
             {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
@@ -125,13 +164,24 @@ export function Header({ onOpenAuth, onOpenPromo }: HeaderProps) {
               </a>
             ))}
             {onOpenAuth ? (
-              <Button variant="outline" className="w-full mt-2" onClick={() => { setOpen(false); onOpenAuth('signin'); }}>
-                Войти
+              <Button
+                variant="outline"
+                className="w-full mt-2"
+                onClick={() => {
+                  setOpen(false);
+                  onOpenAuth("signin");
+                }}
+              >
+                {signInLabel}
               </Button>
             ) : (
-              <Link to="/auth" className="pt-2" onClick={() => setOpen(false)}>
+              <Link
+                to="/auth"
+                className="pt-2"
+                onClick={() => setOpen(false)}
+              >
                 <Button variant="outline" className="w-full">
-                  Войти
+                  {signInLabel}
                 </Button>
               </Link>
             )}
