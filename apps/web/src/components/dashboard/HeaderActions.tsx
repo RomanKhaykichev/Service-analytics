@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { HelpCircle, User, ChevronDown, LogOut, CreditCard, Globe, PlayCircle, MessageCircle, HelpCircle as FAQ, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +32,7 @@ export function HeaderActions() {
   const navigate = useNavigate();
   const [tariffOpen, setTariffOpen] = useState(false);
   const [extendTariffOpen, setExtendTariffOpen] = useState(false);
+  const [extendVariant, setExtendVariant] = useState<"extend" | "expired">("extend");
 
   const handleSignOut = async () => {
     await signOut();
@@ -42,10 +43,24 @@ export function HeaderActions() {
   const [languageOpen, setLanguageOpen] = useState(false);
   const displayName = getUserDisplayName(user);
 
+  const isTrialExpired =
+    !!user &&
+    (user.plan ?? "trial").toLowerCase() !== "paid" &&
+    user.trial_days_left != null &&
+    user.trial_days_left <= 0;
+
+  // Открываем окно «Тариф закончился» сразу после входа, если триал закончился
+  useEffect(() => {
+    if (isTrialExpired) {
+      setExtendVariant("expired");
+      setExtendTariffOpen(true);
+    }
+  }, [isTrialExpired]);
+
   return (
     <div className="flex items-center gap-6">
       {/* Report Upload */}
-      <ReportUploadDialog />
+      <ReportUploadDialog disabled={isTrialExpired} />
 
       {/* Help */}
       <DropdownMenu>
@@ -103,7 +118,13 @@ export function HeaderActions() {
             <CreditCard className="w-4 h-4 mr-2" />
             {t('header.tariff')}
           </DropdownMenuItem>
-          <DropdownMenuItem className="cursor-pointer text-primary" onClick={() => setExtendTariffOpen(true)}>
+          <DropdownMenuItem
+            className="cursor-pointer text-primary"
+            onClick={() => {
+              setExtendVariant("extend");
+              setExtendTariffOpen(true);
+            }}
+          >
             <CreditCard className="w-4 h-4 mr-2" />
             {t('header.extendTariff')}
           </DropdownMenuItem>
@@ -123,7 +144,7 @@ export function HeaderActions() {
       {/* Тариф — полное окно с 4 планами и «Попробуй бесплатно» */}
       <PricingDialog open={tariffOpen} onOpenChange={setTariffOpen} variant="tariff" />
       {/* Продлить тариф — упрощённое окно «Тариф закончился» */}
-      <PricingDialog open={extendTariffOpen} onOpenChange={setExtendTariffOpen} variant="extend" />
+      <PricingDialog open={extendTariffOpen} onOpenChange={setExtendTariffOpen} variant={extendVariant} />
 
       {/* Profile Dialog */}
       <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />

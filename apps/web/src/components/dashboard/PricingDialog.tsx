@@ -12,8 +12,8 @@ import { useLanguage } from "@/contexts/LanguageContext";
 interface PricingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** "tariff" — полное окно тарифов (Тариф в меню); "extend" — упрощённое (Продлить тариф) */
-  variant?: "tariff" | "extend";
+  /** "tariff" — полное окно тарифов (Тариф в меню); "extend" — упрощённое (Продлить тариф); "expired" — то же окно с заголовком «Тариф закончился» */
+  variant?: "tariff" | "extend" | "expired";
 }
 
 const extendPlans = [
@@ -41,13 +41,13 @@ const pricingPlans = [
 export function PricingDialog({ open, onOpenChange, variant = "tariff" }: PricingDialogProps) {
   const { t } = useLanguage();
 
-  if (variant === "extend") {
+  if (variant === "extend" || variant === "expired") {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-xl bg-card" hideCloseButton>
           <DialogHeader>
             <DialogTitle className="text-xl font-bold text-center">
-              {t("pricing.extendTitle")}
+              {variant === "expired" ? t("pricing.expiredTitle") : t("pricing.extendTitle")}
             </DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-4 mt-4">

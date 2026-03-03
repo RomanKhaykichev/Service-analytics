@@ -16,6 +16,9 @@ interface User {
   phone?: string;
   is_admin?: boolean;
   preferred_language?: string | null; // 'ru' | 'uz'
+  plan?: string | null;
+  trial_ends_at?: string | null;
+  trial_days_left?: number | null;
   user_metadata?: {
     full_name?: string;
   };
@@ -36,7 +39,17 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 interface AuthResponse {
   access_token: string;
   refresh_token: string;
-  user: { id: string; email?: string | null; full_name?: string | null; phone?: string | null; is_admin?: boolean; preferred_language?: string | null };
+  user: {
+    id: string;
+    email?: string | null;
+    full_name?: string | null;
+    phone?: string | null;
+    is_admin?: boolean;
+    preferred_language?: string | null;
+    plan?: string | null;
+    trial_ends_at?: string | null;
+    trial_days_left?: number | null;
+  };
 }
 
 function mapUser(u: AuthResponse['user']): User {
@@ -47,6 +60,9 @@ function mapUser(u: AuthResponse['user']): User {
     phone: u.phone ?? undefined,
     is_admin: u.is_admin ?? false,
     preferred_language: u.preferred_language ?? undefined,
+    plan: u.plan ?? undefined,
+    trial_ends_at: u.trial_ends_at ?? undefined,
+    trial_days_left: u.trial_days_left ?? undefined,
     user_metadata: u.full_name ? { full_name: u.full_name } : undefined,
   };
 }

@@ -136,6 +136,7 @@ const translations: Record<Language, Record<string, string>> = {
 
     // Pricing / Tariff dialog
     'pricing.extendTitle': 'Продлить тариф',
+    'pricing.expiredTitle': 'Тариф закончился',
     'pricing.chooseTariff': 'Выберите тариф',
     'pricing.subscription1Month': 'Подписка 1 месяц',
     'pricing.upTo5Stores': 'до 5 магазинов',
@@ -589,6 +590,7 @@ const translations: Record<Language, Record<string, string>> = {
 
     // Pricing / Tariff dialog
     'pricing.extendTitle': 'Tarifni uzaytirish',
+    'pricing.expiredTitle': 'Tarif muddati tugadi',
     'pricing.chooseTariff': 'Tarifni tanlang',
     'pricing.subscription1Month': 'Obuna 1 oy',
     'pricing.upTo5Stores': "gacha 5 do'kon",

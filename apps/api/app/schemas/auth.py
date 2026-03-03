@@ -65,6 +65,9 @@ class UserResponse(BaseModel):
     created_at: datetime
     is_admin: bool = False
     preferred_language: Optional[str] = None  # 'ru' | 'uz'
+    plan: Optional[str] = None
+    trial_ends_at: Optional[str] = None
+    trial_days_left: Optional[int] = None
 
     class Config:
         from_attributes = True

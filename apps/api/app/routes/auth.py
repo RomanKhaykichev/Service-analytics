@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 from sqlalchemy.exc import IntegrityError
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 from uuid import UUID
 import logging
 from app.db import get_db, qname
@@ -34,6 +34,50 @@ from app.auth import (
 )
 
 router = APIRouter()
+
+
+def _enrich_user_trial_info(resp: UserResponse, user_id: UUID, db: Session) -> None:
+  """
+  Fill plan / trial_ends_at / trial_days_left for current user
+  based on users.plan and users.trial_ends_at (raw SQL, т.к. колонок нет в ORM-модели).
+  """
+  try:
+      row = db.execute(
+          text(
+              f"SELECT COALESCE(plan,'trial') AS plan, trial_ends_at "
+              f"FROM {qname('users')} WHERE id = :uid"
+          ),
+          {"uid": user_id},
+      ).fetchone()
+  except Exception:
+      return
+
+  if not row:
+      return
+
+  plan_val = (row[0] or "trial")
+  trial_ends_at = row[1]
+
+  trial_days_left = None
+  if trial_ends_at:
+      try:
+          if isinstance(trial_ends_at, str):
+              te = date.fromisoformat(trial_ends_at[:10])
+          else:
+              te = getattr(trial_ends_at, "date", lambda: trial_ends_at)() if hasattr(trial_ends_at, "date") else trial_ends_at
+          trial_days_left = (te - date.today()).days
+      except Exception:
+          trial_days_left = None
+
+  resp.plan = plan_val
+  if trial_ends_at:
+      try:
+          resp.trial_ends_at = trial_ends_at.isoformat() if hasattr(trial_ends_at, "isoformat") else str(trial_ends_at)
+      except Exception:
+          resp.trial_ends_at = str(trial_ends_at)
+  else:
+      resp.trial_ends_at = None
+  resp.trial_days_left = trial_days_left
 
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
@@ -382,6 +426,7 @@ async def get_current_user(
         )
     resp = UserResponse.model_validate(user)
     resp.is_admin = is_user_admin(user_id, db)
+    _enrich_user_trial_info(resp, user_id, db)
     return resp
 
 
@@ -472,4 +517,6 @@ async def update_profile(
             detail="Data conflict. Check that email and phone are unique."
         )
 
-    return UserResponse.model_validate(user)
+    resp = UserResponse.model_validate(user)
+    _enrich_user_trial_info(resp, user_id, db)
+    return resp

@@ -44,7 +44,11 @@ const reportTypes = [
   { id: "inventory_old", labelKey: "report.inventoryOld", hint: "left-out-report_old" },
 ];
 
-export function ReportUploadDialog() {
+interface ReportUploadDialogProps {
+  disabled?: boolean;
+}
+
+export function ReportUploadDialog({ disabled }: ReportUploadDialogProps) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, UploadedFile>>({});
@@ -271,11 +275,19 @@ export function ReportUploadDialog() {
 
   const uploadedCount = Object.values(uploadedFiles).filter(f => f.status === 'success').length;
 
+  const handleOpenChange = (value: boolean) => {
+    if (disabled) return;
+    setOpen(value);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <div className="flex flex-col items-end">
-          <Button className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 px-4">
+          <Button
+            className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 px-4"
+            disabled={disabled}
+          >
             <Upload className="w-4 h-4" />
             <span className="hidden sm:inline">{t('report.uploadButton')}</span>
           </Button>
