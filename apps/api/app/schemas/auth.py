@@ -38,6 +38,7 @@ class UpdateProfileRequest(BaseModel):
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     preferred_language: Optional[str] = None  # 'ru' | 'uz'
+    new_password: Optional[str] = None  # if set, overwrites password (min 6 chars)
 
     @field_validator("email", mode="before")
     @classmethod
@@ -46,7 +47,7 @@ class UpdateProfileRequest(BaseModel):
             return None
         return v.strip() if isinstance(v, str) else v
 
-    @field_validator("full_name", "phone", mode="before")
+    @field_validator("full_name", "phone", "new_password", mode="before")
     @classmethod
     def strip_empty_to_none(cls, v):
         if v is None or (isinstance(v, str) and not v.strip()):

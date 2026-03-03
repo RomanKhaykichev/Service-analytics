@@ -441,6 +441,21 @@ async def update_profile(
             pl = None
         user.preferred_language = pl
 
+    if request.new_password is not None:
+        if len(request.new_password) < 6:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Password must be at least 6 characters"
+            )
+        auth_identity = db.query(AuthIdentity).filter(
+            and_(
+                AuthIdentity.user_id == user_id,
+                AuthIdentity.provider == AuthProvider.EMAIL_PASSWORD
+            )
+        ).first()
+        if auth_identity:
+            auth_identity.password_hash = hash_password(request.new_password)
+
     try:
         db.commit()
         db.refresh(user)

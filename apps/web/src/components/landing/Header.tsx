@@ -74,7 +74,7 @@ export function Header({ onOpenAuth, onOpenPromo }: HeaderProps) {
             <a
               key={item.href}
               href={item.href}
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="text-base font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
               {item.label}
             </a>
@@ -157,7 +157,7 @@ export function Header({ onOpenAuth, onOpenPromo }: HeaderProps) {
               <a
                 key={item.href}
                 href={item.href}
-                className="text-sm text-muted-foreground hover:text-foreground py-2"
+                className="text-base font-medium text-muted-foreground hover:text-foreground py-2"
                 onClick={() => setOpen(false)}
               >
                 {item.label}

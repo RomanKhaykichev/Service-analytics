@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { User, Phone, CreditCard, Calendar } from "lucide-react";
+import { User, Phone, CreditCard, Calendar, Eye, EyeOff } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +26,8 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Mock subscription data - in real app would come from database
@@ -49,6 +51,7 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
       setFullName(data.full_name ?? "");
       setEmail(data.email ?? "");
       setPhone(data.phone ?? "");
+      setNewPassword("");
     } catch {
       // Keep values from context
     }
@@ -56,13 +59,20 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
 
   const handleSaveProfile = async () => {
     if (!user) return;
+    const pwd = newPassword.trim();
+    if (pwd && pwd.length < 6) {
+      toast.error(`${t("profile.newPassword")}: ${t("profile.passwordMinLength")}`);
+      return;
+    }
     setLoading(true);
     try {
       await apiPatch("/api/auth/me", {
         full_name: fullName.trim() || null,
         email: email.trim() || null,
         phone: phone.trim() || null,
+        ...(pwd ? { new_password: pwd } : {}),
       });
+      setNewPassword("");
       await refreshProfile();
       toast.success("Данные аккаунта сохранены");
     } catch (err) {
@@ -138,6 +148,30 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
                     onChange={(e) => setPhone(e.target.value)}
                     className="pl-10"
                   />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="profile-password" className="text-xs text-muted-foreground">{t('profile.newPassword')}</Label>
+                <div className="relative">
+                  <Input
+                    id="profile-password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder={t('profile.newPasswordPlaceholder')}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="pr-10 text-sm placeholder:text-xs"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? t('profile.hidePassword') : t('profile.showPassword')}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
+                  </Button>
                 </div>
               </div>
 
