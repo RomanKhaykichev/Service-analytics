@@ -35,8 +35,7 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
   const rawDaysLeft = typeof user?.trial_days_left === "number" ? user.trial_days_left : null;
   const daysRemaining = rawDaysLeft != null ? Math.max(rawDaysLeft, 0) : null;
   const isTariffActive = rawDaysLeft != null && rawDaysLeft > 0;
-  const isPaid = (user?.plan ?? "trial").toLowerCase() === "paid";
-  const dateIsSoon = rawDaysLeft != null && rawDaysLeft <= 3 && !isPaid;
+  const dateIsSoon = rawDaysLeft != null && rawDaysLeft <= 3;
   const subscriptionEndDate = (() => {
     if (user?.trial_ends_at) {
       const d = new Date(user.trial_ends_at);

@@ -55,8 +55,7 @@ export function HeaderActions() {
     }
     return null;
   })();
-  const isPaid = (user?.plan ?? "trial").toLowerCase() === "paid";
-  const dateIsSoon = typeof user?.trial_days_left === "number" && user.trial_days_left <= 3 && !isPaid;
+  const dateIsSoon = typeof user?.trial_days_left === "number" && user.trial_days_left <= 3;
 
   const isTrialExpired =
     !!user &&
