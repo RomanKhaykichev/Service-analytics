@@ -274,6 +274,7 @@ async def login(
     db.refresh(user)
     user_resp = UserResponse.model_validate(user)
     user_resp.is_admin = is_user_admin(user.id, db)
+    _enrich_user_trial_info(user_resp, user.id, db)
     return AuthResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -500,6 +501,23 @@ async def update_profile(
         ).first()
         if auth_identity:
             auth_identity.password_hash = hash_password(request.new_password)
+        else:
+            # Если записи входа по email/паролю ещё нет (старые/импортированные аккаунты),
+            # создаём её, чтобы вход по новому паролю работал.
+            email = (user.email or "").strip() if user.email else ""
+            if not email:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Email must be set before changing password"
+                )
+            password_hash = hash_password(request.new_password)
+            new_identity = AuthIdentity(
+                user_id=user.id,
+                provider=AuthProvider.EMAIL_PASSWORD,
+                identifier=email,
+                password_hash=password_hash,
+            )
+            db.add(new_identity)
 
     try:
         db.commit()

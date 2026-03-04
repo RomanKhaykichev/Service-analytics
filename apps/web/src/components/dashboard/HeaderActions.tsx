@@ -43,6 +43,21 @@ export function HeaderActions() {
   const [languageOpen, setLanguageOpen] = useState(false);
   const displayName = getUserDisplayName(user);
 
+  const validUntilLabel = (() => {
+    if (user?.trial_ends_at) {
+      const d = new Date(user.trial_ends_at);
+      if (!isNaN(d.getTime())) return d.toLocaleDateString("ru-RU");
+    }
+    if (typeof user?.trial_days_left === "number") {
+      const d = new Date();
+      d.setDate(d.getDate() + user.trial_days_left);
+      return d.toLocaleDateString("ru-RU");
+    }
+    return null;
+  })();
+  const isPaid = (user?.plan ?? "trial").toLowerCase() === "paid";
+  const dateIsSoon = typeof user?.trial_days_left === "number" && user.trial_days_left <= 3 && !isPaid;
+
   const isTrialExpired =
     !!user &&
     (user.plan ?? "trial").toLowerCase() !== "paid" &&
@@ -94,7 +109,12 @@ export function HeaderActions() {
             <User className="w-5 h-5" />
             <div className="flex flex-col items-start text-left">
               <span className="text-sm font-medium">{displayName}</span>
-              <span className="text-xs text-muted-foreground">до 15.02.2025</span>
+              <span className="text-xs text-muted-foreground">
+                <span>до: </span>
+                <span className={dateIsSoon ? "text-red-600 font-medium" : ""}>
+                  {validUntilLabel ?? "—"}
+                </span>
+              </span>
             </div>
             <ChevronDown className="w-4 h-4 ml-1" />
           </Button>

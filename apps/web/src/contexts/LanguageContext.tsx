@@ -126,6 +126,7 @@ const translations: Record<Language, Record<string, string>> = {
     'profile.save': 'Сохранить',
     'profile.tariffPlan': 'Тарифный план',
     'profile.active': 'Активен',
+    'profile.inactive': 'Не активен',
     'profile.validUntil': 'Действует до',
     'profile.daysRemaining': 'Осталось дней',
     
@@ -580,6 +581,7 @@ const translations: Record<Language, Record<string, string>> = {
     'profile.save': 'Saqlash',
     'profile.tariffPlan': 'Tarif rejasi',
     'profile.active': 'Faol',
+    'profile.inactive': 'Faol emas',
     'profile.validUntil': 'Amal qilish muddati',
     'profile.daysRemaining': 'Qolgan kunlar',
     

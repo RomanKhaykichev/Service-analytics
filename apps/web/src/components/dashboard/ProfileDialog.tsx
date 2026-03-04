@@ -30,10 +30,27 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Mock subscription data - in real app would come from database
+  // Subscription data based on user trial info
   const subscriptionPlan = t('profile.tariffPlan');
-  const subscriptionEndDate = "15 февраля 2025";
-  const daysRemaining = 30;
+  const rawDaysLeft = typeof user?.trial_days_left === "number" ? user.trial_days_left : null;
+  const daysRemaining = rawDaysLeft != null ? Math.max(rawDaysLeft, 0) : null;
+  const isTariffActive = rawDaysLeft != null && rawDaysLeft > 0;
+  const isPaid = (user?.plan ?? "trial").toLowerCase() === "paid";
+  const dateIsSoon = rawDaysLeft != null && rawDaysLeft <= 3 && !isPaid;
+  const subscriptionEndDate = (() => {
+    if (user?.trial_ends_at) {
+      const d = new Date(user.trial_ends_at);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString("ru-RU");
+      }
+    }
+    if (rawDaysLeft != null) {
+      const d = new Date();
+      d.setDate(d.getDate() + rawDaysLeft);
+      return d.toLocaleDateString("ru-RU");
+    }
+    return null;
+  })();
 
   useEffect(() => {
     if (open && user) {
@@ -187,26 +204,41 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
 
           {/* Subscription Section */}
           <div className="space-y-4 pt-4 border-t border-border">
-            <h4 className="text-sm font-medium text-muted-foreground">{t('profile.tariffPlan')}</h4>
-            
             <div className="p-4 rounded-lg bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <CreditCard className="w-5 h-5 text-primary" />
                   <span className="font-medium">{subscriptionPlan}</span>
                 </div>
-                <Badge variant="secondary" className="bg-primary/20 text-primary">
-                  {t('profile.active')}
+                <Badge
+                  variant="secondary"
+                  className={
+                    isTariffActive
+                      ? "bg-green-500 text-white"
+                      : "bg-red-500 text-white"
+                  }
+                >
+                  {isTariffActive ? t('profile.active') : t('profile.inactive')}
                 </Badge>
               </div>
               
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Calendar className="w-4 h-4" />
-                <span>{t('profile.validUntil')}: <strong className="text-foreground">{subscriptionEndDate}</strong></span>
+                <span>
+                  {t('profile.validUntil')}{": "}
+                  <strong className={dateIsSoon ? "text-red-600" : "text-foreground"}>
+                    {subscriptionEndDate ?? "—"}
+                  </strong>
+                </span>
               </div>
               
-              <div className="mt-2 text-xs text-muted-foreground">
-                {t('profile.daysRemaining')}: {daysRemaining}
+              <div className="mt-2 text-sm text-muted-foreground">
+                {t('profile.daysRemaining')}{": "}
+                {daysRemaining != null ? (
+                  <strong className="text-foreground text-base">{daysRemaining}</strong>
+                ) : (
+                  "—"
+                )}
               </div>
             </div>
           </div>
