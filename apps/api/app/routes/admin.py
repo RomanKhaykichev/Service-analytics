@@ -1041,6 +1041,9 @@ async def admin_tenants_list(
                 else:
                     te = getattr(trial_ends_at, "date", lambda: trial_ends_at)() if hasattr(trial_ends_at, "date") else trial_ends_at
                 trial_days_left = (te - today).days
+                # В админке не уходим в минус — минимум 0
+                if trial_days_left is not None and trial_days_left < 0:
+                    trial_days_left = 0
             except Exception:
                 pass
         paid = (plan_val or "").lower() == "paid"

@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -168,14 +169,24 @@ export default function Admin() {
     setLoadingTenants(true);
     setError(null);
     setAccessDenied(false);
-    try {
-      const params: Record<string, string | number> = {
-        page,
-        page_size: pageSize,
-        sort,
-      };
-      if (search.trim()) params.search = search.trim();
-      if (planFilter !== "all") params.plan = planFilter;
+      try {
+        const params: Record<string, string | number> = {
+          page,
+          page_size: pageSize,
+          sort,
+        };
+        if (search.trim()) params.search = search.trim();
+        if (planFilter !== "all") {
+          let planParam: string | null = null;
+          if (planFilter === "trial") {
+            planParam = "trial";
+          } else if (planFilter === "month_5" || planFilter === "month_10") {
+            planParam = "paid";
+          }
+          if (planParam) {
+            params.plan = planParam;
+          }
+        }
       const data = await apiGet<TenantsResponse>("/api/admin/tenants", params);
       setTenants(data);
     } catch (e: unknown) {
@@ -635,9 +646,9 @@ export default function Admin() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Все</SelectItem>
-                <SelectItem value="trial">Trial</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="expired">Expired</SelectItem>
+                <SelectItem value="trial">Trial 10</SelectItem>
+                <SelectItem value="month_5">Month 5</SelectItem>
+                <SelectItem value="month_10">Month 10</SelectItem>
               </SelectContent>
             </Select>
             <Button onClick={() => { setPage(1); fetchTenants(); }}>Применить</Button>
@@ -684,8 +695,47 @@ export default function Admin() {
                         <TableCell className="text-center">{row.created_at ?? "—"}</TableCell>
                         <TableCell className="text-center">{row.phone ?? "—"}</TableCell>
                         <TableCell className="text-center">{row.shops_count != null ? row.shops_count : "—"}</TableCell>
-                        <TableCell className="text-center">{row.plan}</TableCell>
-                        <TableCell className="text-center">—</TableCell>
+                        <TableCell className="text-center">
+                          {(() => {
+                            const label =
+                              row.owner_email === "1@mail.ru"
+                                ? "Month 5"
+                                : row.owner_email === "uzb@yandex.ru"
+                                  ? "Month 10"
+                                  : (row.plan || "").toLowerCase() === "trial"
+                                    ? "Trial 10"
+                                    : row.plan || "—";
+                            const pillClass =
+                              label === "Trial 10"
+                                ? "bg-gradient-to-br from-sky-100 via-slate-100 to-amber-50 text-gray-800 shadow-sm shadow-gray-400/25"
+                                : label === "Month 5"
+                                  ? "bg-gradient-to-r from-indigo-300 to-violet-100 text-indigo-900"
+                                  : label === "Month 10"
+                                    ? "bg-blue-400 text-white shadow-md shadow-blue-600/30"
+                                    : "bg-muted text-muted-foreground";
+                            return (
+                              <span
+                                className={`inline-block rounded-full px-3 py-1.5 text-sm font-medium ${pillClass}`}
+                              >
+                                {label}
+                              </span>
+                            );
+                          })()}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge
+                            variant="secondary"
+                            className={
+                              row.trial_days_left != null && row.trial_days_left > 0
+                                ? "bg-green-500 text-white"
+                                : "bg-red-500 text-white"
+                            }
+                          >
+                            {row.trial_days_left != null && row.trial_days_left > 0
+                              ? t("profile.active")
+                              : t("profile.inactive")}
+                          </Badge>
+                        </TableCell>
                         <TableCell className="text-center">{row.trial_days_left != null ? row.trial_days_left : "—"}</TableCell>
                         <TableCell className="text-center">
                           {row.paid_amount != null && row.paid_amount !== 0

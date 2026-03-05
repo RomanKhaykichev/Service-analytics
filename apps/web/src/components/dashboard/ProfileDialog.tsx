@@ -32,6 +32,20 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
 
   // Subscription data based on user trial info
   const subscriptionPlan = t('profile.tariffPlan');
+  const tariffLabel = (() => {
+    const email = (user?.email ?? "").trim().toLowerCase();
+    if (email === "1@mail.ru") return "Month 5";
+    if (email === "uzb@yandex.ru") return "Month 10";
+    const plan = (user?.plan ?? "trial").toLowerCase();
+    if (plan === "trial") return "Trial 10";
+    return "Month 5";
+  })();
+  const tariffPillClass =
+    tariffLabel === "Trial 10"
+      ? "bg-gradient-to-br from-sky-100 via-slate-100 to-amber-50 text-gray-800 shadow-sm shadow-gray-400/25"
+      : tariffLabel === "Month 5"
+        ? "bg-gradient-to-r from-indigo-300 to-violet-100 text-indigo-900"
+        : "bg-blue-400 text-white shadow-md shadow-blue-600/30";
   const rawDaysLeft = typeof user?.trial_days_left === "number" ? user.trial_days_left : null;
   const daysRemaining = rawDaysLeft != null ? Math.max(rawDaysLeft, 0) : null;
   const isTariffActive = rawDaysLeft != null && rawDaysLeft > 0;
@@ -207,7 +221,14 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <CreditCard className="w-5 h-5 text-primary" />
-                  <span className="font-medium">{subscriptionPlan}</span>
+                  <span className="flex items-center gap-2">
+                    {subscriptionPlan}{" "}
+                    <span
+                      className={`inline-block rounded-full px-3 py-1.5 text-sm font-semibold ${tariffPillClass}`}
+                    >
+                      {tariffLabel}
+                    </span>
+                  </span>
                 </div>
                 <Badge
                   variant="secondary"
