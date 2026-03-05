@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { Shield, Users, UserPlus, AlertCircle, Pencil, Trash2, UserMinus, CalendarPlus, Upload, BarChart3 } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { Shield, Users, UserPlus, AlertCircle, Pencil, Trash2, UserMinus, CalendarPlus, Upload, BarChart3, ChevronUp, ChevronDown } from "lucide-react";
 import { Tooltip as UITooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -51,6 +51,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { apiGet, apiPatch, apiPost, apiDelete } from "@/lib/api";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface TenantRow {
   tenant_id: string;
@@ -129,6 +130,10 @@ export default function Admin() {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
   const [sort, setSort] = useState("created_at");
+  type TenantSortColumn = "created_at" | "phone" | "shops_count" | "plan" | "trial_days_left" | "paid_amount" | "last_login_at" | "imports_30d" | null;
+  const [sortColumn, setSortColumn] = useState<TenantSortColumn>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(null);
+  const [tenantShops, setTenantShops] = useState<Record<string, { loading: boolean; error: string | null; names: string[] }>>({});
   const [notesModal, setNotesModal] = useState<{ tenantId: string; notes: string } | null>(null);
   const [passwordModal, setPasswordModal] = useState<{ tenantId: string; newPassword: string } | null>(null);
   const [extendTrialModal, setExtendTrialModal] = useState<{ tenantId: string; days: number } | null>(null);
@@ -200,6 +205,94 @@ export default function Admin() {
       setLoadingTenants(false);
     }
   }, [page, pageSize, sort, search, planFilter]);
+
+  const loadTenantShops = useCallback(async (tenantId: string) => {
+    setTenantShops((prev) => {
+      const current = prev[tenantId];
+      if (current?.loading || current?.names?.length) return prev;
+      return { ...prev, [tenantId]: { loading: true, error: null, names: current?.names ?? [] } };
+    });
+    try {
+      const res = await apiGet<{ tenant_id: string; shops: string[] }>(`/api/admin/tenants/${tenantId}/shops`);
+      setTenantShops((prev) => ({
+        ...prev,
+        [tenantId]: { loading: false, error: null, names: res.shops ?? [] },
+      }));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setTenantShops((prev) => ({
+        ...prev,
+        [tenantId]: { loading: false, error: msg, names: prev[tenantId]?.names ?? [] },
+      }));
+    }
+  }, []);
+
+  const handleTenantSort = (column: TenantSortColumn) => {
+    if (!column) return;
+    if (sortColumn === column) {
+      if (sortDirection === "asc") setSortDirection("desc");
+      else if (sortDirection === "desc") {
+        setSortDirection(null);
+        setSortColumn(null);
+      } else {
+        setSortDirection("asc");
+      }
+    } else {
+      setSortColumn(column);
+      setSortDirection("asc");
+    }
+  };
+
+  const getPlanSortKey = (row: TenantRow) => {
+    if (row.owner_email === "1@mail.ru") return 1;
+    if (row.owner_email === "uzb@yandex.ru") return 2;
+    return (row.plan || "").toLowerCase() === "trial" ? 0 : 1;
+  };
+
+  const sortedTenants = useMemo(() => {
+    const list = tenants?.tenants ?? [];
+    if (!sortColumn || !sortDirection) return list;
+    return [...list].sort((a, b) => {
+      let aVal: string | number | null | undefined;
+      let bVal: string | number | null | undefined;
+      switch (sortColumn) {
+        case "created_at":
+          aVal = a.created_at ?? "";
+          bVal = b.created_at ?? "";
+          return sortDirection === "asc" ? String(aVal).localeCompare(String(bVal)) : String(bVal).localeCompare(String(aVal));
+        case "phone":
+          aVal = a.phone ?? "";
+          bVal = b.phone ?? "";
+          return sortDirection === "asc" ? String(aVal).localeCompare(String(bVal)) : String(bVal).localeCompare(String(aVal));
+        case "shops_count":
+          aVal = a.shops_count ?? -1;
+          bVal = b.shops_count ?? -1;
+          return sortDirection === "asc" ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
+        case "plan":
+          aVal = getPlanSortKey(a);
+          bVal = getPlanSortKey(b);
+          return sortDirection === "asc" ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
+        case "trial_days_left":
+          aVal = a.trial_days_left ?? -1;
+          bVal = b.trial_days_left ?? -1;
+          return sortDirection === "asc" ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
+        case "paid_amount":
+          aVal = a.paid_amount ?? 0;
+          bVal = b.paid_amount ?? 0;
+          return sortDirection === "asc" ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
+        case "last_login_at":
+          aVal = a.last_login_at ?? "";
+          bVal = b.last_login_at ?? "";
+          return sortDirection === "asc" ? String(aVal).localeCompare(String(bVal)) : String(bVal).localeCompare(String(aVal));
+        case "imports_30d":
+          aVal = a.imports_30d ?? 0;
+          bVal = b.imports_30d ?? 0;
+          return sortDirection === "asc" ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
+        default:
+          return 0;
+      }
+    });
+  }, [tenants?.tenants, sortColumn, sortDirection]);
 
   useEffect(() => {
     if (!accessDenied) {
@@ -659,34 +752,111 @@ export default function Admin() {
             <Skeleton className="h-64 w-full" />
           ) : tenants ? (
             <>
-              <Table className="[&_th]:h-10 [&_th]:py-2 [&_th]:px-3 [&_td]:py-2 [&_td]:px-3">
+              <div className="overflow-x-auto -mx-1">
+                <Table className="min-w-[1600px] [&_th]:h-10 [&_th]:py-2 [&_th]:px-3 [&_td]:py-2 [&_td]:px-3">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Аккаунт</TableHead>
-                    <TableHead className="text-center">Регистрация</TableHead>
-                    <TableHead className="text-center">Телефон</TableHead>
-                    <TableHead className="text-center">Магазин</TableHead>
-                    <TableHead className="text-center">Тариф</TableHead>
-                    <TableHead className="text-center">Статус подписки</TableHead>
-                    <TableHead className="text-center">Остаток дней</TableHead>
-                    <TableHead className="text-center">Оплачено</TableHead>
-                    <TableHead className="text-center">Дата входа</TableHead>
-                    <TableHead className="text-center">Импорты 30д</TableHead>
-                    <TableHead className="text-center">Notes</TableHead>
-                    <TableHead className="text-center">Действия</TableHead>
+                    <TableHead className="sticky left-0 z-10 bg-card border-r border-border min-w-[200px] max-w-[260px]">Аккаунт</TableHead>
+                    <TableHead className="text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleTenantSort("created_at")}
+                        className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full"
+                      >
+                        Регистрация
+                        <span className="flex flex-col">
+                          <ChevronUp className={cn("h-3 w-3 -mb-1", sortColumn === "created_at" && sortDirection === "asc" ? "text-primary" : "text-muted-foreground/50")} />
+                          <ChevronDown className={cn("h-3 w-3", sortColumn === "created_at" && sortDirection === "desc" ? "text-primary" : "text-muted-foreground/50")} />
+                        </span>
+                      </button>
+                    </TableHead>
+                    <TableHead className="text-center">
+                      <button type="button" onClick={() => handleTenantSort("phone")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full">
+                        Телефон
+                        <span className="flex flex-col">
+                          <ChevronUp className={cn("h-3 w-3 -mb-1", sortColumn === "phone" && sortDirection === "asc" ? "text-primary" : "text-muted-foreground/50")} />
+                          <ChevronDown className={cn("h-3 w-3", sortColumn === "phone" && sortDirection === "desc" ? "text-primary" : "text-muted-foreground/50")} />
+                        </span>
+                      </button>
+                    </TableHead>
+                    <TableHead className="text-center">
+                      <button type="button" onClick={() => handleTenantSort("shops_count")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full">
+                        Магазин
+                        <span className="flex flex-col">
+                          <ChevronUp className={cn("h-3 w-3 -mb-1", sortColumn === "shops_count" && sortDirection === "asc" ? "text-primary" : "text-muted-foreground/50")} />
+                          <ChevronDown className={cn("h-3 w-3", sortColumn === "shops_count" && sortDirection === "desc" ? "text-primary" : "text-muted-foreground/50")} />
+                        </span>
+                      </button>
+                    </TableHead>
+                    <TableHead className="text-center">
+                      <button type="button" onClick={() => handleTenantSort("plan")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full">
+                        Тариф
+                        <span className="flex flex-col">
+                          <ChevronUp className={cn("h-3 w-3 -mb-1", sortColumn === "plan" && sortDirection === "asc" ? "text-primary" : "text-muted-foreground/50")} />
+                          <ChevronDown className={cn("h-3 w-3", sortColumn === "plan" && sortDirection === "desc" ? "text-primary" : "text-muted-foreground/50")} />
+                        </span>
+                      </button>
+                    </TableHead>
+                    <TableHead className="text-center">
+                      <button type="button" onClick={() => handleTenantSort("trial_days_left")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full">
+                        Статус подписки
+                        <span className="flex flex-col">
+                          <ChevronUp className={cn("h-3 w-3 -mb-1", sortColumn === "trial_days_left" && sortDirection === "asc" ? "text-primary" : "text-muted-foreground/50")} />
+                          <ChevronDown className={cn("h-3 w-3", sortColumn === "trial_days_left" && sortDirection === "desc" ? "text-primary" : "text-muted-foreground/50")} />
+                        </span>
+                      </button>
+                    </TableHead>
+                    <TableHead className="text-center">
+                      <button type="button" onClick={() => handleTenantSort("trial_days_left")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full">
+                        Остаток дней
+                        <span className="flex flex-col">
+                          <ChevronUp className={cn("h-3 w-3 -mb-1", sortColumn === "trial_days_left" && sortDirection === "asc" ? "text-primary" : "text-muted-foreground/50")} />
+                          <ChevronDown className={cn("h-3 w-3", sortColumn === "trial_days_left" && sortDirection === "desc" ? "text-primary" : "text-muted-foreground/50")} />
+                        </span>
+                      </button>
+                    </TableHead>
+                    <TableHead className="text-center">
+                      <button type="button" onClick={() => handleTenantSort("paid_amount")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full">
+                        Оплачено
+                        <span className="flex flex-col">
+                          <ChevronUp className={cn("h-3 w-3 -mb-1", sortColumn === "paid_amount" && sortDirection === "asc" ? "text-primary" : "text-muted-foreground/50")} />
+                          <ChevronDown className={cn("h-3 w-3", sortColumn === "paid_amount" && sortDirection === "desc" ? "text-primary" : "text-muted-foreground/50")} />
+                        </span>
+                      </button>
+                    </TableHead>
+                    <TableHead className="text-center">
+                      <button type="button" onClick={() => handleTenantSort("last_login_at")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full">
+                        Дата входа
+                        <span className="flex flex-col">
+                          <ChevronUp className={cn("h-3 w-3 -mb-1", sortColumn === "last_login_at" && sortDirection === "asc" ? "text-primary" : "text-muted-foreground/50")} />
+                          <ChevronDown className={cn("h-3 w-3", sortColumn === "last_login_at" && sortDirection === "desc" ? "text-primary" : "text-muted-foreground/50")} />
+                        </span>
+                      </button>
+                    </TableHead>
+                    <TableHead className="text-center">
+                      <button type="button" onClick={() => handleTenantSort("imports_30d")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full">
+                        Импорты 30д
+                        <span className="flex flex-col">
+                          <ChevronUp className={cn("h-3 w-3 -mb-1", sortColumn === "imports_30d" && sortDirection === "asc" ? "text-primary" : "text-muted-foreground/50")} />
+                          <ChevronDown className={cn("h-3 w-3", sortColumn === "imports_30d" && sortDirection === "desc" ? "text-primary" : "text-muted-foreground/50")} />
+                        </span>
+                      </button>
+                    </TableHead>
+                    <TableHead className="text-center whitespace-nowrap">Notes</TableHead>
+                    <TableHead className="text-center whitespace-nowrap">Действия</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
-                  {tenants.tenants.length === 0 ? (
+                <TableBody className="[&_tr]:bg-card">
+                  {sortedTenants.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={12} className="text-center text-muted-foreground">
                         Нет тенантов
                       </TableCell>
                     </TableRow>
                   ) : (
-                    tenants.tenants.map((row) => (
+                    sortedTenants.map((row) => (
                       <TableRow key={row.tenant_id}>
-                        <TableCell>
+                        <TableCell className="sticky left-0 z-10 bg-card border-r border-border min-w-[200px] max-w-[260px]">
                           <div className="font-medium">{row.company_name || row.owner_email || row.tenant_id.slice(0, 8)}</div>
                           {row.owner_email && (
                             <div className="text-xs text-muted-foreground">{row.owner_email}</div>
@@ -694,7 +864,34 @@ export default function Admin() {
                         </TableCell>
                         <TableCell className="text-center">{row.created_at ?? "—"}</TableCell>
                         <TableCell className="text-center">{row.phone ?? "—"}</TableCell>
-                        <TableCell className="text-center">{row.shops_count != null ? row.shops_count : "—"}</TableCell>
+                        <TableCell className="text-center">
+                          {row.shops_count != null && row.shops_count > 0 ? (
+                            <UITooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="underline-offset-2 hover:underline font-medium"
+                                  onMouseEnter={() => loadTenantShops(row.tenant_id)}
+                                >
+                                  {row.shops_count}
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs whitespace-pre-line">
+                                {tenantShops[row.tenant_id]?.loading && "Загрузка магазинов…"}
+                                {tenantShops[row.tenant_id]?.error &&
+                                  !tenantShops[row.tenant_id]?.loading &&
+                                  `Ошибка: ${tenantShops[row.tenant_id]?.error}`}
+                                {!tenantShops[row.tenant_id]?.loading &&
+                                  !tenantShops[row.tenant_id]?.error &&
+                                  (tenantShops[row.tenant_id]?.names?.length
+                                    ? tenantShops[row.tenant_id].names.join("\n")
+                                    : "Магазины не найдены")}
+                              </TooltipContent>
+                            </UITooltip>
+                          ) : (
+                            "—"
+                          )}
+                        </TableCell>
                         <TableCell className="text-center">
                           {(() => {
                             const label =
@@ -736,7 +933,7 @@ export default function Admin() {
                               : t("profile.inactive")}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-center">{row.trial_days_left != null ? row.trial_days_left : "—"}</TableCell>
+                        <TableCell className="text-center font-medium">{row.trial_days_left != null ? row.trial_days_left : "—"}</TableCell>
                         <TableCell className="text-center">
                           {row.paid_amount != null && row.paid_amount !== 0
                             ? Number(row.paid_amount).toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 })
@@ -745,7 +942,7 @@ export default function Admin() {
                               : "—"}
                         </TableCell>
                         <TableCell className="text-center">{row.last_login_at ? row.last_login_at.slice(0, 10) : "—"}</TableCell>
-                        <TableCell className="text-center">{row.imports_30d}</TableCell>
+                        <TableCell className="text-center font-medium">{row.imports_30d}</TableCell>
                         <TableCell className="text-center">
                           {row.notes && row.notes.trim() ? (
                             <UITooltip>
@@ -884,6 +1081,7 @@ export default function Admin() {
                   )}
                 </TableBody>
               </Table>
+              </div>
               <div className="flex items-center justify-end mt-4">
                 <div className="flex gap-2">
                   <Button

@@ -107,6 +107,10 @@ class TenantRow(BaseModel):
     last_login_at: Optional[str] = None  # дата последнего входа
 
 
+class TenantShopsResponse(BaseModel):
+    tenant_id: str
+    shops: list[str] = []
+
 class DashboardFunnel(BaseModel):
     visited_site: int  # Зашли на сайт (уникальные пользователи с визитом)
     tried: int  # Попробовали (с хотя бы одной загрузкой)
@@ -1079,6 +1083,43 @@ async def admin_tenants_list(
         ))
 
     return TenantsListResponse(tenants=tenants_out, total_count=total)
+
+
+@router.get("/admin/tenants/{tenant_id}/shops", response_model=TenantShopsResponse)
+async def admin_tenant_shops(
+    tenant_id: UUID,
+    _: UUID = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Список магазинов по тенанту (для подсказки в админке).
+
+    Источник: dim_shop, те же магазины, что учитываются в shops_count:
+    - user_id = tenant_id
+    - shop_name не пустой и не '(Не определено)'.
+    """
+    uid = str(tenant_id)
+    shops: list[str] = []
+    try:
+        rows = db.execute(
+            text(
+                f"""
+                SELECT DISTINCT shop_name
+                FROM {qname('dim_shop')}
+                WHERE user_id = :uid
+                  AND shop_name IS NOT NULL
+                  AND TRIM(shop_name) <> ''
+                  AND COALESCE(trim(shop_name), '') != '(Не определено)'
+                ORDER BY shop_name
+                """
+            ),
+            {"uid": uid},
+        ).fetchall()
+        shops = [str(r[0]) for r in rows or []]
+    except Exception as e:
+        logger.debug("admin_tenant_shops failed for %s: %s", uid, e)
+
+    return TenantShopsResponse(tenant_id=uid, shops=shops)
 
 
 @router.get("/admin/tenants/{tenant_id}", response_model=TenantDetailResponse)
