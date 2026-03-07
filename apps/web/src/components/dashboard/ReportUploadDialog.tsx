@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
+import { Alert, AlertTitle } from "@/components/ui/alert";
 // TODO: Replace supabase with backend API calls
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -58,9 +59,11 @@ export function ReportUploadDialog({ disabled }: ReportUploadDialogProps) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [lastUploadDate, setLastUploadDate] = useState<string | null>(null);
   const [dragOverReportId, setDragOverReportId] = useState<string | null>(null);
+  const [showStoreLimitBanner, setShowStoreLimitBanner] = useState(false);
 
   useEffect(() => {
     if (open) {
+      setShowStoreLimitBanner(false);
       loadProducts();
       loadLastUpload();
     }
@@ -126,8 +129,8 @@ export function ReportUploadDialog({ disabled }: ReportUploadDialogProps) {
     }));
   };
 
-  const uploadFile = async (reportId: string, fileData: UploadedFile): Promise<boolean> => {
-    if (!fileData.file) return false;
+  const uploadFile = async (reportId: string, fileData: UploadedFile): Promise<{ success: boolean; storeLimitExceeded?: boolean }> => {
+    if (!fileData.file) return { success: false };
 
     setUploadedFiles(prev => ({
       ...prev,
@@ -162,7 +165,7 @@ export function ReportUploadDialog({ disabled }: ReportUploadDialogProps) {
 
         clearTimeout(timeoutId);
 
-        let result: { detail?: string; error?: string; rowsImported?: number } = {};
+        let result: { detail?: string; error?: string; rowsImported?: number; store_limit_exceeded?: boolean } = {};
         try {
           result = await response.json();
         } catch {
@@ -184,7 +187,7 @@ export function ReportUploadDialog({ disabled }: ReportUploadDialogProps) {
           }
         }));
 
-        return true;
+        return { success: true, storeLimitExceeded: result.store_limit_exceeded };
       } catch (fetchError: any) {
         clearTimeout(timeoutId);
         
@@ -203,7 +206,7 @@ export function ReportUploadDialog({ disabled }: ReportUploadDialogProps) {
           error: error.message || 'Ошибка загрузки',
         }
       }));
-      return false;
+      return { success: false };
     }
   };
 
@@ -222,14 +225,16 @@ export function ReportUploadDialog({ disabled }: ReportUploadDialogProps) {
 
     let successCount = 0;
     let totalRows = 0;
+    let anyStoreLimitExceeded = false;
 
     for (let i = 0; i < filesToUpload.length; i++) {
       const [reportId, fileData] = filesToUpload[i];
-      const success = await uploadFile(reportId, fileData);
+      const { success, storeLimitExceeded } = await uploadFile(reportId, fileData);
       
       if (success) {
         successCount++;
         totalRows += uploadedFiles[reportId]?.rowsImported || 0;
+        if (storeLimitExceeded) anyStoreLimitExceeded = true;
       }
       
       setUploadProgress(((i + 1) / filesToUpload.length) * 100);
@@ -240,19 +245,26 @@ export function ReportUploadDialog({ disabled }: ReportUploadDialogProps) {
     if (successCount === filesToUpload.length) {
       toast.success(`Успешно загружено ${successCount} отчётов`);
       loadLastUpload();
-      
+
       // TODO: Save ad mappings to backend API
       if (Object.keys(adIds).length > 0) {
         console.log('Ad mappings to save:', adIds);
         // For now, save to localStorage
         localStorage.setItem('product_ad_mappings', JSON.stringify(adIds));
       }
-      
-      // Закрыть модалку и перезагрузить страницу
-      setOpen(false);
-      setTimeout(() => {
-        window.location.reload();
-      }, 500); // Небольшая задержка для показа toast
+
+      if (anyStoreLimitExceeded) {
+        setShowStoreLimitBanner(true);
+        toast.warning(t('report.storeLimitExceeded'), { position: 'top-center' });
+        // Закрыть модалку и перезагрузить страницу после показа блока «Превышение допуска по магазинам»
+        setTimeout(() => {
+          setOpen(false);
+          window.location.reload();
+        }, 3000);
+      } else {
+        setOpen(false);
+        setTimeout(() => window.location.reload(), 500);
+      }
     } else if (successCount > 0) {
       toast.warning(`Загружено ${successCount} из ${filesToUpload.length} отчётов`);
     } else {
@@ -302,6 +314,14 @@ export function ReportUploadDialog({ disabled }: ReportUploadDialogProps) {
         <DialogHeader className="flex-shrink-0">
           <DialogTitle className="text-xl font-semibold">{t('report.uploadTitle')}</DialogTitle>
         </DialogHeader>
+
+        {/* Блок «Превышение допуска по магазинам» сверху */}
+        {showStoreLimitBanner && (
+          <Alert variant="destructive" className="flex-shrink-0 rounded-lg border-amber-500/50 bg-amber-500/10 text-amber-800 dark:text-amber-200 [&>svg]:text-amber-600">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>{t('report.storeLimitExceeded')}</AlertTitle>
+          </Alert>
+        )}
 
         <div className="flex-1 overflow-y-auto pr-2 -mr-2 min-h-0">
           {/* Info Block */}

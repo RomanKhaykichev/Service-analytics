@@ -66,6 +66,118 @@ def ensure_dev_user_exists(db: Session, user_id: UUID) -> None:
     except Exception as e:
         logger.warning("ensure_dev_user_exists: %s", e)
 
+
+# Магазины, исключаемые из лимита (как в shops.py)
+UNDEFINED_SHOP_NAMES = {
+    "не определено", "неопределено", "undefined", "null",
+    "(не определено)", "не определен",
+}
+
+
+def get_user_max_shops(db: Session, user_id: UUID) -> Optional[int]:
+    """
+    Возвращает лимит магазинов по тарифу: Month 5 -> 5, Month 10 -> 10, иначе None (без лимита).
+    Определение по users.email и users.plan.
+    """
+    try:
+        row = db.execute(
+            text(
+                f"SELECT email, COALESCE(plan, '') FROM {qname('users')} WHERE id = CAST(:uid AS uuid)"
+            ),
+            {"uid": str(user_id)},
+        ).fetchone()
+        if not row:
+            return None
+        email = (row[0] or "").strip().lower()
+        plan = (row[1] or "").strip().lower()
+        if email == "1@mail.ru":
+            return 5
+        if email == "uzb@yandex.ru":
+            return 10
+        if plan in ("month_5", "month 5", "month5"):
+            return 5
+        if plan in ("month_10", "month 10", "month10"):
+            return 10
+        return None
+    except Exception as e:
+        logger.warning("get_user_max_shops: %s", e)
+        return None
+
+
+def get_saved_shop_names(db: Session, user_id: UUID) -> list:
+    """
+    Список названий магазинов, сохранённых у пользователя (из dim_shop), без «не определено».
+    Отсортирован по shop_name для стабильного порядка (первые N = допуск по тарифу).
+    """
+    try:
+        excluded_sql = ", ".join(repr(s) for s in UNDEFINED_SHOP_NAMES)
+        result = db.execute(
+            text(f"""
+                SELECT shop_name FROM {qname('dim_shop')}
+                WHERE user_id = CAST(:user_id AS uuid)
+                  AND shop_name IS NOT NULL
+                  AND TRIM(shop_name) <> ''
+                  AND lower(TRIM(shop_name)) NOT IN ({excluded_sql})
+                ORDER BY shop_name
+            """),
+            {"user_id": str(user_id)},
+        )
+        return [row[0].strip() for row in result.fetchall() if row and row[0]]
+    except Exception as e:
+        logger.warning("get_saved_shop_names: %s", e)
+        return []
+
+
+def _file_shop_names_ordered(df: pd.DataFrame, shop_column: str = "Магазин") -> list:
+    """Уникальные названия магазинов из файла в порядке первого появления."""
+    if shop_column not in df.columns:
+        return []
+    series = df[shop_column].fillna("").astype(str).str.strip()
+    seen: set = set()
+    result = []
+    for v in series:
+        if v and v not in seen:
+            seen.add(v)
+            result.append(v)
+    return result
+
+
+def compute_allowed_shops(
+    saved_shops: list,
+    file_shop_names: list,
+    max_shops: Optional[int],
+) -> tuple[list, bool]:
+    """
+    Допуск по тарифу: все ранее сохранённые магазины + новые из файла до лимита.
+    Пример: было 2 сохранённых, тариф 5, в файле 7 магазинов → допуск = 2 + 3 новых = 5.
+    Возвращает (allowed_shops, store_limit_exceeded).
+    """
+    if max_shops is None:
+        allowed = list(dict.fromkeys(saved_shops + file_shop_names))
+        return allowed, False
+    allowed_set = set(saved_shops)
+    allowed_shops = list(saved_shops)
+    for shop in file_shop_names:
+        if shop not in allowed_set and len(allowed_shops) < max_shops:
+            allowed_shops.append(shop)
+            allowed_set.add(shop)
+    store_limit_exceeded = len(file_shop_names) > max_shops
+    return allowed_shops, store_limit_exceeded
+
+
+def filter_df_by_allowed_shops(
+    df: pd.DataFrame,
+    allowed_shop_names: list,
+    shop_column: str = "Магазин",
+) -> pd.DataFrame:
+    """Оставляет в df только строки, у которых магазин входит в allowed_shop_names."""
+    if not allowed_shop_names or shop_column not in df.columns:
+        return df
+    allowed_set = {str(s).strip() for s in allowed_shop_names}
+    series = df[shop_column].fillna("").astype(str).str.strip()
+    return df[series.isin(allowed_set)].copy()
+
+
 # Маппинги колонок (из import/import_batch.py)
 SHEETS = {
     "sales": "Отчет по продажам",
@@ -1358,6 +1470,7 @@ async def import_xlsx(
     
     # Start transaction - all operations in one transaction
     try:
+        store_limit_exceeded = False
         ensure_dev_user_exists(db, user_id)
         # Step 1: Delete old data ONLY for this report type (overwrite per reportType)
         # This keeps other report types (e.g. inventory vs sales) intact.
@@ -1484,6 +1597,23 @@ async def import_xlsx(
                     detail=f"ОШИБКА МАППИНГА: Колонка 'SKU' НЕ должна маппиться в 'shop_raw', должна маппиться в 'sku_raw'"
                 )
         
+        # Ограничение по тарифу: сохранённые магазины + новые из файла до лимита (например 2 было + 3 из файла = 5)
+        store_limit_exceeded = False
+        if reportType in ("inventory", "storage") and "Магазин" in df.columns:
+            saved_shops = get_saved_shop_names(db, user_id)
+            max_shops = get_user_max_shops(db, user_id)
+            file_shop_names = _file_shop_names_ordered(df, "Магазин")
+            if max_shops is not None:
+                allowed_shops, store_limit_exceeded = compute_allowed_shops(
+                    saved_shops, file_shop_names, max_shops
+                )
+                df = filter_df_by_allowed_shops(df, allowed_shops, "Магазин")
+                if df.empty and store_limit_exceeded:
+                    logger.warning(
+                        "Import: no rows left after shop limit (tariff max_shops=%s); file had shops outside allowed list",
+                        max_shops,
+                    )
+
         # Step 5: Load to staging
         staging_table = {
             "sales": "stg_sales",
@@ -1603,7 +1733,8 @@ async def import_xlsx(
             "reportType": reportType,
             "upload_batch_id": batch_id,
             "saved_as": saved_as,
-            "rowsImported": rows_imported
+            "rowsImported": rows_imported,
+            "store_limit_exceeded": store_limit_exceeded,
         }
     
     except HTTPException:
@@ -1726,6 +1857,9 @@ async def import_xlsx_batch(
         
         imported_counts = {}
         saved_paths = {}
+        batch_store_limit_exceeded = False
+        saved_shops = get_saved_shop_names(db, user_id)
+        max_shops = get_user_max_shops(db, user_id)
         
         for report_type, file_obj, file_name, file_type, sheet_name, mapping, staging_table in import_order:
             try:
@@ -1770,6 +1904,15 @@ async def import_xlsx_batch(
                         detail=f"{report_type}: {str(e)}"
                     )
                 
+                # Ограничение по тарифу: сохранённые + новые из файла до лимита
+                if report_type in ("inventory", "storage") and "Магазин" in df.columns and max_shops is not None:
+                    file_shop_names = _file_shop_names_ordered(df, "Магазин")
+                    allowed_shops, exceeded = compute_allowed_shops(
+                        saved_shops, file_shop_names, max_shops
+                    )
+                    df = filter_df_by_allowed_shops(df, allowed_shops, "Магазин")
+                    batch_store_limit_exceeded = batch_store_limit_exceeded or exceeded
+                
                 # Load to staging
                 try:
                     to_staging(df, mapping, str(user_id), batch_id, staging_table, db, file_type)
@@ -1792,6 +1935,10 @@ async def import_xlsx_batch(
                         status_code=500,
                         detail=f"Error populating {report_type} fact tables: {str(e)}"
                     )
+                
+                # После inventory/storage обновляем список сохранённых магазинов для следующего файла (лимит тарифа)
+                if report_type in ("inventory", "storage"):
+                    saved_shops = get_saved_shop_names(db, user_id)
                 
                 logger.info(f"Imported {report_type}: {rows_imported} rows, batch_id={batch_id}")
                 
@@ -1829,7 +1976,8 @@ async def import_xlsx_batch(
             "ok": True,
             "upload_batch_id": batch_id,
             "imported": imported_counts,
-            "saved_as": saved_paths
+            "saved_as": saved_paths,
+            "store_limit_exceeded": batch_store_limit_exceeded,
         }
     
     except HTTPException:
