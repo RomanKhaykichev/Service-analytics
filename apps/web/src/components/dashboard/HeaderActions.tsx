@@ -74,7 +74,13 @@ export function HeaderActions() {
   return (
     <div className="flex items-center gap-6">
       {/* Report Upload */}
-      <ReportUploadDialog disabled={isTrialExpired} />
+      <ReportUploadDialog
+        disabled={isTrialExpired}
+        onOpenExtendTariff={() => {
+          setExtendVariant("extend");
+          setExtendTariffOpen(true);
+        }}
+      />
 
       {/* Help */}
       <DropdownMenu>

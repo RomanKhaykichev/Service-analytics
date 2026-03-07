@@ -245,7 +245,7 @@ const Products = () => {
   const [groupBy, setGroupBy] = useState<string | null>(null);
 
   const formatPrice = (price: number) => {
-    return new Intl.NumberFormat("ru-RU").format(price) + " сум";
+    return new Intl.NumberFormat("ru-RU").format(price) + " " + t("common.sum");
   };
 
   const formatNumber = (num: number) => {

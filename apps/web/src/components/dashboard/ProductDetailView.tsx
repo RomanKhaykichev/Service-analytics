@@ -85,6 +85,7 @@ export function ProductDetailView({
   dateTo,
   totalRevenue: totalRevenueProp = 0,
 }: ProductDetailViewProps) {
+  const { t } = useLanguage();
   const [comment, setComment] = useState("");
   const queryClient = useQueryClient();
 
@@ -244,7 +245,7 @@ export function ProductDetailView({
   };
 
   const formatPrice = (price: number) => {
-    return new Intl.NumberFormat("ru-RU").format(price) + " сум";
+    return new Intl.NumberFormat("ru-RU").format(price) + " " + t("common.sum");
   };
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat("ru-RU").format(num);
@@ -325,7 +326,6 @@ export function ProductDetailView({
         )
       : product.price * product.stock;
 
-  const { t } = useLanguage();
   const salesMetrics = [
     { icon: <ShoppingCart className="w-4 h-4" />, label: t('summary.sales.orders'), value: formatQuantity(product.sales), subValue: formatCurrency(ordersValue), tooltip: t('summary.sales.ordersTooltip') },
     { icon: <Truck className="w-4 h-4" />, label: t('summary.sales.processing'), value: formatQuantity(0), subValue: formatCurrency(processingValue), tooltip: t('summary.sales.processingTooltip') },

@@ -303,7 +303,7 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
                     formatter={(value: number, name: string) => {
                       const series = CHART_SERIES.find((s) => s.key === name);
                       const formatted = formatNumber(Number(value));
-                      const suffix = series?.axis === "money" ? " сум" : "";
+                      const suffix = series?.axis === "money" ? ` ${t("common.sum")}` : "";
                       return [formatted + suffix, series?.label ?? name];
                     }}
                   />

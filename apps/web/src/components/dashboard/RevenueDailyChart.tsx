@@ -279,12 +279,12 @@ export function RevenueDailyChart({
                 if (entry?.dataKey === "revenueValue") {
                   const payload = entry?.payload;
                   const v = payload?.revenueValue ?? value;
-                  return [`${v.toLocaleString("ru-RU")} сум`, t('summary.finance.revenue')];
+                  return [`${v.toLocaleString("ru-RU")} ${t("common.sum")}`, t('summary.finance.revenue')];
                 }
                 if (entry?.dataKey === "profitValue") {
                   const payload = entry?.payload;
                   const v = payload?.profitValue ?? value;
-                  return [`${Math.round(v).toLocaleString("ru-RU")} сум`, t('summary.finance.profit')];
+                  return [`${Math.round(v).toLocaleString("ru-RU")} ${t("common.sum")}`, t('summary.finance.profit')];
                 }
                 if (entry?.dataKey === "ordersClamped") {
                   const payload = entry?.payload;

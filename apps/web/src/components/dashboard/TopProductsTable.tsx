@@ -10,6 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const products = [
   {
@@ -70,8 +71,9 @@ const products = [
 ];
 
 export function TopProductsTable() {
+  const { t } = useLanguage();
   const formatPrice = (price: number) => {
-    return new Intl.NumberFormat("ru-RU").format(price) + " сум";
+    return new Intl.NumberFormat("ru-RU").format(price) + " " + t("common.sum");
   };
 
   return (
