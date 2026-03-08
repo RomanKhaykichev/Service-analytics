@@ -157,7 +157,7 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
     const aggregated: ProductsTableItemType[] = [];
     for (const [, rows] of groups) {
       const first = rows[0];
-      const same = <T>(get: (r: ProductsTableItemType) => T) => {
+      const same = <T,>(get: (r: ProductsTableItemType) => T) => {
         const v = get(rows[0]);
         return rows.every((r) => get(r) === v) ? v : null;
       };

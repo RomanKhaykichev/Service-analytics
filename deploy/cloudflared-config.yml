@@ -1,0 +1,19 @@
+# Cloudflare Tunnel config for Service-analytics (profiboard.uz)
+# Place this file and run: cloudflared tunnel --config deploy/cloudflared-config.yml run <TUNNEL_NAME>
+#
+# Prerequisites:
+# - Frontend: npm run build && npm run preview:prod (preview on http://127.0.0.1:8080)
+# - Backend:  uvicorn in apps/api on :8000
+# - Tunnel created and DNS routes added (see docs/CLOUDFLARE_TUNNEL_SETUP.md)
+
+tunnel: 49adc12e-8a82-43e8-a3ec-fa0a3fb0db93
+credentials-file: C:\Users\mrrom\.cloudflared\49adc12e-8a82-43e8-a3ec-fa0a3fb0db93.json
+
+ingress:
+  - hostname: profiboard.uz
+    service: http://127.0.0.1:8080
+  - hostname: www.profiboard.uz
+    service: http://127.0.0.1:8080
+  - hostname: api.profiboard.uz
+    service: http://127.0.0.1:8000
+  - service: http_status:404

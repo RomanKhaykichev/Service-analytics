@@ -39,24 +39,18 @@ export function getAuthHeaders(): Record<string, string> {
 
 /**
  * Get API base URL from env or default
- * In development, use relative path to leverage Vite proxy
- * In production, use full URL from env
+ * In development, always use relative path so Vite proxy sends /api to local backend.
+ * In production, use VITE_API_URL or fallback to 127.0.0.1:8000.
  */
 export function getApiBaseUrl(): string {
+  // In development, always use relative path → Vite proxy → http://127.0.0.1:8000
+  if (import.meta.env.DEV || import.meta.env.MODE === 'development') {
+    return '';
+  }
   const apiUrl = import.meta.env.VITE_API_URL;
-  
-  // If VITE_API_URL is set, use it (for production or custom setup)
   if (apiUrl) {
     return apiUrl;
   }
-  
-  // In development, use relative path to leverage Vite proxy
-  // This allows /api/* requests to be proxied to backend
-  if (import.meta.env.DEV || import.meta.env.MODE === 'development') {
-    return ''; // Empty string means relative path
-  }
-  
-  // Fallback for production without env var
   return "http://127.0.0.1:8000";
 }
 

@@ -1599,6 +1599,7 @@ async def import_xlsx(
         
         # Ограничение по тарифу: сохранённые магазины + новые из файла до лимита (например 2 было + 3 из файла = 5)
         store_limit_exceeded = False
+        store_limit_max: Optional[int] = None  # для ответа при store_limit_exceeded
         if reportType in ("inventory", "storage") and "Магазин" in df.columns:
             saved_shops = get_saved_shop_names(db, user_id)
             max_shops = get_user_max_shops(db, user_id)
@@ -1607,6 +1608,8 @@ async def import_xlsx(
                 allowed_shops, store_limit_exceeded = compute_allowed_shops(
                     saved_shops, file_shop_names, max_shops
                 )
+                if store_limit_exceeded:
+                    store_limit_max = max_shops
                 df = filter_df_by_allowed_shops(df, allowed_shops, "Магазин")
                 if df.empty and store_limit_exceeded:
                     logger.warning(
@@ -1728,7 +1731,11 @@ async def import_xlsx(
             f"stg_leftout_old={stg_leftout_old_count}, fact_leftout_old_snapshot={leftout_old_count}, saved_as={saved_as}"
         )
         
-        return {
+        store_limit_current: Optional[int] = None
+        if store_limit_exceeded and store_limit_max is not None:
+            store_limit_current = len(get_saved_shop_names(db, user_id))
+        
+        out = {
             "ok": True,
             "reportType": reportType,
             "upload_batch_id": batch_id,
@@ -1736,6 +1743,10 @@ async def import_xlsx(
             "rowsImported": rows_imported,
             "store_limit_exceeded": store_limit_exceeded,
         }
+        if store_limit_exceeded:
+            out["store_limit_max"] = store_limit_max
+            out["store_limit_current"] = store_limit_current
+        return out
     
     except HTTPException:
         db.rollback()
@@ -1972,13 +1983,17 @@ async def import_xlsx_batch(
             f"imported={imported_counts}, saved_as={saved_paths}"
         )
         
-        return {
+        out_batch = {
             "ok": True,
             "upload_batch_id": batch_id,
             "imported": imported_counts,
             "saved_as": saved_paths,
             "store_limit_exceeded": batch_store_limit_exceeded,
         }
+        if batch_store_limit_exceeded and max_shops is not None:
+            out_batch["store_limit_max"] = max_shops
+            out_batch["store_limit_current"] = len(get_saved_shop_names(db, user_id))
+        return out_batch
     
     except HTTPException:
         db.rollback()

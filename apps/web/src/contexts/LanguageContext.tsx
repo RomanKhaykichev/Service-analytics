@@ -329,7 +329,6 @@ const translations: Record<Language, Record<string, string>> = {
 
     // Products table columns
     'table.productName': 'Наименование',
-    'table.price': 'Цена',
     'table.turnover': 'Оборач-ть',
     'table.sizeGroup': 'Габаритная группа',
     'table.storagePerDay': 'Хранение сут/сум',
@@ -785,7 +784,6 @@ const translations: Record<Language, Record<string, string>> = {
     'monthly.indicator': 'Ko\'rsatkich',
 
     'table.productName': 'Tovar nomi',
-    'table.price': 'Narx',
     'table.turnover': 'Aylanma',
     'table.sizeGroup': 'O\'lchamlar guruhi',
     'table.storagePerDay': 'Saqlash kun/so\'m',
