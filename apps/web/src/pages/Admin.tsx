@@ -732,7 +732,12 @@ export default function Admin() {
               placeholder="Поиск (email, имя, ID)..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && setPage(1) && fetchTenants()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  setPage(1);
+                  fetchTenants();
+                }
+              }}
               className="max-w-xs"
             />
             <Select value={planFilter} onValueChange={setPlanFilter}>
@@ -896,30 +901,45 @@ export default function Admin() {
                         </TableCell>
                         <TableCell className="text-center">
                           {(() => {
-                            const label =
-                              row.owner_email === "asparrow48@gmail.com"
-                                ? "Silver"
-                                : row.owner_email === "mr.romanx@mail.ru"
-                                  ? "Gold"
-                                  : row.owner_email === "1@mail.ru"
-                                    ? "Month 5"
-                                    : row.owner_email === "uzb@yandex.ru"
-                                      ? "Month 10"
-                                      : (row.plan || "").toLowerCase() === "trial"
-                                        ? "Trial 10"
-                                        : row.plan || "—";
+                            const rawPlan = (row.plan || "").trim().toLowerCase();
+                            const email = (row.owner_email || "").trim().toLowerCase();
+                            let label: string;
+
+                            // Админы — всегда Gold
+                            if (email === "mr.romanx@mail.ru" || email === "asparrow48@gmail.com") {
+                              label = "Gold";
+                            }
+                            // Спец-аккаунты по email для Month 5 / Month 10
+                            else if (email === "1@mail.ru") {
+                              label = "Month 5";
+                            } else if (email === "uzb@yandex.ru") {
+                              label = "Month 10";
+                            }
+                            // План из БД
+                            else if (!rawPlan || rawPlan === "trial") {
+                              label = "Trial 10";
+                            } else if (rawPlan === "month_5" || rawPlan === "month 5" || rawPlan === "month5") {
+                              label = "Month 5";
+                            } else if (rawPlan === "month_10" || rawPlan === "month 10" || rawPlan === "month10") {
+                              label = "Month 10";
+                            } else if (rawPlan === "gold" || rawPlan === "gold_plan") {
+                              label = "Gold";
+                            } else {
+                              // Неподдержанные значения показываем как есть
+                              label = row.plan || "—";
+                            }
+
                             const pillClass =
                               label === "Trial 10"
                                 ? "bg-gradient-to-br from-sky-100 via-slate-100 to-amber-50 text-gray-800 shadow-sm shadow-gray-400/25"
-                                : label === "Silver"
-                                  ? "bg-gradient-to-br from-slate-200 via-gray-100 to-slate-300 text-slate-800 shadow-sm shadow-slate-400/30"
-                                  : label === "Gold"
-                                    ? "bg-gradient-to-br from-amber-200 via-yellow-100 to-amber-400 text-amber-900 shadow-md shadow-amber-500/40"
-                                    : label === "Month 5"
-                                      ? "bg-gradient-to-r from-indigo-300 to-violet-100 text-indigo-900"
-                                      : label === "Month 10"
-                                        ? "bg-blue-400 text-white shadow-md shadow-blue-600/30"
-                                        : "bg-muted text-muted-foreground";
+                                : label === "Gold"
+                                  ? "bg-gradient-to-br from-amber-200 via-yellow-100 to-amber-400 text-amber-900 shadow-md shadow-amber-500/40"
+                                  : label === "Month 5"
+                                    ? "bg-gradient-to-r from-indigo-300 to-violet-100 text-indigo-900"
+                                    : label === "Month 10"
+                                      ? "bg-blue-400 text-white shadow-md shadow-blue-600/30"
+                                      : "bg-muted text-muted-foreground";
+
                             return (
                               <span
                                 className={`inline-block rounded-full px-3 py-1.5 text-sm font-medium ${pillClass}`}

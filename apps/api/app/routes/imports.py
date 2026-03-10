@@ -78,25 +78,46 @@ def get_user_max_shops(db: Session, user_id: UUID) -> Optional[int]:
     """
     Возвращает лимит магазинов по тарифу: Trial 10 -> 1, Month 5 -> 5, Month 10 -> 10.
     Определение только по users.plan (без спец-аккаунтов по email).
+    Для тарифа Gold и админов лимит НЕ применяется (безлимит по магазинам).
     """
     try:
         row = db.execute(
             text(
-                f"SELECT COALESCE(plan, '') FROM {qname('users')} WHERE id = CAST(:uid AS uuid)"
+                f"SELECT email, COALESCE(plan, '') FROM {qname('users')} WHERE id = CAST(:uid AS uuid)"
             ),
             {"uid": str(user_id)},
         ).fetchone()
         if not row:
             return None
-        plan = (row[0] or "").strip().lower()
+        email = (row[0] or "").strip().lower()
+        plan = (row[1] or "").strip().lower()
+
+        # Админы (ADMIN_USER_IDS по email или UUID) — безлимит по магазинам
+        settings = get_settings()
+        raw_admin_ids = (settings.ADMIN_USER_IDS or "").strip()
+        admin_ids = {s.strip().lower() for s in raw_admin_ids.split(",") if s.strip()}
+        if admin_ids:
+            if str(user_id).lower() in admin_ids or (email and email in admin_ids):
+                return None
+
+        # Gold — безлимитное количество магазинов (лимит не применяется)
+        if plan in ("gold", "gold_plan"):
+            return None
+
+        # Month 5 — до 5 магазинов
         if plan in ("month_5", "month 5", "month5"):
             return 5
+
+        # Month 10 — до 10 магазинов
         if plan in ("month_10", "month 10", "month10"):
             return 10
-        # Trial 10 — 1 магазин (как у Month 5/10, но лимит 1)
-        if plan in ("trial", "") or not plan:
+
+        # Trial 10 и любые другие / пустые значения — 1 магазин по умолчанию
+        if plan in ("trial", "", None) or not plan:
             return 1
-        return None
+
+        # Неподдержанные значения плана — тоже 1 магазин (fail-safe)
+        return 1
     except Exception as e:
         logger.warning("get_user_max_shops: %s", e)
         return None
@@ -743,6 +764,107 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
     """Populate fact tables from staging tables. Returns number of rows inserted."""
     user_id_str = str(user_id)
     params = {"user_id": user_id_str, "batch_id": batch_id}
+
+    # Определяем тариф пользователя (для Trial 10 ограничиваем данные последними 60 днями
+    # относительно последней даты в выгрузке по соответствующему типу отчёта).
+    try:
+        plan_row = db.execute(
+            text(f"SELECT COALESCE(plan, 'trial') FROM {qname('users')} WHERE id = CAST(:uid AS uuid)"),
+            {"uid": user_id_str},
+        ).fetchone()
+        plan_val = (plan_row[0] or "trial").strip().lower() if plan_row else "trial"
+    except Exception as e:
+        logger.warning("populate_facts: failed to read user plan for user_id=%s: %s", user_id_str, e)
+        plan_val = "trial"
+
+    is_trial_plan = plan_val in ("trial", "", None) or not plan_val
+    params["is_trial_plan"] = is_trial_plan
+
+    # Для Trial 10 считаем "последние 60 дней" от последней даты в выгрузке (а не от now()).
+    trial_cutoff_date = None
+    if is_trial_plan:
+        try:
+            if report_type == "sales":
+                # Максимальная дата продаж с тем же выражением, что и в CTE casted.date_created
+                trial_cutoff_date = db.execute(
+                    text(
+                        f"""
+                        SELECT MAX(
+                          CASE
+                            WHEN created_at_raw ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}'
+                              THEN created_at_raw::timestamptz
+                            WHEN created_at_raw ~ '^\\d{{2}}\\.\\d{{2}}\\.\\d{{4}}'
+                              THEN to_timestamp(
+                                substring(trim(created_at_raw) from '^[0-9]{{2}}\\.[0-9]{{2}}\\.[0-9]{{4}}'),
+                                'DD.MM.YYYY'
+                              )::timestamptz
+                            WHEN (created_at_raw ~ '^\\d+(\\.\\d*)?$' OR created_at_raw ~ '^\\d+,\\d*$')
+                                 AND replace(created_at_raw, ',', '.')::numeric > 0
+                              THEN (
+                                CASE
+                                  WHEN (timestamp '1899-12-30'
+                                        + (replace(created_at_raw, ',', '.')::numeric * interval '1 day'))::date < '2024-01-01'::date
+                                    THEN (timestamp '1904-01-01'
+                                          + (replace(created_at_raw, ',', '.')::numeric * interval '1 day'))::timestamptz
+                                    ELSE (timestamp '1899-12-30'
+                                          + (replace(created_at_raw, ',', '.')::numeric * interval '1 day'))::timestamptz
+                                END
+                              )
+                            ELSE NULL
+                          END
+                        )
+                        FROM {qname('stg_sales')}
+                        WHERE user_id = CAST(:user_id AS uuid)
+                          AND upload_batch_id = CAST(:batch_id AS uuid)
+                        """
+                    ),
+                    params,
+                ).scalar()
+            elif report_type == "expenses":
+                # Максимальная дата списания с тем же выражением, что и в CTE casted.date_written_off
+                trial_cutoff_date = db.execute(
+                    text(
+                        f"""
+                        SELECT MAX(
+                          CASE
+                            WHEN written_off_raw ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}'
+                              THEN written_off_raw::timestamptz
+                            WHEN written_off_raw ~ '^\\d{{2}}\\.\\d{{2}}\\.\\d{{4}}'
+                              THEN to_timestamp(
+                                substring(trim(written_off_raw) from '^[0-9]{{2}}\\.[0-9]{{2}}\\.[0-9]{{4}}'),
+                                'DD.MM.YYYY'
+                              )::timestamptz
+                            WHEN (written_off_raw ~ '^\\d+(\\.\\d*)?$' OR written_off_raw ~ '^\\d+,\\d*$')
+                                 AND replace(written_off_raw, ',', '.')::numeric > 0
+                              THEN (
+                                CASE
+                                  WHEN (timestamp '1899-12-30'
+                                        + (replace(written_off_raw, ',', '.')::numeric * interval '1 day'))::date < '2024-01-01'::date
+                                    THEN (timestamp '1904-01-01'
+                                          + (replace(written_off_raw, ',', '.')::numeric * interval '1 day'))::timestamptz
+                                    ELSE (timestamp '1899-12-30'
+                                          + (replace(written_off_raw, ',', '.')::numeric * interval '1 day'))::timestamptz
+                                END
+                              )
+                            ELSE NULL
+                          END
+                        )
+                        FROM {qname('stg_expenses')}
+                        WHERE user_id = CAST(:user_id AS uuid)
+                          AND upload_batch_id = CAST(:batch_id AS uuid)
+                        """
+                    ),
+                    params,
+                ).scalar()
+        except Exception as e:
+            logger.warning(
+                "populate_facts: failed to compute trial cutoff date for user_id=%s, report_type=%s: %s",
+                user_id_str,
+                report_type,
+                e,
+            )
+
+    params["trial_cutoff_date"] = trial_cutoff_date
     
     if report_type == "sales":
         # Delete old batch data first
@@ -856,6 +978,11 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
             FROM casted
             WHERE date_created IS NOT NULL
               AND barcode IS NOT NULL
+              AND (
+                :is_trial_plan = false
+                OR :trial_cutoff_date IS NULL
+                OR date_created >= (:trial_cutoff_date - interval '60 days')
+              )
             ON CONFLICT (user_id, order_no, barcode, date_created) DO UPDATE
             SET
                 upload_batch_id = EXCLUDED.upload_batch_id,
@@ -1091,6 +1218,11 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                 COALESCE(cost_sum, 0), qty, COALESCE(amount_sum, 0), operation_type
             FROM casted
             WHERE date_written_off IS NOT NULL
+              AND (
+                :is_trial_plan = false
+                OR :trial_cutoff_date IS NULL
+                OR date_written_off >= (:trial_cutoff_date - interval '60 days')
+              )
             ON CONFLICT (user_id, operation_id) DO UPDATE
             SET
                 upload_batch_id = EXCLUDED.upload_batch_id,
