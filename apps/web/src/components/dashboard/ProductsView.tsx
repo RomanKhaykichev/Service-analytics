@@ -472,7 +472,7 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
       ) : (
       <div className="data-table animate-fade-in rounded-lg border border-border">
         <div className="overflow-x-auto overflow-y-visible">
-          <Table className="min-w-[1600px]">
+          <Table className="min-w-[1100px] md:min-w-[1400px] lg:min-w-[1600px]">
             <TableHeader>
               <TableRow className="bg-violet-50/80 dark:bg-violet-950/30 border-border">
                 <SortableHeader field="product_name" className="min-w-[400px] max-w-[400px] sticky left-0 bg-violet-50 dark:bg-violet-950 z-10 border-r border-border text-center">

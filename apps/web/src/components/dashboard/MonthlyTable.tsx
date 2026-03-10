@@ -100,7 +100,7 @@ export function MonthlyTable({ year, shop = null, taxPercent }: MonthlyTableProp
         ) : error ? (
           <div className="p-6 text-destructive text-sm">{error}</div>
         ) : (
-          <Table className="table-fixed border-collapse [&_th]:border-r [&_td]:border-r [&_th:last-child]:border-r-0 [&_td:last-child]:border-r-0 [&_th:first-child]:border-border [&_td:first-child]:border-border [&_th:not(:first-child)]:border-border/50 [&_td:not(:first-child)]:border-border/50">
+          <Table className="table-fixed border-collapse min-w-[1400px] [&_th]:border-r [&_td]:border-r [&_th:last-child]:border-r-0 [&_td:last-child]:border-r-0 [&_th:first-child]:border-border [&_td:first-child]:border-border [&_th:not(:first-child)]:border-border/50 [&_td:not(:first-child)]:border-border/50">
             <TableHeader>
               <TableRow className="bg-violet-50/80 dark:bg-violet-950/30 border-border">
                 <TableHead className="w-[140px] min-w-[140px] max-w-[140px] font-semibold text-foreground sticky left-0 bg-violet-50/80 dark:bg-violet-950/30 z-10 border-r border-border">

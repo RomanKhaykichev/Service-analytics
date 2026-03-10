@@ -755,7 +755,7 @@ export default function Admin() {
           ) : tenants ? (
             <>
               <div className="overflow-x-auto -mx-1">
-                <Table className="min-w-[1600px] [&_th]:h-10 [&_th]:py-2 [&_th]:px-3 [&_td]:py-2 [&_td]:px-3">
+                <Table className="min-w-[1100px] md:min-w-[1400px] lg:min-w-[1600px] [&_th]:h-10 [&_th]:py-2 [&_th]:px-3 [&_td]:py-2 [&_td]:px-3">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="sticky left-0 z-10 bg-card border-r border-border min-w-[200px] max-w-[260px]">Аккаунт</TableHead>

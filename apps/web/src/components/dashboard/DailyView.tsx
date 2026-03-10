@@ -342,16 +342,17 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
           ) : errorTable ? (
             <div className="py-8 text-center text-destructive">{t('daily.loadError')}</div>
           ) : (
-            <Table className="table-fixed w-full min-w-[800px]">
+            <Table className="table-auto w-full min-w-[1100px] md:min-w-[1300px] lg:min-w-[1500px]">
               <TableHeader>
                 <TableRow className="bg-violet-50/80 dark:bg-violet-950/30 border-border">
-                  {columns.map((col) => (
+                  {columns.map((col, index) => (
                     <TableHead
                       key={col.key}
                       className={cn(
                         "text-muted-foreground px-2 py-1 bg-violet-50/80 dark:bg-violet-950/30",
                         isUz ? "whitespace-normal break-words min-w-0" : "whitespace-nowrap",
-                        col.key === "dateFormatted" ? "text-left" : "text-center"
+                        col.key === "dateFormatted" ? "text-left" : "text-center",
+                        index === 0 && "sticky left-0 z-10 bg-violet-50/80 dark:bg-violet-950/30 border-r border-border min-w-[120px] max-w-[160px]"
                       )}
                     >
                       <button
@@ -396,7 +397,7 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
                 ) : (
                   filteredAndSortedData.map((row, idx) => (
                     <TableRow key={row.date ?? idx} className="border-border hover:bg-muted/50">
-                      <TableCell className="font-medium text-foreground px-2 py-1 whitespace-nowrap text-left min-w-0">
+                      <TableCell className="font-medium text-foreground px-2 py-1 whitespace-nowrap text-left min-w-0 sticky left-0 z-10 bg-card border-r border-border min-w-[120px] max-w-[160px]">
                         {row.dateFormatted}
                       </TableCell>
                       <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.orders)}</TableCell>
