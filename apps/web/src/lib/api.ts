@@ -1,6 +1,7 @@
 /**
  * API utility for making requests to backend.
- * Uses JWT (Authorization: Bearer) when logged in; falls back to X-User-Id for dev.
+ * Uses JWT (Authorization: Bearer) when logged in.
+ * Refresh-токен хранится в HttpOnly cookie и используется только на сервере.
  */
 
 const ACCESS_TOKEN_KEY = "access_token";
@@ -27,14 +28,15 @@ export function clearAuthTokens(): void {
 }
 
 /**
- * Headers for authenticated API calls: Bearer token if present, else X-User-Id (dev).
+ * Headers for authenticated API calls: Bearer token if present.
  */
 export function getAuthHeaders(): Record<string, string> {
   const token = getAccessToken();
   if (token) {
     return { Authorization: `Bearer ${token}` };
   }
-  return { "X-User-Id": getDevUserId() };
+  // No auth headers when there is no token – backend will return 401 и фронт обработает разлогин.
+  return {};
 }
 
 /**
@@ -169,6 +171,75 @@ export function getVisitorKey(): string {
   }
 }
 
+// --- Централизованный refresh flow ---
+
+let refreshPromise: Promise<void> | null = null;
+
+async function performTokenRefresh(): Promise<void> {
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+  refreshPromise = (async () => {
+    try {
+      // Тело запроса пустое: refresh-токен берётся из HttpOnly cookie
+      const res = await apiPostNoAuth<{ access_token: string; refresh_token: string }>('/api/auth/refresh', {});
+      setAuthTokens(res.access_token, res.refresh_token);
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
+}
+
+class AuthExpiredError extends Error {
+  constructor(message = 'AUTH_EXPIRED') {
+    super(message);
+    this.name = 'AuthExpiredError';
+  }
+}
+
+async function handleWithRefresh(path: string, init: RequestInit): Promise<Response> {
+  const baseUrl = getApiBaseUrl();
+  const url = buildUrl(baseUrl, path, init.method === 'GET' ? (init as any).params : undefined);
+
+  // Первый запрос
+  let response = await fetch(url, {
+    ...init,
+    credentials: 'include',
+  });
+
+  if (response.status !== 401) {
+    return response;
+  }
+
+  // 401: пробуем обновить access-токен через refresh cookie
+  try {
+    await performTokenRefresh();
+  } catch {
+    clearAuthTokens();
+    throw new AuthExpiredError();
+  }
+
+  // Повторяем исходный запрос с обновлённым access-токеном
+  const retryHeaders = {
+    ...(init.headers ?? {}),
+    ...getAuthHeaders(),
+  };
+
+  response = await fetch(url, {
+    ...init,
+    headers: retryHeaders,
+    credentials: 'include',
+  });
+
+  if (response.status === 401) {
+    clearAuthTokens();
+    throw new AuthExpiredError();
+  }
+
+  return response;
+}
+
 /**
  * POST without auth (for login/register).
  */
@@ -180,6 +251,7 @@ export async function apiPostNoAuth<T>(path: string, body: any): Promise<T> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      credentials: "include",
     });
     if (!response.ok) {
       const text = await response.text();
@@ -215,14 +287,15 @@ export async function apiPostNoAuth<T>(path: string, body: any): Promise<T> {
  * Make GET request to API
  */
 export async function apiGet<T>(path: string, params?: Record<string, any>): Promise<T> {
-  const baseUrl = getApiBaseUrl();
-  const url = buildUrl(baseUrl, path, params);
-  
-  const response = await fetch(url, {
+  const headers = {
+    ...getAuthHeaders(),
+  };
+
+  const response = await handleWithRefresh(path, {
     method: "GET",
-    headers: {
-      ...getAuthHeaders(),
-    },
+    headers,
+    // params пробрасываем только для buildUrl внутри handleWithRefresh
+    ...(params ? { params } as any : {}),
   });
 
   if (!response.ok) {
@@ -237,11 +310,8 @@ export async function apiGet<T>(path: string, params?: Record<string, any>): Pro
  * Make POST request to API
  */
 export async function apiPost<T>(path: string, body: any): Promise<T> {
-  const baseUrl = getApiBaseUrl();
-  const url = buildUrl(baseUrl, path);
-  
   try {
-    const response = await fetch(url, {
+    const response = await handleWithRefresh(path, {
       method: "POST",
       headers: {
         ...getAuthHeaders(),
@@ -272,11 +342,8 @@ export async function apiPost<T>(path: string, body: any): Promise<T> {
  * Make PUT request to API
  */
 export async function apiPut<T>(path: string, body: any): Promise<T> {
-  const baseUrl = getApiBaseUrl();
-  const url = buildUrl(baseUrl, path);
-  
   try {
-    const response = await fetch(url, {
+    const response = await handleWithRefresh(path, {
       method: "PUT",
       headers: {
         ...getAuthHeaders(),
@@ -313,11 +380,8 @@ export async function apiPut<T>(path: string, body: any): Promise<T> {
  * Make PATCH request to API
  */
 export async function apiPatch<T>(path: string, body: any): Promise<T> {
-  const baseUrl = getApiBaseUrl();
-  const url = buildUrl(baseUrl, path);
-  
   try {
-    const response = await fetch(url, {
+    const response = await handleWithRefresh(path, {
       method: "PATCH",
       headers: {
         ...getAuthHeaders(),
@@ -347,11 +411,8 @@ export async function apiPatch<T>(path: string, body: any): Promise<T> {
  * Make DELETE request to API
  */
 export async function apiDelete<T>(path: string): Promise<T> {
-  const baseUrl = getApiBaseUrl();
-  const url = buildUrl(baseUrl, path);
-  
   try {
-    const response = await fetch(url, {
+    const response = await handleWithRefresh(path, {
       method: "DELETE",
       headers: getAuthHeaders(),
     });
@@ -379,3 +440,5 @@ export async function apiDelete<T>(path: string): Promise<T> {
     throw error;
   }
 }
+
+export { AuthExpiredError };

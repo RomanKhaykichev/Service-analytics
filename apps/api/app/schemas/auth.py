@@ -26,11 +26,21 @@ class LoginRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    """
+    Refresh token request.
+    В стандартном потоке refresh-токен берётся из HttpOnly cookie.
+    Поле refresh_token оставлено опциональным для обратной совместимости
+    с клиентами, которые ещё передают его в теле запроса.
+    """
+    refresh_token: Optional[str] = None
 
 
 class LogoutRequest(BaseModel):
-    refresh_token: str
+    """
+    Logout request.
+    refresh_token может не передаваться в теле — в этом случае он берётся из cookie.
+    """
+    refresh_token: Optional[str] = None
 
 
 class UpdateProfileRequest(BaseModel):

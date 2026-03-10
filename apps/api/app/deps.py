@@ -62,27 +62,15 @@ def require_user(
             logger.warning(f"JWT processing error: {e}")
             # Fall through to X-User-Id check
     
-    # Fallback to X-User-Id header (dev mode)
+    # Fallback to X-User-Id header
     user_id_str = request.headers.get("X-User-Id")
     
     if not user_id_str:
-        if settings.APP_ENV.lower() in ("dev", "development"):
-            default_user_id = settings.DEFAULT_DEV_USER_ID
-            logger.info(f"Dev mode: using default user_id {default_user_id} (no auth provided)")
-            try:
-                return UUID(default_user_id)
-            except ValueError:
-                logger.error(f"Invalid DEFAULT_DEV_USER_ID format: {default_user_id}")
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Invalid DEFAULT_DEV_USER_ID configuration: {default_user_id}"
-                )
-        else:
-            logger.warning("Missing authentication (production mode)")
-            raise HTTPException(
-                status_code=401,
-                detail="Missing authentication"
-            )
+        logger.warning("Missing authentication (no Authorization header and no X-User-Id)")
+        raise HTTPException(
+            status_code=401,
+            detail="Missing authentication"
+        )
     
     # Validate UUID format
     try:

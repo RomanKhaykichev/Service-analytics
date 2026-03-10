@@ -244,8 +244,10 @@ export default function Admin() {
   };
 
   const getPlanSortKey = (row: TenantRow) => {
-    if (row.owner_email === "1@mail.ru") return 1;
-    if (row.owner_email === "uzb@yandex.ru") return 2;
+    if (row.owner_email === "asparrow48@gmail.com") return 1;
+    if (row.owner_email === "mr.romanx@mail.ru") return 2;
+    if (row.owner_email === "1@mail.ru") return 3;
+    if (row.owner_email === "uzb@yandex.ru") return 4;
     return (row.plan || "").toLowerCase() === "trial" ? 0 : 1;
   };
 
@@ -895,21 +897,29 @@ export default function Admin() {
                         <TableCell className="text-center">
                           {(() => {
                             const label =
-                              row.owner_email === "1@mail.ru"
-                                ? "Month 5"
-                                : row.owner_email === "uzb@yandex.ru"
-                                  ? "Month 10"
-                                  : (row.plan || "").toLowerCase() === "trial"
-                                    ? "Trial 10"
-                                    : row.plan || "—";
+                              row.owner_email === "asparrow48@gmail.com"
+                                ? "Silver"
+                                : row.owner_email === "mr.romanx@mail.ru"
+                                  ? "Gold"
+                                  : row.owner_email === "1@mail.ru"
+                                    ? "Month 5"
+                                    : row.owner_email === "uzb@yandex.ru"
+                                      ? "Month 10"
+                                      : (row.plan || "").toLowerCase() === "trial"
+                                        ? "Trial 10"
+                                        : row.plan || "—";
                             const pillClass =
                               label === "Trial 10"
                                 ? "bg-gradient-to-br from-sky-100 via-slate-100 to-amber-50 text-gray-800 shadow-sm shadow-gray-400/25"
-                                : label === "Month 5"
-                                  ? "bg-gradient-to-r from-indigo-300 to-violet-100 text-indigo-900"
-                                  : label === "Month 10"
-                                    ? "bg-blue-400 text-white shadow-md shadow-blue-600/30"
-                                    : "bg-muted text-muted-foreground";
+                                : label === "Silver"
+                                  ? "bg-gradient-to-br from-slate-200 via-gray-100 to-slate-300 text-slate-800 shadow-sm shadow-slate-400/30"
+                                  : label === "Gold"
+                                    ? "bg-gradient-to-br from-amber-200 via-yellow-100 to-amber-400 text-amber-900 shadow-md shadow-amber-500/40"
+                                    : label === "Month 5"
+                                      ? "bg-gradient-to-r from-indigo-300 to-violet-100 text-indigo-900"
+                                      : label === "Month 10"
+                                        ? "bg-blue-400 text-white shadow-md shadow-blue-600/30"
+                                        : "bg-muted text-muted-foreground";
                             return (
                               <span
                                 className={`inline-block rounded-full px-3 py-1.5 text-sm font-medium ${pillClass}`}

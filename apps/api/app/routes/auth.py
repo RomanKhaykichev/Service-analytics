@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 from sqlalchemy.exc import IntegrityError
@@ -199,6 +199,7 @@ async def register(
 @router.post("/login", response_model=AuthResponse)
 async def login(
     request: LoginRequest,
+    response: Response,
     db: Session = Depends(get_db)
 ):
     """
@@ -275,6 +276,23 @@ async def login(
     user_resp = UserResponse.model_validate(user)
     user_resp.is_admin = is_user_admin(user.id, db)
     _enrich_user_trial_info(user_resp, user.id, db)
+    # Set refresh token as HttpOnly cookie for secure storage in browser
+    try:
+        settings = get_settings()
+        cookie_secure = settings.APP_ENV == "prod"
+        # Для Cloudflare / отдельного фронта используем SameSite=None; для dev можно Lax
+        cookie_samesite = "none" if settings.APP_ENV == "prod" else "lax"
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,
+            secure=cookie_secure,
+            samesite=cookie_samesite,  # type: ignore[arg-type]
+            max_age=settings.REFRESH_TTL_DAYS * 24 * 60 * 60,
+            path="/api/auth",
+        )
+    except Exception as e:
+        logger.warning("Failed to set refresh_token cookie: %s", e)
     return AuthResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -284,16 +302,30 @@ async def login(
 
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh(
-    request: RefreshRequest,
+    request_data: RefreshRequest,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db)
 ):
     """
     Refresh access token using refresh token.
-    Rotates refresh token (old one is revoked, new one is issued).
+    Источник refresh-токена:
+    1) HttpOnly cookie refresh_token (основной путь)
+    2) request_data.refresh_token (fallback для старых клиентов)
+
+    На каждом успешном refresh токен ротируется:
+    старый помечается revoked, новый сохраняется и отправляется клиенту.
     """
+    # Определяем сырой refresh-токен: cookie приоритетнее тела запроса
+    raw_refresh_token: str | None = request.cookies.get("refresh_token") or request_data.refresh_token
+    if not raw_refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing refresh token"
+        )
     try:
         # Decode refresh token
-        payload = decode_token(request.refresh_token)
+        payload = decode_token(raw_refresh_token)
         
         if payload.get("type") != "refresh":
             raise HTTPException(
@@ -317,7 +349,7 @@ async def refresh(
             )
         
         # Find refresh token in database
-        refresh_token_hash = hash_token(request.refresh_token)
+        refresh_token_hash = hash_token(raw_refresh_token)
         db_refresh_token = db.query(RefreshToken).filter(
             and_(
                 RefreshToken.token_hash == refresh_token_hash,
@@ -370,7 +402,24 @@ async def refresh(
         else:
             logger.warning("Таблица login_events отсутствует — выполните: alembic upgrade head")
         db.commit()
-        
+
+        # Обновляем HttpOnly cookie с новым refresh-токеном
+        try:
+            settings = get_settings()
+            cookie_secure = settings.APP_ENV == "prod"
+            cookie_samesite = "none" if settings.APP_ENV == "prod" else "lax"
+            response.set_cookie(
+                key="refresh_token",
+                value=new_refresh_token,
+                httponly=True,
+                secure=cookie_secure,
+                samesite=cookie_samesite,  # type: ignore[arg-type]
+                max_age=settings.REFRESH_TTL_DAYS * 24 * 60 * 60,
+                path="/api/auth",
+            )
+        except Exception as e:
+            logger.warning("Failed to refresh refresh_token cookie: %s", e)
+
         return TokenResponse(
             access_token=new_access_token,
             refresh_token=new_refresh_token
@@ -387,13 +436,23 @@ async def refresh(
 
 @router.post("/logout")
 async def logout(
-    request: LogoutRequest,
+    request_data: LogoutRequest,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db)
 ):
     """
     Logout by revoking refresh token.
+    Refresh-токен берётся из cookie или тела запроса (для старых клиентов).
+    В любом случае cookie с refresh_token удаляется.
     """
-    refresh_token_hash = hash_token(request.refresh_token)
+    raw_refresh_token: str | None = request.cookies.get("refresh_token") or request_data.refresh_token
+    if not raw_refresh_token:
+        # Даже если токена нет, всё равно чистим cookie и возвращаем успех
+        response.delete_cookie(key="refresh_token", path="/api/auth")
+        return {"message": "Logged out successfully"}
+
+    refresh_token_hash = hash_token(raw_refresh_token)
     
     db_refresh_token = db.query(RefreshToken).filter(
         and_(
@@ -405,7 +464,13 @@ async def logout(
     if db_refresh_token:
         db_refresh_token.revoked_at = datetime.now(timezone.utc)
         db.commit()
-    
+
+    # Удаляем refresh_token cookie в браузере
+    try:
+        response.delete_cookie(key="refresh_token", path="/api/auth")
+    except Exception as e:
+        logger.warning("Failed to delete refresh_token cookie: %s", e)
+
     return {"message": "Logged out successfully"}
 
 

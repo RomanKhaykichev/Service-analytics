@@ -19,7 +19,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   if (!user) {
-    return <Navigate to="/landing?auth=open" replace />;
+    return <Navigate to="/landing" replace />;
   }
 
   return <>{children}</>;

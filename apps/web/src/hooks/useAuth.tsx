@@ -5,7 +5,7 @@ import {
   setAuthTokens,
   clearAuthTokens,
   getAccessToken,
-  getRefreshToken,
+  AuthExpiredError,
 } from '@/lib/api';
 
 // User from API (matches backend UserResponse)
@@ -75,7 +75,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     const token = getAccessToken();
-    const refreshToken = getRefreshToken();
 
     if (!token) {
       setLoading(false);
@@ -92,26 +91,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (err: unknown) {
         if (cancelled) return;
-        if (refreshToken) {
-          try {
-            const tokens = await apiPostNoAuth<{ access_token: string; refresh_token: string }>('/api/auth/refresh', { refresh_token: refreshToken });
-            setAuthTokens(tokens.access_token, tokens.refresh_token);
-            const me = await apiGet<AuthResponse['user']>('/api/auth/me');
-            if (!cancelled) {
-              const u = mapUser(me);
-              setUser(u);
-              setSession({ user: u });
-            }
-          } catch {
-            clearAuthTokens();
-            setUser(null);
-            setSession(null);
-          }
-        } else {
+        // Если refresh не удался (AuthExpiredError) или другая 401-причина — разлогиниваем
+        if (err instanceof AuthExpiredError) {
           clearAuthTokens();
-          setUser(null);
-          setSession(null);
         }
+        setUser(null);
+        setSession(null);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -154,13 +139,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    const refreshToken = getRefreshToken();
-    if (refreshToken) {
-      try {
-        await apiPostNoAuth('/api/auth/logout', { refresh_token: refreshToken });
-      } catch {
-        // ignore
-      }
+    try {
+      // refresh-токен будет прочитан на сервере из HttpOnly cookie
+      await apiPostNoAuth('/api/auth/logout', {});
+    } catch {
+      // ignore
     }
     clearAuthTokens();
     setUser(null);

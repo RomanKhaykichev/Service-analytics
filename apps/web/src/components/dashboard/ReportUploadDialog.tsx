@@ -66,8 +66,8 @@ function StoreLimitDialog({
   onOpenExtendTariff?: () => void;
 }) {
   const { t } = useLanguage();
-  const currentTariff = `Month ${maxShops}`;
-  const nextTariff = maxShops === 5 ? "Month 10" : null;
+  const currentTariff = maxShops === 1 ? "Trial 10" : `Month ${maxShops}`;
+  const nextTariff = maxShops === 1 ? "Month 5" : maxShops === 5 ? "Month 10" : null;
   const isMonth10 = maxShops === 10;
 
   const description = t("storeLimit.description")

@@ -76,7 +76,7 @@ UNDEFINED_SHOP_NAMES = {
 
 def get_user_max_shops(db: Session, user_id: UUID) -> Optional[int]:
     """
-    Возвращает лимит магазинов по тарифу: Month 5 -> 5, Month 10 -> 10, иначе None (без лимита).
+    Возвращает лимит магазинов по тарифу: Trial 10 -> 1, Month 5 -> 5, Month 10 -> 10.
     Определение по users.email и users.plan.
     """
     try:
@@ -98,6 +98,9 @@ def get_user_max_shops(db: Session, user_id: UUID) -> Optional[int]:
             return 5
         if plan in ("month_10", "month 10", "month10"):
             return 10
+        # Trial 10 — 1 магазин (как у Month 5/10, но лимит 1)
+        if plan in ("trial", "") or not plan:
+            return 1
         return None
     except Exception as e:
         logger.warning("get_user_max_shops: %s", e)

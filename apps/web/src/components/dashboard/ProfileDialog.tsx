@@ -34,6 +34,8 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
   const subscriptionPlan = t('profile.tariffPlan');
   const tariffLabel = (() => {
     const email = (user?.email ?? "").trim().toLowerCase();
+    if (email === "asparrow48@gmail.com") return "Silver";
+    if (email === "mr.romanx@mail.ru") return "Gold";
     if (email === "1@mail.ru") return "Month 5";
     if (email === "uzb@yandex.ru") return "Month 10";
     const plan = (user?.plan ?? "trial").toLowerCase();
@@ -43,6 +45,10 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
   const tariffPillClass =
     tariffLabel === "Trial 10"
       ? "bg-gradient-to-br from-sky-100 via-slate-100 to-amber-50 text-gray-800 shadow-sm shadow-gray-400/25"
+      : tariffLabel === "Silver"
+        ? "bg-gradient-to-br from-slate-200 via-gray-100 to-slate-300 text-slate-800 shadow-sm shadow-slate-400/30"
+      : tariffLabel === "Gold"
+        ? "bg-gradient-to-br from-amber-200 via-yellow-100 to-amber-400 text-amber-900 shadow-md shadow-amber-500/40"
       : tariffLabel === "Month 5"
         ? "bg-gradient-to-r from-indigo-300 to-violet-100 text-indigo-900"
         : "bg-blue-400 text-white shadow-md shadow-blue-600/30";
