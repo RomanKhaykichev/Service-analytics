@@ -174,13 +174,28 @@ def compute_allowed_shops(
     if max_shops is None:
         allowed = list(dict.fromkeys(saved_shops + file_shop_names))
         return allowed, False
-    allowed_set = set(saved_shops)
+
+    def _norm_shop(s: str) -> str:
+        return str(s).strip().lower()
+
+    # Нормализованные имена сохранённых магазинов
+    saved_norm = [_norm_shop(s) for s in saved_shops if _norm_shop(s)]
+    allowed_norm_set = set(saved_norm)
     allowed_shops = list(saved_shops)
+
+    # Добавляем НОВЫЕ магазины из файла (по нормализованному имени) до достижения лимита
     for shop in file_shop_names:
-        if shop not in allowed_set and len(allowed_shops) < max_shops:
+        norm = _norm_shop(shop)
+        if not norm:
+            continue
+        if norm not in allowed_norm_set and len(allowed_norm_set) < max_shops:
             allowed_shops.append(shop)
-            allowed_set.add(shop)
-    store_limit_exceeded = len(file_shop_names) > max_shops
+            allowed_norm_set.add(norm)
+
+    # Общее количество уникальных магазинов (с учётом нормализации) = сохранённые + из файла
+    file_norm_set = {_norm_shop(s) for s in file_shop_names if _norm_shop(s)}
+    total_unique = len(allowed_norm_set.union(file_norm_set))
+    store_limit_exceeded = total_unique > max_shops
     return allowed_shops, store_limit_exceeded
 
 
@@ -981,7 +996,7 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
               AND (
                 :is_trial_plan = false
                 OR :trial_cutoff_date IS NULL
-                OR date_created >= (:trial_cutoff_date - interval '60 days')
+                OR date_created >= (CAST(:trial_cutoff_date AS timestamptz) - interval '60 days')
               )
             ON CONFLICT (user_id, order_no, barcode, date_created) DO UPDATE
             SET
@@ -1221,7 +1236,7 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
               AND (
                 :is_trial_plan = false
                 OR :trial_cutoff_date IS NULL
-                OR date_written_off >= (:trial_cutoff_date - interval '60 days')
+                OR date_written_off >= (CAST(:trial_cutoff_date AS timestamptz) - interval '60 days')
               )
             ON CONFLICT (user_id, operation_id) DO UPDATE
             SET

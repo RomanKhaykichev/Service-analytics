@@ -22,6 +22,7 @@ import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getAuthHeaders, getApiBaseUrl } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
 
 interface UploadedFile {
   name: string;
@@ -57,6 +58,7 @@ function StoreLimitDialog({
   maxShops,
   currentCount,
   onOpenExtendTariff,
+  tariffLabel,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -64,18 +66,42 @@ function StoreLimitDialog({
   currentCount: number;
   /** Открыть окно «Продлить тариф» (только для тарифа Month 5) */
   onOpenExtendTariff?: () => void;
+  /** Человекочитаемое название тарифа (Trial 10 / Month 5 / Month 10 / Gold) */
+  tariffLabel: string;
 }) {
-  const { t } = useLanguage();
-  const currentTariff = maxShops === 1 ? "Trial 10" : `Month ${maxShops}`;
-  const nextTariff = maxShops === 1 ? "Month 5" : maxShops === 5 ? "Month 10" : null;
-  const isMonth10 = maxShops === 10;
+  const { t, language } = useLanguage();
+  const isMonth10 = tariffLabel === "Month 10";
+  const nextTariff = tariffLabel === "Trial 10" ? "Month 5" : tariffLabel === "Month 5" ? "Month 10" : null;
 
-  const description = t("storeLimit.description")
-    .replace("{currentTariff}", currentTariff)
-    .replace("{max}", String(maxShops));
-  const connected = t("storeLimit.connected")
-    .replace("{current}", String(currentCount))
-    .replace("{max}", String(maxShops));
+  // Ожидаемый максимум магазинов по тарифу (для текста/отображения)
+  const displayMax =
+    tariffLabel === "Trial 10" ? 1 :
+    tariffLabel === "Month 5" ? 5 :
+    tariffLabel === "Month 10" ? 10 :
+    maxShops;
+
+  // Текст описания по тарифу (RU / UZ)
+  const description =
+    language === "uz"
+      ? tariffLabel === "Trial 10"
+        ? "Sizning Trial 10 tarifingiz bo‘yicha 1 tagacha do‘kon ulash mumkin. Yangi do‘kon qo‘shish uchun tarifni yangilang."
+        : tariffLabel === "Month 5"
+          ? "Sizning Month 5 tarifingiz bo‘yicha 5 tagacha do‘kon ulash mumkin. Yangi do‘kon qo‘shish uchun tarifni yangilang."
+          : tariffLabel === "Month 10"
+            ? "Sizning Month 10 tarifingiz bo‘yicha 10 tagacha do‘kon ulash mumkin. Yangi do‘kon qo‘shish uchun qo‘llab-quvvatlash xizmatiga murojaat qiling."
+            : t("storeLimit.description").replace("{currentTariff}", tariffLabel).replace("{max}", String(displayMax))
+      : tariffLabel === "Trial 10"
+        ? "Ваш тариф Trial 10 позволяет подключить до 1 магазина. Чтобы добавить новый магазин, обновите тариф."
+        : tariffLabel === "Month 5"
+          ? "Ваш тариф Month 5 позволяет подключить до 5 магазинов. Чтобы добавить новый магазин, обновите тариф."
+          : tariffLabel === "Month 10"
+            ? "Ваш тариф Month 10 позволяет подключить до 10 магазинов. Чтобы добавить новый магазин, обратитесь в поддержку."
+            : t("storeLimit.description").replace("{currentTariff}", tariffLabel).replace("{max}", String(displayMax));
+
+  const connected =
+    language === "uz"
+      ? `Ulangan: ${currentCount} / ${displayMax}.`
+      : `Подключено: ${currentCount} / ${displayMax}.`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -92,6 +118,13 @@ function StoreLimitDialog({
           <p className="text-sm font-medium text-foreground">
             {connected}
           </p>
+          {tariffLabel === "Trial 10" && (
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {language === "uz"
+                ? "Trial 10 tarifida analitikada faqat yuklangan fayllardagi oxirgi 60 kunlik maʼlumotlar hisobga olinadi."
+                : "В тарифе Trial 10 в аналитике учитываются только последние 60 дней данных из загруженных файлов."}
+            </p>
+          )}
           {isMonth10 ? (
             <p className="text-sm text-muted-foreground italic">
               {t("storeLimit.contactSupport")}
@@ -116,6 +149,7 @@ function StoreLimitDialog({
 
 export function ReportUploadDialog({ disabled, onOpenExtendTariff }: ReportUploadDialogProps) {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, UploadedFile>>({});
   const [adIds, setAdIds] = useState<Record<string, string>>({});
@@ -125,7 +159,7 @@ export function ReportUploadDialog({ disabled, onOpenExtendTariff }: ReportUploa
   const [lastUploadDate, setLastUploadDate] = useState<string | null>(null);
   const [dragOverReportId, setDragOverReportId] = useState<string | null>(null);
   const [storeLimitDialogOpen, setStoreLimitDialogOpen] = useState(false);
-  const [storeLimitData, setStoreLimitData] = useState<{ maxShops: number; currentCount: number } | null>(null);
+  const [storeLimitData, setStoreLimitData] = useState<{ maxShops: number; currentCount: number; tariffLabel: string } | null>(null);
   useEffect(() => {
     if (open) {
       loadProducts();
@@ -340,6 +374,7 @@ export function ReportUploadDialog({ disabled, onOpenExtendTariff }: ReportUploa
         setStoreLimitData({
           maxShops: lastStoreLimitMax,
           currentCount: lastStoreLimitCurrent ?? lastStoreLimitMax,
+          tariffLabel: userTariffLabel,
         });
         setTimeout(() => setStoreLimitDialogOpen(true), 150);
       } else {
@@ -366,6 +401,38 @@ export function ReportUploadDialog({ disabled, onOpenExtendTariff }: ReportUploa
   };
 
   const uploadedCount = Object.values(uploadedFiles).filter(f => f.status === 'success').length;
+
+  // Человекочитаемый тариф пользователя (как в профиле/админке)
+  const userTariffLabel = (() => {
+    const email = (user?.email ?? "").trim().toLowerCase();
+    const rawPlan = (user?.plan ?? "trial").trim().toLowerCase();
+
+    // Админы — Gold
+    if (email === "mr.romanx@mail.ru" || email === "asparrow48@gmail.com") {
+      return "Gold";
+    }
+    // Спец-аккаунты по email для Month 5 / Month 10
+    if (email === "1@mail.ru") {
+      return "Month 5";
+    }
+    if (email === "uzb@yandex.ru") {
+      return "Month 10";
+    }
+    // План из БД
+    if (!rawPlan || rawPlan === "trial") {
+      return "Trial 10";
+    }
+    if (rawPlan === "month_5" || rawPlan === "month 5" || rawPlan === "month5") {
+      return "Month 5";
+    }
+    if (rawPlan === "month_10" || rawPlan === "month 10" || rawPlan === "month10") {
+      return "Month 10";
+    }
+    if (rawPlan === "gold" || rawPlan === "gold_plan") {
+      return "Gold";
+    }
+    return user?.plan || "—";
+  })();
 
   const handleOpenChange = (value: boolean) => {
     if (disabled) return;
@@ -602,6 +669,7 @@ export function ReportUploadDialog({ disabled, onOpenExtendTariff }: ReportUploa
         maxShops={storeLimitData.maxShops}
         currentCount={storeLimitData.currentCount}
         onOpenExtendTariff={onOpenExtendTariff}
+        tariffLabel={storeLimitData.tariffLabel}
       />
     )}
     </>

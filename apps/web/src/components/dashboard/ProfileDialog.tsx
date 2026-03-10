@@ -34,13 +34,34 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
   const subscriptionPlan = t('profile.tariffPlan');
   const tariffLabel = (() => {
     const email = (user?.email ?? "").trim().toLowerCase();
-    if (email === "asparrow48@gmail.com") return "Silver";
-    if (email === "mr.romanx@mail.ru") return "Gold";
-    if (email === "1@mail.ru") return "Month 5";
-    if (email === "uzb@yandex.ru") return "Month 10";
-    const plan = (user?.plan ?? "trial").toLowerCase();
-    if (plan === "trial") return "Trial 10";
-    return "Month 5";
+    const rawPlan = (user?.plan ?? "trial").trim().toLowerCase();
+
+    // Админы — всегда Gold (как в админской таблице)
+    if (email === "mr.romanx@mail.ru" || email === "asparrow48@gmail.com") {
+      return "Gold";
+    }
+    // Спец-аккаунты по email для Month 5 / Month 10
+    if (email === "1@mail.ru") {
+      return "Month 5";
+    }
+    if (email === "uzb@yandex.ru") {
+      return "Month 10";
+    }
+    // План из БД
+    if (!rawPlan || rawPlan === "trial") {
+      return "Trial 10";
+    }
+    if (rawPlan === "month_5" || rawPlan === "month 5" || rawPlan === "month5") {
+      return "Month 5";
+    }
+    if (rawPlan === "month_10" || rawPlan === "month 10" || rawPlan === "month10") {
+      return "Month 10";
+    }
+    if (rawPlan === "gold" || rawPlan === "gold_plan") {
+      return "Gold";
+    }
+    // Неподдержанные значения показываем как есть
+    return user?.plan || "—";
   })();
   const tariffPillClass =
     tariffLabel === "Trial 10"

@@ -36,8 +36,8 @@ export function PromoTrialDialog({
   const subtitleText = language === "uz" ? subtitleTextUz : subtitleTextRu;
   const trialLineText =
     language === "uz"
-      ? "10 kun bepul • 1 do‘kon • 30 kunlik maʼlumotlar"
-      : "10 дней бесплатно • 1 магазин • 30 дней данных";
+      ? "10 kun bepul • 1 do‘kon • 60 kunlik maʼlumotlar"
+      : "10 дней бесплатно • 1 магазин • 60 дней данных";
   const buttonText =
     language === "uz" ? "Bepul sinab ko‘rish" : "Попробовать бесплатно";
   const daysLabel = language === "uz" ? "Kun" : "Дней";
@@ -122,11 +122,11 @@ export function PromoTrialDialog({
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-100 text-violet-600">
                 <BarChart3 className="h-5 w-5" />
               </div>
-              <span className="mt-2 text-lg font-bold text-zinc-800">30</span>
+              <span className="mt-2 text-lg font-bold text-zinc-800">60</span>
               <span className="text-xs text-zinc-600">{daysLabel}</span>
               <span className="mt-1 flex items-center justify-center gap-1 text-xs font-bold text-zinc-600 whitespace-nowrap">
                 <Check className="h-3.5 w-3.5 text-green-600 shrink-0" />
-                {language === "uz" ? "30 kunlik maʼlumotlar" : "30 Дней данных"}
+                {language === "uz" ? "60 kunlik maʼlumotlar" : "60 Дней данных"}
               </span>
             </div>
           </div>
