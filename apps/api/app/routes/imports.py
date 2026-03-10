@@ -77,23 +77,18 @@ UNDEFINED_SHOP_NAMES = {
 def get_user_max_shops(db: Session, user_id: UUID) -> Optional[int]:
     """
     Возвращает лимит магазинов по тарифу: Trial 10 -> 1, Month 5 -> 5, Month 10 -> 10.
-    Определение по users.email и users.plan.
+    Определение только по users.plan (без спец-аккаунтов по email).
     """
     try:
         row = db.execute(
             text(
-                f"SELECT email, COALESCE(plan, '') FROM {qname('users')} WHERE id = CAST(:uid AS uuid)"
+                f"SELECT COALESCE(plan, '') FROM {qname('users')} WHERE id = CAST(:uid AS uuid)"
             ),
             {"uid": str(user_id)},
         ).fetchone()
         if not row:
             return None
-        email = (row[0] or "").strip().lower()
-        plan = (row[1] or "").strip().lower()
-        if email == "1@mail.ru":
-            return 5
-        if email == "uzb@yandex.ru":
-            return 10
+        plan = (row[0] or "").strip().lower()
         if plan in ("month_5", "month 5", "month5"):
             return 5
         if plan in ("month_10", "month 10", "month10"):
