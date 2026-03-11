@@ -341,7 +341,6 @@ export function ProductDetailView({
     { icon: <Target className="w-4 h-4" />, label: t('summary.finance.salesProfitability'), value: formatPercent(salesProfitability), tooltip: t('summary.finance.salesProfitabilityTooltip') },
     { icon: <BarChart3 className="w-4 h-4" />, label: t('summary.finance.roi'), value: formatPercent(roi), tooltip: t('summary.finance.roiTooltip') },
     { icon: <TrendingUp className="w-4 h-4" />, label: t('summary.finance.revenueTrend'), value: formatTrend(revenueTrend), trend: (revenueTrend >= 0 ? "up" : "down") as const, trendValue: "", tooltip: t('summary.finance.revenueTrendTooltip') },
-    { icon: <ArrowDown className="w-4 h-4" />, label: t('summary.finance.lostRevenue'), value: formatCurrency(product.lostRevenue), tooltip: t('summary.finance.lostRevenueTooltip') },
   ];
   const expenseMetrics = [
     { icon: <Percent className="w-4 h-4" />, label: t('summary.expense.commissionUzum'), value: formatCurrency(product.uzumCommission), tooltip: "" },

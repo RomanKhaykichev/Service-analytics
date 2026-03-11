@@ -62,23 +62,42 @@ export function Header({ onMenuClick, sidebarCollapsed }: HeaderProps) {
         "left-0"
       )}
     >
-      <div className="flex items-center gap-4 lg:hidden">
-        <Button variant="ghost" size="icon" onClick={onMenuClick}>
-          <Menu className="w-5 h-5" />
-        </Button>
-      </div>
+      {/* Left: menu (mobile) + logo + search (desktop) */}
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        <div className="flex items-center lg:hidden">
+          <Button variant="ghost" size="icon" onClick={onMenuClick}>
+            <Menu className="w-5 h-5" />
+          </Button>
+        </div>
 
-      <div className="hidden lg:flex flex-1 max-w-md">
-        <div className="relative w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder={t('header.search')}
-            className="pl-10 bg-muted border-0"
+        <Link
+          to="/"
+          className="flex items-center gap-2 min-w-0"
+        >
+          <img
+            src="/favicon.png"
+            alt=""
+            className="h-6 w-6 flex-shrink-0 object-contain"
           />
+          <span className="text-base sm:text-lg font-semibold text-foreground truncate">
+            <span className="font-bold">PROFi</span>
+            <span className="font-normal">board</span>
+          </span>
+        </Link>
+
+        <div className="hidden lg:flex flex-1 max-w-md ml-4">
+          <div className="relative w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder={t('header.search')}
+              className="pl-10 bg-muted border-0"
+            />
+          </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      {/* Right: actions and user menu */}
+      <div className="flex items-center gap-2 ml-2">
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="w-5 h-5" />
           <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs">

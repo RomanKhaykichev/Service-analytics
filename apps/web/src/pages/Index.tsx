@@ -217,12 +217,6 @@ function Dashboard() {
       trend: (metrics.revenueTrend ?? 0) >= 0 ? "up" as const : "down" as const,
       trendValue: "",
       tooltip: t('summary.finance.revenueTrendTooltip')
-    },
-    {
-      icon: <ArrowDown className="w-4 h-4" />,
-      label: t('summary.finance.lostRevenue'),
-      value: formatCurrency(metrics.lostRevenue),
-      tooltip: t('summary.finance.lostRevenueTooltip')
     }
   ] : [];
 
@@ -338,8 +332,17 @@ function Dashboard() {
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center gap-3">
-              <h1 className="text-xl font-semibold text-foreground">{t('summary.pageTitle')}</h1>
-              <span className="px-3 py-1.5 bg-primary/10 text-primary font-semibold rounded-lg">UZUM</span>
+              <div className="flex items-center gap-2">
+                <img
+                  src="/favicon.png"
+                  alt=""
+                  className="h-6 w-6 flex-shrink-0 object-contain"
+                />
+                <h1 className="text-xl font-semibold text-foreground">
+                  <span className="font-bold">PROFi</span>
+                  <span className="font-normal">board</span>
+                </h1>
+              </div>
             </div>
             {salesMinDate && salesMaxDate && (() => {
               const formatDate = (dateStr: string) => {

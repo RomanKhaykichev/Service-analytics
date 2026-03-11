@@ -241,7 +241,7 @@ const translations: Record<Language, Record<string, string>> = {
     'filter.dateErrorRange': 'Выберите даты в диапазоне данных',
     'tabs.expensesExtra': 'Доп. расходы',
     'tabs.shipmentLabel': 'Отгрузка',
-    'tabs.monthly': 'По месячно',
+    'tabs.monthly': 'Помесячно',
     'chart.salesByDay': 'Продажи по дням',
     'chart.noData': 'Нет данных',
     'header.loggedOut': 'Вы вышли из системы',
@@ -310,6 +310,9 @@ const translations: Record<Language, Record<string, string>> = {
     'daily.granularityDay': 'День',
     'daily.granularityWeek': 'Неделя',
     'daily.granularityMonth': 'Месяц',
+    'daily.exportXLSX': 'Выгрузить в XLSX',
+    'daily.exportedRows': 'Выгружено {0} строк',
+    'daily.exportError': 'Ошибка при выгрузке',
 
     // Monthly table
     'monthly.totalSold': 'Всего продано',
@@ -767,6 +770,9 @@ const translations: Record<Language, Record<string, string>> = {
     'daily.granularityDay': 'Kun',
     'daily.granularityWeek': 'Hafta',
     'daily.granularityMonth': 'Oy',
+    'daily.exportXLSX': 'XLSX ga yuklash',
+    'daily.exportedRows': '{0} qator yuklandi',
+    'daily.exportError': 'Yuklashda xato yuz berdi',
 
     'monthly.totalSold': 'Jami sotilgan',
     'monthly.revenue': 'Tushum',

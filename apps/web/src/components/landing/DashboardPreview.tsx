@@ -18,7 +18,7 @@ import {
 import { Container } from "./Container";
 import { useLanguage } from "@/contexts/LanguageContext";
 
-const tabsRu = ["Сводка", "По дням", "Товары", "Доп. расходы", "Отгрузка", "По месячно"];
+const tabsRu = ["Сводка", "По дням", "Товары", "Доп. расходы", "Отгрузка", "Помесячно"];
 const tabsUz = ["Hisobot", "Kunlar bo‘yicha", "Tovarlar", "Qo‘shimcha xarajatlar", "Yuklab jo‘natish", "Oylik"];
 
 /**

@@ -23,7 +23,7 @@ export function CtaGreenBlock({ onOpenAuth, onOpenPromo }: CtaGreenBlockProps) {
   const subText =
     language === "uz"
       ? "Tayyor yechimni atigi 2 ta kechki ovqat narxiga oling."
-      : "получите готовое решение по цене 2x ужинов.";
+      : "Получите готовое решение по цене 2x ужинов.";
   const buttonText =
     language === "uz" ? "BEPUL SINAB KO‘RISH" : "ПОПРОБОВАТЬ БЕСПЛАТНО";
 
@@ -34,9 +34,10 @@ export function CtaGreenBlock({ onOpenAuth, onOpenPromo }: CtaGreenBlockProps) {
           {/* Левая половина: текст */}
           <div className="flex-1 flex flex-col justify-center bg-[#c4ffdf] px-6 py-10 sm:px-10 sm:py-12 md:px-12 md:py-14">
             <p className="text-lg sm:text-xl md:text-[22px] leading-relaxed text-black">
-              {mainText}
+              <span className="font-bold">PROFi</span>
+              {mainText.replace(/^PROFi/i, "")}
             </p>
-            <p className="mt-5 text-base sm:text-lg md:text-[18px] text-black">
+            <p className="mt-5 text-lg sm:text-xl md:text-[22px] leading-relaxed text-black">
               {subText}
             </p>
             <div className="mt-8 flex justify-start">

@@ -18,11 +18,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { ChevronUp, ChevronDown } from "lucide-react";
+import { ChevronUp, ChevronDown, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useDailySummary, type DailySummaryGranularity } from "@/hooks/useDailySummary";
 import { format, addDays } from "date-fns";
+import * as XLSX from "xlsx";
+import { toast } from "sonner";
 
 interface DailyViewProps {
   /** Группировка графика: day | week | month — только из селекта "По дням/По неделям/По месяцам" в шапке */
@@ -229,6 +231,42 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
 
   const formatNumber = (num: number) => num.toLocaleString("ru-RU");
 
+  const handleExportXLSX = () => {
+    try {
+      if (!tableRows.length) {
+        toast.error(t('daily.noDataPeriod'));
+        return;
+      }
+      const rows = tableRows.map((row) => ({
+        [t('daily.date')]: row.dateFormatted,
+        [t('daily.orders')]: row.orders ?? "",
+        [t('daily.buys')]: row.buys ?? "",
+        [t('daily.returns')]: row.returns ?? "",
+        [t('daily.revenue')]: row.revenue ?? "",
+        [t('daily.commission')]: row.commission ?? "",
+        [t('daily.logistics')]: row.logistics ?? "",
+        [t('daily.storage')]: row.storage ?? "",
+        [t('daily.ads')]: row.ads ?? "",
+        [t('daily.penalties')]: row.penalties ?? "",
+        [t('daily.cogs')]: row.cogs ?? "",
+        [t('daily.tax')]: row.taxes ?? "",
+        [t('daily.profitNet')]: row.profit ?? "",
+      }));
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      const workbook = XLSX.utils.book_new();
+      const sheetNameRaw = t('daily.dataByDay');
+      const sheetName = sheetNameRaw.length > 31 ? sheetNameRaw.slice(0, 31) : sheetNameRaw;
+      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+      const dateStr = new Date().toISOString().split("T")[0];
+      const fileName = isUz ? `kunlik_ma\'lumotlar_${dateStr}.xlsx` : `данные_по_дням_${dateStr}.xlsx`;
+      XLSX.writeFile(workbook, fileName);
+      toast.success(t('daily.exportedRows').replace('{0}', String(rows.length)));
+    } catch (err) {
+      console.error("Daily export error:", err);
+      toast.error(t('daily.exportError'));
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* График заказов и продаж: 8 метрик (все Line), кнопки выбора метрик, переключатель гранулярности — overlay слева снизу */}
@@ -335,7 +373,18 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
 
       {/* Table Section — Данные по дням from GET /api/charts/daily-summary */}
       <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
-        <h3 className="font-semibold text-foreground mb-4">{t('daily.dataByDay')}</h3>
+        <div className="flex items-center justify-between mb-4 gap-3">
+          <h3 className="font-semibold text-foreground">{t('daily.dataByDay')}</h3>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportXLSX}
+            disabled={tableRows.length === 0}
+          >
+            <Download className="w-4 h-4 mr-2" />
+            {t('daily.exportXLSX')}
+          </Button>
+        </div>
         <div className="overflow-x-auto">
           {loadingTable ? (
             <div className="py-8 text-center text-muted-foreground">{t('daily.loading')}</div>

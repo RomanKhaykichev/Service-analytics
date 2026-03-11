@@ -15,14 +15,15 @@ export function CtaPlovBlock() {
         <div className={styles.cta}>
           <div className={styles.content}>
             <p className="text-[22px] md:text-[26px] leading-[1.25] text-black text-left md:text-center">
-              <span className="font-extrabold">PROF</span>i<span className="font-semibold">board</span>{" "}
+              <span className="font-bold">PROFi</span>
+              <span className="font-semibold">board</span>{" "}
               возьмет на себя всю рутину аналитики вашего ЛК, позволив вам
               сосредоточиться на главном — принятии правильных бизнес-решений и
               увеличению прибыли!
             </p>
 
-            <p className="mt-6 text-[18px] md:text-[20px] text-black/90 text-left md:text-center">
-              получите готовое решение по цене 2х ужинов.
+            <p className="mt-6 text-[22px] md:text-[26px] leading-[1.25] text-black text-left md:text-center">
+              Получите готовое решение по цене 2х ужинов.
             </p>
 
             <div className="mt-8 flex justify-start md:justify-center">

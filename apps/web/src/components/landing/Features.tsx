@@ -6,19 +6,19 @@ import { useLanguage } from "@/contexts/LanguageContext";
 const featuresRu = [
   {
     icon: FileText,
-    title: "кажется что продажи есть, но прибыли нет?",
+    title: "Кажется, что продажи есть, но прибыли нет?",
     description:
       "Сервис дает полный срез ваших финансовых показателей по месяцам/неделям/дням. Следите за своими продажами, оптимизируйте траты для получения большей прибыли.",
   },
   {
     icon: CircleDollarSign,
-    title: "не понимаете сколько съедает БУСТ В ТОП?",
+    title: "Не понимаете, сколько съедает БУСТ В ТОП?",
     description:
-      "Недельные рекламные компании выглядят не дорогими. Но в месяц это внушительные сумма. Анализируйте вашу рекламу и оптимизируйте в случае больших затрат.",
+      "Недельные рекламные кампании выглядят недорогими. Но в месяц это внушительная сумма. Анализируйте вашу рекламу и оптимизируйте в случае больших затрат.",
   },
   {
     icon: Package,
-    title: "товар лежит и переходит на платное хранение?",
+    title: "Товар лежит и переходит на платное хранение?",
     description:
       "Контролируйте изменение габаритной группы ваших товаров, а так же переход на платное хранение. Отгружайте столько товара, чтобы не переплачивать за склад.",
   },
@@ -61,7 +61,7 @@ export function Features() {
   const topParagraph =
     language === "uz"
       ? "Biz marketpleyslardagi savdolaringizni tahlil qilish uchun moslashuvchan jadvallar va filtrlar bilan o‘nlab qulay hisobotlarni tayyorlab qo‘yganmiz."
-      : "Мы подготовили десятки удобных отчетов, позволяющих решить любые задачи по анализу ваших продаж на маркетплейсах с настраиваемыми таблицами и гибкими фильтрами.";
+      : "Простые и удобные отчеты, позволяющие решить любые задачи по анализу ваших продаж на маркетплейсе UZUM с настраиваемыми таблицами и гибкими фильтрами.";
   const bottomParagraph =
     language === "uz"
       ? "Savdolaringizni va foydangizni barcha xarajatlarni hisobga olgan holda kuzatib boring. Tovar yetkazib berishni savdo dinamikasi va qoldiqlarni inobatga olgan holda rejalashtiring."
