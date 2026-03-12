@@ -58,9 +58,11 @@ interface MonthlyTableProps {
   shop?: string | null;
   /** Пользовательский процент налога (из вкладки Сводка). Если задан, Налог и Прибыль пересчитываются. */
   taxPercent?: number;
+  /** Необязательный переключатель года, рендерится под заголовком. */
+  yearSwitcher?: React.ReactNode;
 }
 
-export function MonthlyTable({ year, shop = null, taxPercent }: MonthlyTableProps) {
+export function MonthlyTable({ year, shop = null, taxPercent, yearSwitcher }: MonthlyTableProps) {
   const { t } = useLanguage();
   const { monthly, loading, error } = useMonthlyKpi(year, shop ?? undefined);
 
@@ -87,7 +89,15 @@ export function MonthlyTable({ year, shop = null, taxPercent }: MonthlyTableProp
     <div className="bg-card rounded-xl border border-border overflow-hidden">
       <div className="p-4 border-b border-border">
         <h3 className="text-lg font-semibold text-foreground">{t('monthly.title')}</h3>
-        <p className="text-sm text-muted-foreground mt-1">{year} {t('monthly.year')}</p>
+        {yearSwitcher ? (
+          <div className="mt-1">
+            {yearSwitcher}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground mt-1">
+            {year} {t('monthly.year')}
+          </p>
+        )}
       </div>
       <div className="overflow-x-auto">
         {loading ? (

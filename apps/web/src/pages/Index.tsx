@@ -63,6 +63,7 @@ function Dashboard() {
   
   // Диапазон дат из fact_sales (sells_report "Дата создания")
   const { minDate: salesMinDate, maxDate: salesMaxDate } = useSalesDateRange();
+  const [monthlyYear, setMonthlyYear] = useState<number | null>(null);
 
   // Пользовательский процент для налога (по умолчанию 1%)
   const [taxPercentInput, setTaxPercentInput] = useState("1");
@@ -135,6 +136,15 @@ function Dashboard() {
       ))}
     </div>
   );
+
+  const minYear = salesMinDate ? new Date(salesMinDate).getFullYear() : null;
+  const maxYear = salesMaxDate ? new Date(salesMaxDate).getFullYear() : null;
+
+  useEffect(() => {
+    if (monthlyYear == null && maxYear != null) {
+      setMonthlyYear(maxYear);
+    }
+  }, [monthlyYear, maxYear]);
 
   const salesMetrics = metrics ? [
     {
@@ -417,9 +427,42 @@ function Dashboard() {
       {activeTab === "monthly" ? (
         <div className="mt-6">
           <MonthlyTable
-            year={maxDate ? new Date(maxDate).getFullYear() : new Date().getFullYear()}
+            year={monthlyYear ?? (maxYear ?? new Date().getFullYear())}
             shop={null}
             taxPercent={taxPercent}
+            yearSwitcher={
+              minYear != null && maxYear != null ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <button
+                    type="button"
+                    className="px-2 py-1 rounded border border-border disabled:opacity-40"
+                    onClick={() =>
+                      setMonthlyYear((prev) =>
+                        prev && minYear ? Math.max(minYear, prev - 1) : prev
+                      )
+                    }
+                    disabled={monthlyYear == null || monthlyYear <= minYear}
+                  >
+                    ‹
+                  </button>
+                  <span>
+                    {monthlyYear ?? (maxYear ?? new Date().getFullYear())}
+                  </span>
+                  <button
+                    type="button"
+                    className="px-2 py-1 rounded border border-border disabled:opacity-40"
+                    onClick={() =>
+                      setMonthlyYear((prev) =>
+                        prev && maxYear ? Math.min(maxYear, prev + 1) : prev
+                      )
+                    }
+                    disabled={monthlyYear == null || monthlyYear >= maxYear}
+                  >
+                    ›
+                  </button>
+                </div>
+              ) : null
+            }
           />
         </div>
       ) : activeTab === "daily" ? (

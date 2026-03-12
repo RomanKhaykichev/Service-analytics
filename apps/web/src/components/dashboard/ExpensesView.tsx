@@ -642,44 +642,18 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
                   {/* Date */}
                   <div className="grid gap-2">
                     <Label>{t('expense.date')}</Label>
-                    <Popover 
-                      open={calendarOpen} 
-                      onOpenChange={setCalendarOpen}
-                    >
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !newExpense.date && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {newExpense.date
-                            ? format(newExpense.date, "dd.MM.yyyy", { locale: ru })
-                            : t('expense.selectDate')}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent 
-                        className="w-auto p-0" 
-                        align="start"
-                        data-datepicker-popover
-                      >
-                        <Calendar
-                          mode="single"
-                          selected={newExpense.date}
-                          onSelect={(date) => {
-                            if (!date) return;
-                            setNewExpense({ ...newExpense, date: date });
-                            setCalendarOpen(false); // КЛЮЧЕВО: закрыть календарь после выбора даты
-                          }}
-                          initialFocus
-                          className="pointer-events-auto"
-                          locale={ru}
-                          weekStartsOn={1}
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    <Input
+                      type="date"
+                      value={newExpense.date ? format(newExpense.date, "yyyy-MM-dd") : ""}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (!value) return;
+                        const nextDate = new Date(value);
+                        if (Number.isNaN(nextDate.getTime())) return;
+                        setNewExpense({ ...newExpense, date: nextDate });
+                      }}
+                      className="h-9"
+                    />
                   </div>
 
                   {/* Type */}

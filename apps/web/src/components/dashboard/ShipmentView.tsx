@@ -67,7 +67,6 @@ export function ShipmentView({
     try {
       const res = await apiGet<ShipmentRecommendationsResponse>("/api/charts/shipment-recommendations");
       const allItems = res?.items ?? [];
-      if (allItems.length === 0) return;
       const days = Math.max(0, Number(daysUntilShipment) || 0);
       const map: Record<string, number> = {};
       for (const row of allItems) {
@@ -88,6 +87,7 @@ export function ShipmentView({
         }
       }
       setCalculatedRecommended(map);
+      toast.success(t('shipment.calculationDone'));
     } finally {
       setCalculateLoading(false);
     }
