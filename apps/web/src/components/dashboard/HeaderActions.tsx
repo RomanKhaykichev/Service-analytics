@@ -91,11 +91,6 @@ export function HeaderActions() {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56 bg-card border-border">
           <DropdownMenuLabel>{t('header.help')}</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem className="cursor-pointer">
-            <FAQ className="w-4 h-4 mr-2" />
-            {t('header.faq')}
-          </DropdownMenuItem>
           <DropdownMenuItem className="cursor-pointer">
             <PlayCircle className="w-4 h-4 mr-2" />
             {t('header.videoTutorials')}
@@ -139,10 +134,6 @@ export function HeaderActions() {
               </Link>
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem className="cursor-pointer" onClick={() => setTariffOpen(true)}>
-            <CreditCard className="w-4 h-4 mr-2" />
-            {t('header.tariff')}
-          </DropdownMenuItem>
           <DropdownMenuItem
             className="cursor-pointer text-primary"
             onClick={() => {

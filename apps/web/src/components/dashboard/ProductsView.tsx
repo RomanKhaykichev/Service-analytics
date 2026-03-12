@@ -2,9 +2,8 @@ import { useState, useMemo, useEffect } from "react";
 import {
   Search,
   Layers,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -242,16 +241,27 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
   };
 
   const getSortIcon = (field: SortField) => {
-    if (sortField !== field) {
-      return <ArrowUpDown className="w-3 h-3 ml-1 opacity-50" />;
-    }
-    if (sortDirection === "asc") {
-      return <ArrowUp className="w-3 h-3 ml-1" />;
-    }
-    if (sortDirection === "desc") {
-      return <ArrowDown className="w-3 h-3 ml-1" />;
-    }
-    return <ArrowUpDown className="w-3 h-3 ml-1 opacity-50" />;
+    const isActive = sortField === field;
+    return (
+      <span className="flex flex-col ml-0.5">
+        <ChevronUp
+          className={cn(
+            "h-3 w-3 -mb-1",
+            isActive && sortDirection === "asc"
+              ? "text-primary"
+              : "text-muted-foreground/50"
+          )}
+        />
+        <ChevronDown
+          className={cn(
+            "h-3 w-3",
+            isActive && sortDirection === "desc"
+              ? "text-primary"
+              : "text-muted-foreground/50"
+          )}
+        />
+      </span>
+    );
   };
 
   const filteredProducts = displayProducts.filter((p) => {

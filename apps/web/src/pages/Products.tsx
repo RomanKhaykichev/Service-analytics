@@ -442,8 +442,8 @@ const Products = () => {
                 <TableHead className="text-right min-w-[100px]">Комиссия</TableHead>
                 <TableHead className="text-right min-w-[100px]">Логистика</TableHead>
                 <TableHead className="text-center min-w-[70px]">ABC заказы</TableHead>
-                <TableHead className="text-center min-w-[70px]">ABC прибыль</TableHead>
                 <TableHead className="text-center min-w-[70px]">ABC выручка</TableHead>
+                <TableHead className="text-center min-w-[70px]">ABC прибыль</TableHead>
                 <TableHead className="min-w-[130px]">Штрихкод</TableHead>
                 <TableHead className="min-w-[100px]">Бренд</TableHead>
                 <TableHead className="min-w-[100px]">Категория</TableHead>
@@ -545,10 +545,10 @@ const Products = () => {
                     {getAbcBadge(product.abcOrders)}
                   </TableCell>
                   <TableCell className="text-center">
-                    {getAbcBadge(product.abcProfit)}
+                    {getAbcBadge(product.abcRevenue)}
                   </TableCell>
                   <TableCell className="text-center">
-                    {getAbcBadge(product.abcRevenue)}
+                    {getAbcBadge(product.abcProfit)}
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm font-mono">
                     {product.barcode}
