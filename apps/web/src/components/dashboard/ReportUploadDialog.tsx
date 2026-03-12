@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Upload, FileSpreadsheet, Info, X, Loader2, CheckCircle, AlertCircle } from "lucide-react";
+import { Upload, FileSpreadsheet, Info, X, Loader2, CheckCircle, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -42,7 +42,7 @@ const reportTypes = [
   { id: "sales", labelKey: "report.salesReport", hint: "sells-report" },
   { id: "expenses", labelKey: "report.expensesReport", hint: "expenses-report" },
   { id: "storage", labelKey: "report.storageReport", hint: "seller-storage-report" },
-  { id: "inventory_old", labelKey: "report.inventoryOld", hint: "left-out-report_old" },
+  { id: "inventory_old", labelKey: "report.inventoryOld", hint: "left-out-report" },
 ];
 
 interface ReportUploadDialogProps {
@@ -157,7 +157,7 @@ export function ReportUploadDialog({ disabled, onOpenExtendTariff }: ReportUploa
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [lastUploadDate, setLastUploadDate] = useState<string | null>(null);
-  const [dragOverReportId, setDragOverReportId] = useState<string | null>(null);
+  const [dragOverAll, setDragOverAll] = useState(false);
   const [storeLimitDialogOpen, setStoreLimitDialogOpen] = useState(false);
   const [storeLimitData, setStoreLimitData] = useState<{ maxShops: number; currentCount: number; tariffLabel: string } | null>(null);
   useEffect(() => {
@@ -182,41 +182,63 @@ export function ReportUploadDialog({ disabled, onOpenExtendTariff }: ReportUploa
     }
   };
 
-  const handleFileUpload = (reportId: string, file: File | null) => {
-    if (file) {
-      // Validate file extension
-      const fileName = file.name.toLowerCase();
-      if (!fileName.endsWith('.xlsx') && !fileName.endsWith('.xls')) {
-        toast.error('Поддерживаются только файлы .xlsx и .xls');
-        return;
+  const detectReportIdByName = (fileName: string): string | null => {
+    const lower = fileName.toLowerCase();
+    if (lower.startsWith("sells")) return "sales";
+    if (lower.startsWith("expenses")) return "expenses";
+    if (lower.startsWith("seller")) return "storage";
+    if (lower.startsWith("left")) return "inventory_old";
+    return null;
+  };
+
+  const handleFilesSelected = (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList);
+
+    setUploadedFiles((prev) => {
+      const next = { ...prev };
+
+      for (const file of files) {
+        const fileNameLower = file.name.toLowerCase();
+        if (!fileNameLower.endsWith(".xlsx") && !fileNameLower.endsWith(".xls")) {
+          toast.error("Поддерживаются только файлы .xlsx и .xls");
+          continue;
+        }
+        const reportId = detectReportIdByName(file.name);
+        if (!reportId) {
+          toast.error(`Не удалось определить тип отчета для файла "${file.name}". Переименуйте файл, чтобы он содержал одну из масок: ${reportTypes.map(r => r.hint).join(", ")}.`);
+          continue;
+        }
+        next[reportId] = {
+          name: file.name,
+          file,
+          status: "pending",
+        };
       }
-    }
-    setUploadedFiles(prev => ({
-      ...prev,
-      [reportId]: { name: file?.name || "", file, status: 'pending' }
-    }));
+
+      return next;
+    });
   };
 
-  const handleDragOver = (e: React.DragEvent, reportId: string) => {
+  const handleGlobalDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setDragOverReportId(reportId);
+    setDragOverAll(true);
   };
 
-  const handleDragLeave = (e: React.DragEvent) => {
+  const handleGlobalDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setDragOverReportId(null);
+    setDragOverAll(false);
   };
 
-  const handleDrop = (e: React.DragEvent, reportId: string) => {
+  const handleGlobalDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setDragOverReportId(null);
-    
+    setDragOverAll(false);
     const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      handleFileUpload(reportId, files[0]);
+    if (files && files.length > 0) {
+      handleFilesSelected(files);
     }
   };
 
@@ -394,7 +416,7 @@ export function ReportUploadDialog({ disabled, onOpenExtendTariff }: ReportUploa
       case 'success':
         return <CheckCircle className="w-3.5 h-3.5 text-green-500" />;
       case 'error':
-        return <AlertCircle className="w-3.5 h-3.5 text-destructive" />;
+        return <XCircle className="w-3.5 h-3.5 text-destructive" />;
       default:
         return null;
     }
@@ -490,97 +512,71 @@ export function ReportUploadDialog({ disabled, onOpenExtendTariff }: ReportUploa
           </div>
         )}
 
-        {/* File Upload Blocks */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 mt-4">
-          {reportTypes.map((report) => {
-            const fileData = uploadedFiles[report.id];
-            const hasFile = fileData?.file;
-            const isUploading = fileData?.status === 'uploading';
-            
-            return (
-              <div 
-                key={report.id}
-                className="border border-border rounded-lg p-2 bg-muted/30"
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <h4 className="font-medium text-sm text-foreground">{t(report.labelKey)}</h4>
+        {/* File Upload Layout: left — list of reports, right — single upload field */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4 items-stretch">
+          {/* Left: report list with statuses */}
+          <div className="space-y-2">
+            {reportTypes.map((report) => {
+              const fileData = uploadedFiles[report.id];
+              return (
+                <div
+                  key={report.id}
+                  className="flex items-center justify-between border border-border rounded-lg px-3 py-2 bg-muted/30"
+                >
+                  <div className="flex flex-col">
+                    <span className="font-medium text-sm text-foreground">
+                      {t(report.labelKey)}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground font-mono">
+                      {report.hint}.xlsx
+                    </span>
+                  </div>
                   <div className="flex items-center gap-1.5">
                     {fileData && getFileStatusIcon(fileData.status)}
-                    {hasFile && !isUploading && (
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-5 w-5"
-                        onClick={() => handleFileUpload(report.id, null)}
-                      >
-                        <X className="w-3 h-3" />
-                      </Button>
+                    {fileData?.name && (
+                      <span className="text-[11px] text-muted-foreground max-w-[120px] truncate">
+                        {fileData.name}
+                      </span>
                     )}
                   </div>
                 </div>
-                
-                <label 
-                  className={`flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-3 min-h-[80px] cursor-pointer transition-colors ${
-                    hasFile 
-                      ? fileData.status === 'success' 
-                        ? "border-green-500 bg-green-500/5"
-                        : fileData.status === 'error'
-                        ? "border-destructive bg-destructive/5"
-                        : "border-primary bg-primary/5"
-                      : dragOverReportId === report.id
-                      ? "border-primary bg-primary/10"
-                      : "border-border hover:border-primary/50 hover:bg-muted/50"
-                  } ${isUploading ? 'pointer-events-none opacity-70' : ''}`}
-                  onDragOver={(e) => handleDragOver(e, report.id)}
-                  onDragLeave={handleDragLeave}
-                  onDrop={(e) => handleDrop(e, report.id)}
-                >
-                  <input 
-                    type="file" 
-                    accept=".xlsx,.xls"
-                    className="hidden"
-                    disabled={uploading}
-                    onChange={(e) => handleFileUpload(report.id, e.target.files?.[0] || null)}
-                  />
-                  {hasFile ? (
-                    <div className="flex flex-col items-center gap-1">
-                      <div className="flex items-center gap-1.5 text-primary">
-                        <FileSpreadsheet className="w-5 h-5" />
-                        <span className="text-xs font-medium truncate max-w-[140px]">
-                          {fileData.name}
-                        </span>
-                      </div>
-                      {fileData.status === 'success' && fileData.rowsImported !== undefined && (
-                        <span className="text-[10px] text-green-600 leading-tight">
-                          {t('report.importedRows').replace('{0}', String(fileData.rowsImported))}
-                        </span>
-                      )}
-                      {fileData.status === 'error' && fileData.error && (
-                        <span className="text-[10px] text-destructive leading-tight truncate max-w-[180px]">
-                          {fileData.error}
-                        </span>
-                      )}
-                    </div>
-                  ) : (
-                    <>
-                      <Upload className="w-5 h-5 text-muted-foreground mb-1" />
-                      <span className="text-xs text-muted-foreground text-center leading-tight">
-                        {t('report.dragOrClick')}
-                      </span>
-                    </>
-                  )}
-                </label>
-                <p className="text-[10px] text-muted-foreground mt-1 text-center leading-tight">
-                  <span className="font-mono">{report.hint}.xlsx</span>
-                  {report.id === "inventory_old" && (
-                    <span className="block mt-0.5 text-amber-600 dark:text-amber-500">
-                      {t('report.onlyLeftout')}
-                    </span>
-                  )}
-                </p>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
+
+          {/* Right: single upload field */}
+          <div className="h-full flex flex-col">
+            <label
+              className={`flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-4 min-h-[140px] md:h-full cursor-pointer transition-colors ${
+                dragOverAll
+                  ? "border-primary bg-primary/10"
+                  : "border-border hover:border-primary/50 hover:bg-muted/50"
+              } ${uploading ? "pointer-events-none opacity-70" : ""}`}
+              onDragOver={handleGlobalDragOver}
+              onDragLeave={handleGlobalDragLeave}
+              onDrop={handleGlobalDrop}
+            >
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                multiple
+                className="hidden"
+                disabled={uploading}
+                onChange={(e) => handleFilesSelected(e.target.files)}
+              />
+              <Upload className="w-6 h-6 text-muted-foreground mb-2" />
+              <span className="text-sm text-muted-foreground text-center leading-tight">
+                {t("report.dragOrClick")}
+              </span>
+            </label>
+            <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
+              Загрузите файлы{" "}
+              <span className="font-mono">
+                {reportTypes.map((r) => `${r.hint}.xlsx`).join(", ")}
+              </span>
+              .
+            </p>
+          </div>
         </div>
 
         {/* Product-Ad ID Mapping Table */}
