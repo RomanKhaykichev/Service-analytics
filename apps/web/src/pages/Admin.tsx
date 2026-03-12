@@ -244,11 +244,12 @@ export default function Admin() {
   };
 
   const getPlanSortKey = (row: TenantRow) => {
-    if (row.owner_email === "asparrow48@gmail.com") return 1;
-    if (row.owner_email === "mr.romanx@mail.ru") return 2;
-    if (row.owner_email === "1@mail.ru") return 3;
-    if (row.owner_email === "uzb@yandex.ru") return 4;
-    return (row.plan || "").toLowerCase() === "trial" ? 0 : 1;
+    const rawPlan = (row.plan || "").trim().toLowerCase();
+    if (!rawPlan || rawPlan === "trial") return 0;       // Trial 10
+    if (rawPlan === "month_5" || rawPlan === "month 5" || rawPlan === "month5") return 1; // Month 5
+    if (rawPlan === "month_10" || rawPlan === "month 10" || rawPlan === "month10") return 2; // Month 10
+    if (rawPlan === "gold" || rawPlan === "gold_plan") return 3; // Gold
+    return 4; // прочие / неизвестные
   };
 
   const sortedTenants = useMemo(() => {
@@ -902,21 +903,10 @@ export default function Admin() {
                         <TableCell className="text-center">
                           {(() => {
                             const rawPlan = (row.plan || "").trim().toLowerCase();
-                            const email = (row.owner_email || "").trim().toLowerCase();
                             let label: string;
 
-                            // Админы — всегда Gold
-                            if (email === "mr.romanx@mail.ru" || email === "asparrow48@gmail.com") {
-                              label = "Gold";
-                            }
-                            // Спец-аккаунты по email для Month 5 / Month 10
-                            else if (email === "1@mail.ru") {
-                              label = "Month 5";
-                            } else if (email === "uzb@yandex.ru") {
-                              label = "Month 10";
-                            }
                             // План из БД
-                            else if (!rawPlan || rawPlan === "trial") {
+                            if (!rawPlan || rawPlan === "trial") {
                               label = "Trial 10";
                             } else if (rawPlan === "month_5" || rawPlan === "month 5" || rawPlan === "month5") {
                               label = "Month 5";

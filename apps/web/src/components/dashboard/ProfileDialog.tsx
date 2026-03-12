@@ -33,20 +33,8 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
   // Subscription data based on user trial info
   const subscriptionPlan = t('profile.tariffPlan');
   const tariffLabel = (() => {
-    const email = (user?.email ?? "").trim().toLowerCase();
     const rawPlan = (user?.plan ?? "trial").trim().toLowerCase();
 
-    // Админы — всегда Gold (как в админской таблице)
-    if (email === "mr.romanx@mail.ru" || email === "asparrow48@gmail.com") {
-      return "Gold";
-    }
-    // Спец-аккаунты по email для Month 5 / Month 10
-    if (email === "1@mail.ru") {
-      return "Month 5";
-    }
-    if (email === "uzb@yandex.ru") {
-      return "Month 10";
-    }
     // План из БД
     if (!rawPlan || rawPlan === "trial") {
       return "Trial 10";

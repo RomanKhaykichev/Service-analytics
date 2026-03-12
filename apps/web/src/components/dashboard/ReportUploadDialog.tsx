@@ -426,20 +426,8 @@ export function ReportUploadDialog({ disabled, onOpenExtendTariff }: ReportUploa
 
   // Человекочитаемый тариф пользователя (как в профиле/админке)
   const userTariffLabel = (() => {
-    const email = (user?.email ?? "").trim().toLowerCase();
     const rawPlan = (user?.plan ?? "trial").trim().toLowerCase();
 
-    // Админы — Gold
-    if (email === "mr.romanx@mail.ru" || email === "asparrow48@gmail.com") {
-      return "Gold";
-    }
-    // Спец-аккаунты по email для Month 5 / Month 10
-    if (email === "1@mail.ru") {
-      return "Month 5";
-    }
-    if (email === "uzb@yandex.ru") {
-      return "Month 10";
-    }
     // План из БД
     if (!rawPlan || rawPlan === "trial") {
       return "Trial 10";
