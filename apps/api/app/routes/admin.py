@@ -112,8 +112,8 @@ class TenantShopsResponse(BaseModel):
     shops: list[str] = []
 
 class DashboardFunnel(BaseModel):
-    visited_site: int  # Зашли на сайт (уникальные пользователи с визитом)
-    tried: int  # Попробовали (с хотя бы одной загрузкой)
+    visited_site: int  # Зашли на сайт — количество человек, зашедших на сайт (лендинг)
+    tried: int  # Попробовали — количество нажатий «Попробовать бесплатно» в промо-окне
     registered: int  # Зарегистрировали
     paid: int  # Оплатили (план paid или кол-во оплат — здесь кол-во пользователей на платной подписке)
     conversion_pct: float  # Конверсия % (paid/registered*100)
@@ -137,7 +137,7 @@ class MonthlyRow(BaseModel):
     profit: float  # Прибыль (сумма оплат за месяц)
     registrations: int
     payments: int  # Количество оплат (операций)
-    active_users: int  # Подписчики (активные пользователи за месяц — заходили или загружали данные)
+    active_users: int  # Подписчики: кол-во аккаунтов с тарифом Month 5 и Month 10, оплативших в этом месяце
 
 
 class DashboardMetricsResponse(BaseModel):
@@ -784,21 +784,19 @@ async def admin_dashboard_metrics(
                     pay_count = int(r2[1] or 0)
             except Exception:
                 pass
+            # Подписчики за месяц = кол-во аккаунтов с тарифом Month 5 или Month 10, оплативших в этом месяце
             try:
-                r3 = db.execute(text("""
+                r_plan = db.execute(text("""
                     SELECT column_name FROM information_schema.columns
-                    WHERE table_schema = :s AND table_name = 'users' AND column_name = 'last_login_at'
+                    WHERE table_schema = :s AND table_name = 'users' AND column_name = 'plan'
                 """), {"s": schema}).fetchone()
-                if r3:
+                if r_plan:
                     r4 = db.execute(text(f"""
-                        SELECT COUNT(DISTINCT id) FROM {qname('users')}
-                        WHERE last_login_at::date >= :from_d AND last_login_at::date <= :to_d AND is_active = true
-                    """), {"from_d": from_m, "to_d": to_m}).fetchone()
-                    active_users = r4[0] or 0 if r4 else 0
-                else:
-                    r4 = db.execute(text(f"""
-                        SELECT COUNT(DISTINCT user_id) FROM {qname('upload_batch')}
-                        WHERE created_at::date >= :from_d AND created_at::date <= :to_d
+                        SELECT COUNT(DISTINCT up.user_id)
+                        FROM {qname('user_payments')} up
+                        INNER JOIN {qname('users')} u ON u.id = up.user_id
+                        WHERE up.paid_at::date >= :from_d AND up.paid_at::date <= :to_d
+                          AND LOWER(TRIM(COALESCE(u.plan, ''))) IN ('month 5', 'month 10', 'month_5', 'month_10', 'month5', 'month10')
                     """), {"from_d": from_m, "to_d": to_m}).fetchone()
                     active_users = r4[0] or 0 if r4 else 0
             except Exception:
@@ -1377,6 +1375,7 @@ async def admin_tenant_extend_trial(
 class PaymentBody(BaseModel):
     amount: float  # сумма оплаты (попадает в колонку Оплачено и в график дохода по месяцу paid_at)
     paid_at: Optional[str] = None  # ISO datetime; по умолчанию now()
+    plan: Optional[str] = None  # тариф, на который переключается пользователь при оплате: "month_5" или "month_10"
 
 
 @router.post("/admin/tenants/{tenant_id}/payment")
@@ -1386,7 +1385,7 @@ async def admin_tenant_payment(
     _: UUID = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Записать платёж клиента: сумма попадёт в колонку «Оплачено» и в график «Аналитика подписок» по месяцу paid_at."""
+    """Записать платёж клиента: сумма в «Оплачено» и график. Если указан plan (month_5/month_10), пользователь переключается на этот тариф и получает 30 дней доступа."""
     uid = str(tenant_id)
     if body.amount <= 0:
         raise HTTPException(status_code=400, detail="amount must be positive")
@@ -1410,13 +1409,51 @@ async def admin_tenant_payment(
             """), {"uid": uid, "amount": body.amount})
         except Exception:
             pass  # колонка paid_amount может отсутствовать до миграции
+        # Если указан тариф при оплате — переключаем пользователя на этот тариф и даём 30 дней доступа
+        plan_canonical = None
+        if body.plan and body.plan.strip():
+            plan_key = body.plan.strip().lower().replace(" ", "_")
+            if plan_key in ("month_5", "month5"):
+                plan_canonical = "Month 5"
+            elif plan_key in ("month_10", "month10"):
+                plan_canonical = "Month 10"
+        if plan_canonical:
+            try:
+                db.execute(text(f"""
+                    UPDATE {qname('users')}
+                    SET plan = :plan,
+                        trial_ends_at = GREATEST(COALESCE(trial_ends_at, :paid_at), :paid_at) + INTERVAL '30 days',
+                        updated_at = now()
+                    WHERE id = :uid
+                """), {"uid": uid, "plan": plan_canonical, "paid_at": paid_at})
+            except Exception as e:
+                logger.warning("admin_tenant_payment: set plan and extend trial_ends_at: %s", e)
+        else:
+            # Без указания тарифа: продлеваем на 30 дней только если уже Month 5 / Month 10
+            try:
+                plan_row = db.execute(text(f"""
+                    SELECT LOWER(TRIM(COALESCE(plan, ''))) FROM {qname('users')} WHERE id = :uid
+                """), {"uid": uid}).fetchone()
+                plan_val = (plan_row[0] or "").strip().replace(" ", "_") if plan_row else ""
+                if plan_val in ("month_5", "month_10", "month5", "month10"):
+                    db.execute(text(f"""
+                        UPDATE {qname('users')}
+                        SET trial_ends_at = GREATEST(COALESCE(trial_ends_at, :paid_at), :paid_at) + INTERVAL '30 days',
+                            updated_at = now()
+                        WHERE id = :uid
+                    """), {"uid": uid, "paid_at": paid_at})
+            except Exception as e:
+                logger.warning("admin_tenant_payment: extend trial_ends_at for Month 5/10: %s", e)
         db.commit()
     except HTTPException:
         raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
-    return {"ok": True, "tenant_id": uid, "amount": body.amount, "paid_at": paid_at.isoformat()}
+    out = {"ok": True, "tenant_id": uid, "amount": body.amount, "paid_at": paid_at.isoformat()}
+    if plan_canonical:
+        out["plan"] = plan_canonical
+    return out
 
 
 class NotesBody(BaseModel):
