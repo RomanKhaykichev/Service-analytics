@@ -1399,16 +1399,28 @@ async def admin_tenant_payment(
                 paid_at = datetime.fromisoformat(body.paid_at.replace("Z", "+00:00"))
             except ValueError:
                 raise HTTPException(status_code=400, detail="paid_at must be ISO datetime")
+        # Убедиться, что таблица и колонки существуют (если миграции не применялись к этой БД)
+        schema = get_settings().DB_SCHEMA
+        db.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS {schema}.user_payments (
+                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id uuid NOT NULL REFERENCES {schema}.users(id) ON DELETE CASCADE,
+                amount numeric(18,2) NOT NULL,
+                paid_at timestamptz NOT NULL DEFAULT now()
+            )
+        """))
+        db.execute(text(f"CREATE INDEX IF NOT EXISTS ix_user_payments_user_id ON {schema}.user_payments (user_id)"))
+        db.execute(text(f"CREATE INDEX IF NOT EXISTS ix_user_payments_paid_at ON {schema}.user_payments (paid_at)"))
+        db.execute(text(f"ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS paid_amount numeric(18,2) NOT NULL DEFAULT 0"))
+        db.execute(text(f"ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS trial_ends_at timestamptz"))
+        db.execute(text(f"ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS plan varchar(50) NOT NULL DEFAULT 'trial'"))
         db.execute(text(f"""
             INSERT INTO {qname('user_payments')} (user_id, amount, paid_at)
             VALUES (:uid, :amount, :paid_at)
         """), {"uid": uid, "amount": body.amount, "paid_at": paid_at})
-        try:
-            db.execute(text(f"""
-                UPDATE {qname('users')} SET paid_amount = COALESCE(paid_amount, 0) + :amount, updated_at = now() WHERE id = :uid
-            """), {"uid": uid, "amount": body.amount})
-        except Exception:
-            pass  # колонка paid_amount может отсутствовать до миграции
+        db.execute(text(f"""
+            UPDATE {qname('users')} SET paid_amount = COALESCE(paid_amount, 0) + :amount, updated_at = now() WHERE id = :uid
+        """), {"uid": uid, "amount": body.amount})
         # Если указан тариф при оплате — переключаем пользователя на этот тариф и даём 30 дней доступа
         plan_canonical = None
         if body.plan and body.plan.strip():
@@ -1418,32 +1430,26 @@ async def admin_tenant_payment(
             elif plan_key in ("month_10", "month10"):
                 plan_canonical = "Month 10"
         if plan_canonical:
-            try:
-                db.execute(text(f"""
-                    UPDATE {qname('users')}
-                    SET plan = :plan,
-                        trial_ends_at = GREATEST(COALESCE(trial_ends_at, :paid_at), :paid_at) + INTERVAL '30 days',
-                        updated_at = now()
-                    WHERE id = :uid
-                """), {"uid": uid, "plan": plan_canonical, "paid_at": paid_at})
-            except Exception as e:
-                logger.warning("admin_tenant_payment: set plan and extend trial_ends_at: %s", e)
+            db.execute(text(f"""
+                UPDATE {qname('users')}
+                SET plan = :plan,
+                    trial_ends_at = GREATEST(COALESCE(trial_ends_at, :paid_at), :paid_at) + INTERVAL '30 days',
+                    updated_at = now()
+                WHERE id = :uid
+            """), {"uid": uid, "plan": plan_canonical, "paid_at": paid_at})
         else:
             # Без указания тарифа: продлеваем на 30 дней только если уже Month 5 / Month 10
-            try:
-                plan_row = db.execute(text(f"""
-                    SELECT LOWER(TRIM(COALESCE(plan, ''))) FROM {qname('users')} WHERE id = :uid
-                """), {"uid": uid}).fetchone()
-                plan_val = (plan_row[0] or "").strip().replace(" ", "_") if plan_row else ""
-                if plan_val in ("month_5", "month_10", "month5", "month10"):
-                    db.execute(text(f"""
-                        UPDATE {qname('users')}
-                        SET trial_ends_at = GREATEST(COALESCE(trial_ends_at, :paid_at), :paid_at) + INTERVAL '30 days',
-                            updated_at = now()
-                        WHERE id = :uid
-                    """), {"uid": uid, "paid_at": paid_at})
-            except Exception as e:
-                logger.warning("admin_tenant_payment: extend trial_ends_at for Month 5/10: %s", e)
+            plan_row = db.execute(text(f"""
+                SELECT LOWER(TRIM(COALESCE(plan, ''))) FROM {qname('users')} WHERE id = :uid
+            """), {"uid": uid}).fetchone()
+            plan_val = (plan_row[0] or "").strip().replace(" ", "_") if plan_row else ""
+            if plan_val in ("month_5", "month_10", "month5", "month10"):
+                db.execute(text(f"""
+                    UPDATE {qname('users')}
+                    SET trial_ends_at = GREATEST(COALESCE(trial_ends_at, :paid_at), :paid_at) + INTERVAL '30 days',
+                        updated_at = now()
+                    WHERE id = :uid
+                """), {"uid": uid, "paid_at": paid_at})
         db.commit()
     except HTTPException:
         raise
