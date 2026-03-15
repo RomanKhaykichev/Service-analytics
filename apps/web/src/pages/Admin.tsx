@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Shield, Users, UserPlus, AlertCircle, Pencil, Trash2, UserMinus, CalendarPlus, Upload, BarChart3, ChevronUp, ChevronDown } from "lucide-react";
+import { Shield, Users, UserPlus, AlertCircle, Pencil, Trash2, UserMinus, CalendarPlus, Banknote, Upload, BarChart3, ChevronUp, ChevronDown } from "lucide-react";
 import { Tooltip as UITooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -137,6 +137,7 @@ export default function Admin() {
   const [notesModal, setNotesModal] = useState<{ tenantId: string; notes: string } | null>(null);
   const [passwordModal, setPasswordModal] = useState<{ tenantId: string; newPassword: string } | null>(null);
   const [extendTrialModal, setExtendTrialModal] = useState<{ tenantId: string; days: number } | null>(null);
+  const [paymentModal, setPaymentModal] = useState<{ tenantId: string; amount: number; plan: string } | null>(null);
   const [confirmAction, setConfirmAction] = useState<null | { type: "disable" | "delete"; tenantId: string }>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [dashboardMetrics, setDashboardMetrics] = useState<DashboardMetrics | null>(null);
@@ -327,6 +328,28 @@ export default function Admin() {
     }
   };
 
+  const handleRecordPayment = async () => {
+    if (!paymentModal || paymentModal.amount <= 0) {
+      toast.error("Укажите сумму больше 0");
+      return;
+    }
+    try {
+      const body: { amount: number; plan?: string } = { amount: paymentModal.amount };
+      if (paymentModal.plan === "month_5" || paymentModal.plan === "month_10") {
+        body.plan = paymentModal.plan;
+      }
+      await apiPost(`/api/admin/tenants/${paymentModal.tenantId}/payment`, body);
+      setPaymentModal(null);
+      toast.success(body.plan ? "Платёж записан. Пользователь переключен на тариф и получил 30 дней доступа." : "Платёж записан.");
+      fetchTenants();
+      fetchDashboardMetrics();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(msg || "Ошибка при записи платежа");
+      setError(msg);
+    }
+  };
+
   const handleSaveNotes = async () => {
     if (!notesModal) return;
     try {
@@ -401,6 +424,11 @@ export default function Admin() {
   const handleExitToService = () => {
     navigate("/");
   };
+
+  const monthlyWithout2025 = useMemo(
+    () => (dashboardMetrics?.monthly ?? []).filter((row) => !row.month.startsWith("2025")),
+    [dashboardMetrics?.monthly]
+  );
 
   return (
     <MainLayout>
@@ -499,27 +527,46 @@ export default function Admin() {
                       dashboardMetrics.funnel.paid,
                       1
                     );
-                    const rows = [
-                      { n: dashboardMetrics.funnel.visited_site, label: "Зашли на сайт", pct: null as number | null },
-                      { n: dashboardMetrics.funnel.tried, label: "Попробовали", pct: dashboardMetrics.funnel.visited_site ? Math.round((dashboardMetrics.funnel.tried / dashboardMetrics.funnel.visited_site) * 100) : 0 },
+                    const rows: { n: number; label: string; pct: number | null; tooltip?: string }[] = [
+                      { n: dashboardMetrics.funnel.visited_site, label: "Зашли на сайт", pct: null, tooltip: "Количество человек, зашедших на сайт (лендинг)" },
+                      { n: dashboardMetrics.funnel.tried, label: "Попробовали", pct: dashboardMetrics.funnel.visited_site ? Math.round((dashboardMetrics.funnel.tried / dashboardMetrics.funnel.visited_site) * 100) : 0, tooltip: "Количество тех, кто нажал «Попробовать бесплатно» в промо-окне" },
                       { n: dashboardMetrics.funnel.registered, label: "Зарегистрировались", pct: dashboardMetrics.funnel.tried ? Math.round((dashboardMetrics.funnel.registered / dashboardMetrics.funnel.tried) * 100) : 0 },
                       { n: dashboardMetrics.funnel.paid, label: "Оплатили", pct: dashboardMetrics.funnel.registered ? Math.round((dashboardMetrics.funnel.paid / dashboardMetrics.funnel.registered) * 100) : 0 },
                     ];
                     return (
                       <>
-                        {rows.map(({ n, label, pct }, i) => (
+                        {rows.map(({ n, label, pct, tooltip }, i) => (
                           <div key={i} className="flex items-center gap-2">
                             <span className="font-bold w-8 shrink-0">{n}</span>
                             <div className="flex-1 min-w-0 flex justify-center">
-                              <div
-                                className="h-8 flex items-center justify-center text-white text-sm font-medium rounded min-w-[60px]"
-                                style={{
-                                  background: "hsl(var(--primary))",
-                                  width: `${Math.max((n / maxVal) * 100, n > 0 ? 8 : 0)}%`,
-                                }}
-                              >
-                                {label}
-                              </div>
+                              {tooltip ? (
+                                <UITooltip>
+                                  <TooltipTrigger asChild>
+                                    <div
+                                      className="h-8 flex items-center justify-center text-white text-sm font-medium rounded min-w-[60px] cursor-help"
+                                      style={{
+                                        background: "hsl(var(--primary))",
+                                        width: `${Math.max((n / maxVal) * 100, n > 0 ? 8 : 0)}%`,
+                                      }}
+                                    >
+                                      {label}
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="max-w-xs">
+                                    {tooltip}
+                                  </TooltipContent>
+                                </UITooltip>
+                              ) : (
+                                <div
+                                  className="h-8 flex items-center justify-center text-white text-sm font-medium rounded min-w-[60px]"
+                                  style={{
+                                    background: "hsl(var(--primary))",
+                                    width: `${Math.max((n / maxVal) * 100, n > 0 ? 8 : 0)}%`,
+                                  }}
+                                >
+                                  {label}
+                                </div>
+                              )}
                             </div>
                             <span className="text-sm font-medium text-muted-foreground shrink-0 w-10 text-right">{pct != null ? `${pct}%` : ""}</span>
                           </div>
@@ -583,47 +630,51 @@ export default function Admin() {
                   Прибыль по месяцам
                 </CardTitle>
               </CardHeader>
-              <CardContent className="flex-1 min-h-0 overflow-auto p-0">
-                {dashboardMetrics && dashboardMetrics.monthly.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="px-3">Месяц</TableHead>
-                        <TableHead className="text-center px-3">Прибыль</TableHead>
-                        <TableHead
-                          className="text-center px-3"
-                          title={t("admin.monthly.registrationsHelp")}
-                        >
-                          Регистрации
-                        </TableHead>
-                        <TableHead className="text-center px-3">Оплат</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {dashboardMetrics.monthly.map((row) => (
-                        <TableRow key={row.month}>
-                          <TableCell className="px-3">{row.month_label}</TableCell>
-                          <TableCell className="text-center px-3">
-                            {row.profit > 0 ? `${Number(row.profit).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} сум` : "0"}
-                          </TableCell>
-                          <TableCell className="text-center px-3">{row.registrations}</TableCell>
-                          <TableCell className="text-center px-3">{row.payments}</TableCell>
+              <CardContent className="flex-1 min-h-0 flex flex-col p-0">
+                {monthlyWithout2025.length > 0 ? (
+                  <div className="overflow-y-auto overflow-x-hidden rounded-b-lg" style={{ maxHeight: "240px" }}>
+                    <table className="w-full caption-bottom text-sm border-collapse">
+                      <thead className="sticky top-0 z-10 bg-background [&_tr]:border-b">
+                        <TableRow className="border-b py-0">
+                          <TableHead className="px-2 py-1 text-xs h-auto">Месяц</TableHead>
+                          <TableHead className="text-center px-2 py-1 text-xs h-auto">Прибыль</TableHead>
+                          <TableHead
+                            className="text-center px-2 py-1 text-xs h-auto"
+                            title={t("admin.monthly.registrationsHelp")}
+                          >
+                            Регистрации
+                          </TableHead>
+                          <TableHead className="text-center px-2 py-1 text-xs h-auto">Оплат</TableHead>
                         </TableRow>
-                      ))}
-                      <TableRow className="font-semibold bg-muted/50">
-                        <TableCell className="px-3">Всего</TableCell>
-                        <TableCell className="text-center px-3">
-                          {dashboardMetrics.monthly.reduce((s, r) => s + r.profit, 0).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} сум
-                        </TableCell>
-                        <TableCell className="text-center px-3">
-                          {dashboardMetrics.monthly.reduce((s, r) => s + r.registrations, 0)}
-                        </TableCell>
-                        <TableCell className="text-center px-3">
-                          {dashboardMetrics.monthly.reduce((s, r) => s + r.payments, 0)}
-                        </TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
+                      </thead>
+                      <tbody className="[&_tr:last-child]:border-0">
+                        {[...monthlyWithout2025].reverse().map((row) => (
+                          <TableRow key={row.month} className="py-0">
+                            <TableCell className="px-2 py-0.5 text-xs">{row.month_label}</TableCell>
+                            <TableCell className="text-center px-2 py-0.5 text-xs">
+                              {row.profit > 0 ? Number(row.profit).toLocaleString("ru-RU", { maximumFractionDigits: 0 }) : "0"}
+                            </TableCell>
+                            <TableCell className="text-center px-2 py-0.5 text-xs">{row.registrations}</TableCell>
+                            <TableCell className="text-center px-2 py-0.5 text-xs">{row.payments}</TableCell>
+                          </TableRow>
+                        ))}
+                      </tbody>
+                      <tfoot className="sticky bottom-0 z-10 bg-muted/50 border-t [&_tr]:border-0">
+                        <TableRow className="font-semibold bg-muted/50 py-0 border-0">
+                          <TableCell className="px-2 py-0.5 text-xs">Всего</TableCell>
+                          <TableCell className="text-center px-2 py-0.5 text-xs">
+                            {monthlyWithout2025.reduce((s, r) => s + r.profit, 0).toLocaleString("ru-RU", { maximumFractionDigits: 0 })}
+                          </TableCell>
+                          <TableCell className="text-center px-2 py-0.5 text-xs">
+                            {monthlyWithout2025.reduce((s, r) => s + r.registrations, 0)}
+                          </TableCell>
+                          <TableCell className="text-center px-2 py-0.5 text-xs">
+                            {monthlyWithout2025.reduce((s, r) => s + r.payments, 0)}
+                          </TableCell>
+                        </TableRow>
+                      </tfoot>
+                    </table>
+                  </div>
                 ) : (
                   <div className="p-4 text-sm text-muted-foreground">
                     Нет данных
@@ -634,7 +685,7 @@ export default function Admin() {
           </div>
 
           {/* График Аналитика подписок: доход (столбцы) + подписчики (линия) */}
-          {dashboardMetrics && dashboardMetrics.monthly.length > 0 && (
+          {monthlyWithout2025.length > 0 && (
             <Card className="mb-6">
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -645,7 +696,7 @@ export default function Admin() {
               <CardContent>
                 <ResponsiveContainer width="100%" height={320}>
                   <ComposedChart
-                    data={dashboardMetrics.monthly}
+                    data={[...monthlyWithout2025].reverse()}
                     margin={{ top: 8, right: 8, left: 4, bottom: 4 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" />
@@ -1065,6 +1116,27 @@ export default function Admin() {
                                     variant="ghost"
                                     className="h-8 w-8"
                                     onClick={() =>
+                                      setPaymentModal({
+                                        tenantId: row.tenant_id,
+                                        amount: 0,
+                                        plan: "",
+                                      })
+                                    }
+                                  >
+                                    <Banknote className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {t("admin.tooltip.recordPayment")}
+                                </TooltipContent>
+                              </UITooltip>
+                              <UITooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8"
+                                    onClick={() =>
                                       setPasswordModal({
                                         tenantId: row.tenant_id,
                                         newPassword: "",
@@ -1215,6 +1287,55 @@ export default function Admin() {
             <Button variant="outline" onClick={() => setExtendTrialModal(null)}>Отмена</Button>
             <Button onClick={() => extendTrialModal && handleExtendTrial(extendTrialModal.tenantId, extendTrialModal.days)}>
               Добавить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!paymentModal} onOpenChange={(open) => !open && setPaymentModal(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Записать платёж</DialogTitle>
+            <p className="text-sm text-muted-foreground">Сумма и тариф. При выборе тарифа пользователь переключится на него и получит 30 дней доступа.</p>
+          </DialogHeader>
+          {paymentModal && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Сумма (сум)</label>
+                <Input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={paymentModal.amount || ""}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    setPaymentModal((p) => p ? { ...p, amount: Number.isNaN(v) ? 0 : v } : null);
+                  }}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Тариф (переключить пользователя)</label>
+                <Select
+                  value={paymentModal.plan || "none"}
+                  onValueChange={(v) => setPaymentModal((p) => p ? { ...p, plan: v === "none" ? "" : v } : null)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Не менять тариф" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Не менять тариф</SelectItem>
+                    <SelectItem value="month_5">Month 5</SelectItem>
+                    <SelectItem value="month_10">Month 10</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPaymentModal(null)}>Отмена</Button>
+            <Button onClick={handleRecordPayment} disabled={!paymentModal || paymentModal.amount <= 0}>
+              Записать платёж
             </Button>
           </DialogFooter>
         </DialogContent>

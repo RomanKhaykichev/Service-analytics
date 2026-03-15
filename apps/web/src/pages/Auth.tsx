@@ -50,6 +50,13 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
     return password.length >= 6;
   };
 
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const digits = e.target.value.replace(/\D/g, '').slice(0, 9);
+    setPhone(digits);
+  };
+  const phoneForSubmit = (): string | undefined =>
+    phone.length === 9 ? `+998${phone}` : undefined;
+
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -129,7 +136,7 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
     }
 
     setLoading(true);
-    const { error } = await signUp(email.trim(), password, fullName.trim(), (phone && phone.trim()) || undefined, consentProcessing);
+    const { error } = await signUp(email.trim(), password, fullName.trim(), phoneForSubmit(), consentProcessing);
     setLoading(false);
 
     if (error) {
@@ -288,14 +295,23 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
                 disabled={loading}
               />
 
-              <Input
-                id="signup-phone"
-                type="tel"
-                placeholder="+998 90 123 45 67"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                disabled={loading}
-              />
+              <div className="flex rounded-md border border-input bg-background ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 has-[:disabled]:opacity-50 has-[:disabled]:cursor-not-allowed">
+                <span className="inline-flex items-center px-3 text-muted-foreground border-r border-input bg-muted/50 text-sm shrink-0">
+                  +998
+                </span>
+                <Input
+                  id="signup-phone"
+                  type="tel"
+                  placeholder="90 123 45 67"
+                  value={phone}
+                  onChange={handlePhoneChange}
+                  disabled={loading}
+                  maxLength={9}
+                  inputMode="numeric"
+                  autoComplete="tel"
+                  className="border-0 rounded-none focus-visible:ring-0 focus-visible:ring-offset-0 pl-2"
+                />
+              </div>
 
               <div className="relative">
                 <Input

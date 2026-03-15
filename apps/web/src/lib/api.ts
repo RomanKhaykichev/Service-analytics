@@ -42,7 +42,8 @@ export function getAuthHeaders(): Record<string, string> {
 /**
  * Get API base URL from env or default
  * In development, always use relative path so Vite proxy sends /api to local backend.
- * In production, use VITE_API_URL or fallback to 127.0.0.1:8000.
+ * In production: VITE_API_URL if set, otherwise '' (same-origin) — чтобы трекинг и API
+ * работали на profiboard.uz, когда фронт и бэк на одном домене.
  */
 export function getApiBaseUrl(): string {
   // In development, always use relative path → Vite proxy → http://127.0.0.1:8000
@@ -53,7 +54,8 @@ export function getApiBaseUrl(): string {
   if (apiUrl) {
     return apiUrl;
   }
-  return "http://127.0.0.1:8000";
+  // Production без VITE_API_URL: относительный URL — запросы идут на тот же домен (profiboard.uz/api/...)
+  return '';
 }
 
 /**
