@@ -128,7 +128,7 @@ class DashboardFiles(BaseModel):
 class DashboardTotals(BaseModel):
     registered: int  # Всего зарегистрировано
     paid_subscription: int  # Платная подписка (пользователей)
-    inactive_30d: int  # Неактивны более 30 дней
+    inactive_30d: int  # Неактивны более 30 дней: не заходили 30+ дней (по колонке last_login_at в users)
 
 
 class MonthlyRow(BaseModel):
@@ -726,9 +726,10 @@ async def admin_dashboard_metrics(
             WHERE table_schema = :s AND table_name = 'users' AND column_name = 'last_login_at'
         """), {"s": schema}).fetchone()
         if r:
+            # Неактивны более 30 дней: не заходили 30+ дней (дата входа — last_login_at в таблице users)
             r2 = db.execute(text(f"""
                 SELECT COUNT(*) FROM {qname('users')}
-                WHERE last_login_at IS NULL OR last_login_at::date < :d30
+                WHERE last_login_at IS NULL OR last_login_at::date <= :d30
             """), {"d30": d30}).fetchone()
             inactive_30d = r2[0] or 0 if r2 else 0
         else:
@@ -1421,7 +1422,7 @@ async def admin_tenant_payment(
         db.execute(text(f"""
             UPDATE {qname('users')} SET paid_amount = COALESCE(paid_amount, 0) + :amount, updated_at = now() WHERE id = :uid
         """), {"uid": uid, "amount": body.amount})
-        # Если указан тариф при оплате — переключаем пользователя на этот тариф и даём 30 дней доступа
+        # Если указан тариф при оплате — переключаем на тариф и даём 30 дней. Смена тарифа = обнуление дней; докупка того же = прибавка 30 дней.
         plan_canonical = None
         if body.plan and body.plan.strip():
             plan_key = body.plan.strip().lower().replace(" ", "_")
@@ -1429,21 +1430,37 @@ async def admin_tenant_payment(
                 plan_canonical = "Month 5"
             elif plan_key in ("month_10", "month10"):
                 plan_canonical = "Month 10"
+        # Текущий план пользователя для решения: смена тарифа (обнулить дни) или докупка (прибавить 30 дней)
+        plan_row = db.execute(text(f"""
+            SELECT LOWER(TRIM(COALESCE(plan, ''))) FROM {qname('users')} WHERE id = :uid
+        """), {"uid": uid}).fetchone()
+        current_plan_norm = (plan_row[0] or "").strip().replace(" ", "_") if plan_row else ""
         if plan_canonical:
-            db.execute(text(f"""
-                UPDATE {qname('users')}
-                SET plan = :plan,
-                    trial_ends_at = GREATEST(COALESCE(trial_ends_at, :paid_at), :paid_at) + INTERVAL '30 days',
-                    updated_at = now()
-                WHERE id = :uid
-            """), {"uid": uid, "plan": plan_canonical, "paid_at": paid_at})
+            is_same_plan = (
+                (plan_canonical == "Month 5" and current_plan_norm in ("month_5", "month5"))
+                or (plan_canonical == "Month 10" and current_plan_norm in ("month_10", "month10"))
+            )
+            if is_same_plan:
+                # Докупка того же тарифа — прибавляем 30 дней
+                db.execute(text(f"""
+                    UPDATE {qname('users')}
+                    SET plan = :plan,
+                        trial_ends_at = GREATEST(COALESCE(trial_ends_at, :paid_at), :paid_at) + INTERVAL '30 days',
+                        updated_at = now()
+                    WHERE id = :uid
+                """), {"uid": uid, "plan": plan_canonical, "paid_at": paid_at})
+            else:
+                # Смена тарифа — обнуляем остаток, ставим 30 дней от даты оплаты
+                db.execute(text(f"""
+                    UPDATE {qname('users')}
+                    SET plan = :plan,
+                        trial_ends_at = :paid_at + INTERVAL '30 days',
+                        updated_at = now()
+                    WHERE id = :uid
+                """), {"uid": uid, "plan": plan_canonical, "paid_at": paid_at})
         else:
             # Без указания тарифа: продлеваем на 30 дней только если уже Month 5 / Month 10
-            plan_row = db.execute(text(f"""
-                SELECT LOWER(TRIM(COALESCE(plan, ''))) FROM {qname('users')} WHERE id = :uid
-            """), {"uid": uid}).fetchone()
-            plan_val = (plan_row[0] or "").strip().replace(" ", "_") if plan_row else ""
-            if plan_val in ("month_5", "month_10", "month5", "month10"):
+            if current_plan_norm in ("month_5", "month_10", "month5", "month10"):
                 db.execute(text(f"""
                     UPDATE {qname('users')}
                     SET trial_ends_at = GREATEST(COALESCE(trial_ends_at, :paid_at), :paid_at) + INTERVAL '30 days',

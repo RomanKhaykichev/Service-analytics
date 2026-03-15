@@ -17,6 +17,7 @@ from app.utils.column_mappings import (
     map_headers_to_canonical,
     DuplicateCanonicalError,
     MissingRequiredColumnsError,
+    CANONICAL_BY_FILE_TYPE,
 )
 from app.utils.value_mappings import apply_value_mappings
 
@@ -445,6 +446,12 @@ def read_excel_as_str(file_content: bytes, sheet: str, file_type: str = None) ->
             df = df.rename(columns=rename_dict)
         except (DuplicateCanonicalError, MissingRequiredColumnsError) as e:
             raise ValueError(str(e))
+    # Оставляем только известные колонки: новые колонки в файле игнорируются (не попадают в staging)
+    canonical_set = CANONICAL_BY_FILE_TYPE.get(file_type)
+    if canonical_set is not None:
+        keep = [c for c in df.columns if c in canonical_set]
+        if keep:
+            df = df[keep].copy()
     # Canonicalize known variants for storage/leftout: "магазин" / " Магазин " -> "Магазин" (not for leftout_old)
     if file_type in ("leftout", "storage"):
         cols = list(df.columns)
