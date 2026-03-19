@@ -103,6 +103,41 @@ async def get_storage_shops(
     - shop_name: original label — for display in UI
     """
     shops = []
+
+    # Trial-only UX constraint:
+    # Even if we import all shops into fact_storage_snapshot for trial (to keep
+    # shop-filtered KPI consistent), the UI must still present only 1 shop.
+    # We therefore pick the first non-undefined shop from dim_shop for trial users.
+    try:
+        plan_row = db.execute(
+            text(f"SELECT COALESCE(plan, 'trial') FROM {qname('users')} WHERE id = CAST(:uid AS uuid)"),
+            {"uid": str(user_id)}
+        ).fetchone()
+        plan_val = (plan_row[0] or "trial").strip().lower() if plan_row else "trial"
+        is_trial_plan = plan_val in ("trial", "", None) or not plan_val
+    except Exception:
+        is_trial_plan = False
+
+    if is_trial_plan:
+        rows = db.execute(
+            text(f"""
+                SELECT DISTINCT
+                    upper(regexp_replace(trim(shop_name), '\\s+', ' ', 'g')) AS shop_norm,
+                    MIN(shop_name) AS label
+                FROM {qname('dim_shop')}
+                WHERE user_id = CAST(:uid AS uuid)
+                  AND shop_name IS NOT NULL
+                  AND TRIM(shop_name) <> ''
+                  AND lower(TRIM(shop_name)) NOT IN ('не определено','неопределено','undefined','null','(не определено)','не определен')
+                GROUP BY shop_norm
+                ORDER BY shop_norm
+                LIMIT 1
+            """),
+            {"uid": str(user_id)}
+        ).fetchall()
+        if rows:
+            r = rows[0]
+            return ShopsResponse(shops=[Shop(shop_id=r[0] or "", shop_name=r[1] or r[0] or "")])
     
     logger.info(f"get_storage_shops: user_id={user_id}")
     

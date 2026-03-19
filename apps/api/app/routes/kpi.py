@@ -206,6 +206,28 @@ def kpi_summary(
     logger.info(f"kpi_summary: user_id={user_id}, shop_id={shop_id}, shop={shop}, shop_norm={shop_norm}, period={period_code}, period_range={period_range_dict}")
     
     try:
+        # Trial-safe window for expenses:
+        # Even if import-time limiting differs, we must ensure trial metrics from fact_expenses
+        # never include data older than last 60 days from the user's latest expenses date.
+        # We use the same "inclusive 60 days" trick as in imports:
+        # effective_from = trial_to - interval '59 days'
+        plan_row = db.execute(
+            text(f"SELECT COALESCE(plan, 'trial') FROM {qname('users')} WHERE id = CAST(:uid AS uuid)"),
+            {"uid": str(user_id)},
+        ).fetchone()
+        plan_val = (plan_row[0] or "trial").strip().lower() if plan_row else "trial"
+        is_trial_plan = plan_val in ("trial", "", None) or not plan_val
+
+        trial_exp_to = None
+        trial_exp_from = None
+        if is_trial_plan:
+            trial_exp_to = db.execute(
+                text(f"SELECT MAX(date_written_off)::date FROM {qname('fact_expenses')} WHERE user_id = CAST(:uid AS uuid)"),
+                {"uid": str(user_id)},
+            ).scalar()
+            if trial_exp_to:
+                trial_exp_from = (trial_exp_to - timedelta(days=59))
+
         # Diagnostic: log current database and schema for troubleshooting search_path / barcode_norm issues
         try:
             diag_row = db.execute(text("SELECT current_database(), current_schema()")).fetchone()
@@ -336,14 +358,30 @@ def kpi_summary(
         
         # B) UZUM services from expenses-report (fact_expenses): uzumAds, uzumStorage, uzumFines
         # Фильтр: user_id и date_written_off в диапазоне date_from/date_to. По shop эти метрики НЕ фильтруются.
-        expenses_where = ["user_id = CAST(:user_id AS uuid)"]
-        if date_from:
-            expenses_where.append("date_written_off >= CAST(:date_from AS date)")
-        expenses_where.append("date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'")
-        expenses_where_clause = " AND ".join(expenses_where)
+        # Trial-safe effective range for expenses.
+        # If requested date_from/date_to is outside trial window, clamp it.
+        # If requested date_from is None (e.g. period=all), we must NOT add a lower bound
+        # for non-trial users (to keep legacy behavior).
+        if is_trial_plan and trial_exp_from and trial_exp_to:
+            exp_date_from = date_from_dt if date_from_dt else trial_exp_from
+            if exp_date_from < trial_exp_from:
+                exp_date_from = trial_exp_from
+            exp_date_to = date_to_dt if date_to_dt else trial_exp_to
+            if exp_date_to > trial_exp_to:
+                exp_date_to = trial_exp_to
+        else:
+            exp_date_from = date_from_dt if date_from_dt else None
+            exp_date_to = date_to_date
+
         expenses_params = {**params_base}
-        if date_from:
-            expenses_params["date_from"] = date_from.isoformat()
+        expenses_params["exp_date_to"] = (exp_date_to or date_to_date).isoformat()
+
+        expenses_where_parts = ["user_id = CAST(:user_id AS uuid)"]
+        if exp_date_from is not None:
+            expenses_params["exp_date_from"] = exp_date_from.isoformat()
+            expenses_where_parts.append("date_written_off >= CAST(:exp_date_from AS date)")
+        expenses_where_parts.append("date_written_off < CAST(:exp_date_to AS date) + INTERVAL '1 day'")
+        expenses_where_clause = " AND ".join(expenses_where_parts)
 
         expenses_table = qname("fact_expenses")
         # Формулы ТЗ: строго из fact_expenses; нормализация upper(trim(COALESCE(col,'')))
@@ -408,10 +446,12 @@ def kpi_summary(
         # Фильтры: период (expense_date), магазин по названию (shop_norm) или shop_id (UUID), user_id, is_deleted = false
         # Магазин: как в GET /api/extra-expenses — по колонке "Магазин" (dim_shop.shop_name), нормализованно (trim, пробелы, upper)
         manual_expenses_params = {**params_base}
-        date_from_filter = ""
-        if date_from:
-            manual_expenses_params["date_from"] = date_from.isoformat()
-            date_from_filter = "AND e.expense_date >= CAST(:date_from AS date)"
+        # Trial-safe effective range for manual_expenses too (part of total expenses).
+        manual_expenses_params["exp_date_to"] = expenses_params["exp_date_to"]
+        manual_date_from_filter = ""
+        if exp_date_from is not None:
+            manual_expenses_params["exp_date_from"] = exp_date_from.isoformat()
+            manual_date_from_filter = "AND e.expense_date >= CAST(:exp_date_from AS date)"
         manual_shop_filter = ""
         if shop_norm:
             manual_shop_filter = "AND upper(regexp_replace(trim(COALESCE(ds.shop_name, '')), '\\s+', ' ', 'g')) = :shop_norm"
@@ -446,8 +486,8 @@ def kpi_summary(
             LEFT JOIN {qname("dim_shop")} ds ON ds.shop_id = e.shop_id AND ds.user_id = e.user_id
             WHERE e.user_id = CAST(:user_id AS uuid)
               AND e.is_deleted = false
-              {date_from_filter}
-              AND e.expense_date <= CAST(:date_to AS date)
+              {manual_date_from_filter}
+              AND e.expense_date <= CAST(:exp_date_to AS date)
               {manual_shop_filter}
               {manual_name_filter}
         """)

@@ -62,6 +62,48 @@ def test_leftout_old_required():
     assert set(rename.values()) == set(required)
 
 
+def test_leftout_old_ru_header_variants():
+    """RU: tolerate common Excel header variants for leftout_old."""
+    headers = [
+        "Штрихкод",
+        "В продаже, шт",
+        "Себест. (суммы)",
+        "Стоимость продажи (суммы)",
+        "Оборачиваемость (дней)",
+        "Оборачиваемость",
+        "Среднесуточные продажи, шт",
+        "К отправке, шт",
+        "Общий остаток, шт",
+        "Название товара",
+        "SKU",
+    ]
+    required = ["Штрихкод", "В продаже", "Себест. (сумы)", "Стоимость продажи (сумы)"]
+    rename, lang = map_headers_to_canonical("leftout_old", headers, required)
+
+    assert lang == "ru"
+    assert rename["В продаже, шт"] == "В продаже"
+    assert rename["Себест. (суммы)"] == "Себест. (сумы)"
+    assert rename["Стоимость продажи (суммы)"] == "Стоимость продажи (сумы)"
+    assert rename["Оборачиваемость (дней)"] == "Оборачиваемость, дней"
+    # Если встречаются оба варианта "Оборачиваемость (дней)" и "Оборачиваемость",
+    # маппинг оставит только первый (чтобы не было дубля канонического столбца).
+    assert "Оборачиваемость, дней" in set(rename.values())
+    assert rename["Среднесуточные продажи, шт"] == "Среднесуточные продажи"
+    assert rename["К отправке, шт"] == "К отправке"
+    assert rename["Общий остаток, шт"] == "Общий остаток"
+    assert rename["Название товара"] == "Наименование"
+    assert rename["SKU"] == "SKU"
+
+
+def test_leftout_old_ru_turnover_header_short():
+    """RU: header 'Оборачиваемость' should map to canonical 'Оборачиваемость, дней'."""
+    headers = ["Штрихкод", "В продаже", "Себест. (суммы)", "Стоимость продажи (суммы)", "Оборачиваемость"]
+    required = ["Штрихкод", "В продаже", "Себест. (сумы)", "Стоимость продажи (сумы)"]
+    rename, lang = map_headers_to_canonical("leftout_old", headers, required)
+    assert lang == "ru"
+    assert rename["Оборачиваемость"] == "Оборачиваемость, дней"
+
+
 def test_missing_required_raises():
     """Missing required canonical columns raises MissingRequiredColumnsError."""
     headers = ["Статус"]  # missing required for sales

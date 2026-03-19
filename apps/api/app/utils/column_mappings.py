@@ -355,6 +355,37 @@ def map_headers_to_canonical(
                 if variant in uz_map:
                     canonical = uz_map[variant]
                     break
+            # RU: tolerate common Excel header variants for left-out-report_old.
+            # (Backend expects canonical RU keys like "Оборачиваемость, дней".)
+            if canonical is None and file_type == "leftout_old":
+                lower = normalize_header_lower(h)
+                # Встречается и формат "Оборачиваемость, дней", и укороченный "Оборачиваемость".
+                if "оборачиваемост" in lower:
+                    canonical = "Оборачиваемость, дней"
+                elif lower.startswith("среднесуточные продажи"):
+                    # Two variants: regular and FBO/15 days.
+                    if "fbo" in lower and "15" in lower:
+                        canonical = "Среднесуточные продажи FBO за 15 дней, шт"
+                    else:
+                        canonical = "Среднесуточные продажи"
+                elif lower.startswith("к отправке"):
+                    canonical = "К отправке"
+                elif lower.startswith("общий остаток"):
+                    canonical = "Общий остаток"
+                elif lower.startswith("название товара") or lower.startswith("наименование"):
+                    canonical = "Наименование"
+                elif lower.startswith("в продаже"):
+                    canonical = "В продаже"
+                elif "себест" in lower and "сум" in lower:
+                    canonical = "Себест. (сумы)"
+                elif "стоимость продажи" in lower and "сум" in lower:
+                    canonical = "Стоимость продажи (сумы)"
+                elif "штрихкод" in lower:
+                    canonical = "Штрихкод"
+                elif lower == "sku" or lower.endswith(" sku") or " sku" in lower:
+                    canonical = "SKU"
+                elif "id" in lower and "товар" in lower:
+                    canonical = "ID товара"
         if canonical:
             # Если несколько заголовков маппятся в одну каноническую колонку — берём первый
             # (например Sotuv qiymati (soʻm) и Sotuv qiymati (summa) (soʻm) → одна Стоимость продажи)

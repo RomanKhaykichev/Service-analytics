@@ -567,10 +567,34 @@ async def get_uzum_services_daily(
     logger.info(f"get_uzum_services_daily: user_id={user_id}, period={period_code}, shop={shop}, shop_norm={shop_norm}, date_from={date_from_iso}, date_to={date_to_iso}")
     
     try:
+        # Trial-safe window for expenses.
+        # For trial users we cap fact_expenses to last 60 days (inclusive),
+        # even if import-time limiting differs.
+        plan_row = db.execute(
+            text(f"SELECT COALESCE(plan, 'trial') FROM {qname('users')} WHERE id = CAST(:uid AS uuid)"),
+            {"uid": str(user_id)},
+        ).fetchone()
+        plan_val = (plan_row[0] or "trial").strip().lower() if plan_row else "trial"
+        is_trial_plan = plan_val in ("trial", "", None) or not plan_val
+
+        exp_from = date_from
+        exp_to = date_to_date
+        if is_trial_plan:
+            trial_exp_to = db.execute(
+                text(f"SELECT MAX(date_written_off)::date FROM {qname('fact_expenses')} WHERE user_id = CAST(:uid AS uuid)"),
+                {"uid": str(user_id)},
+            ).scalar()
+            if trial_exp_to:
+                trial_exp_from = (trial_exp_to - timedelta(days=59))
+                if exp_from is None or exp_from < trial_exp_from:
+                    exp_from = trial_exp_from
+                if exp_to is None or exp_to > trial_exp_to:
+                    exp_to = trial_exp_to
+
         params_expenses = {
             "user_id": str(user_id),
-            "date_from": date_from_iso,
-            "date_to": date_to_iso
+            "exp_date_from": exp_from.isoformat() if exp_from else date_from_iso,
+            "exp_date_to": exp_to.isoformat() if exp_to else date_to_iso,
         }
         
         # 1) Expenses (expenses-report): storage, ads, fines — те же формулы, что в KPI Summary (по дням)
@@ -603,8 +627,8 @@ async def get_uzum_services_daily(
                 ), 0) AS fines
             FROM {qname("fact_expenses")}
             WHERE user_id = CAST(:user_id AS uuid)
-                AND date_written_off >= CAST(:date_from AS date)
-                AND date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'
+                AND date_written_off >= CAST(:exp_date_from AS date)
+                AND date_written_off < CAST(:exp_date_to AS date) + INTERVAL '1 day'
             GROUP BY date_written_off::date
             ORDER BY day ASC
         """)

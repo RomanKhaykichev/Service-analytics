@@ -9,6 +9,7 @@ import pandas as pd
 import logging
 import io
 import json
+import re
 from app.db import get_db, qname
 from app.deps import require_user
 from app.settings import get_settings
@@ -177,7 +178,10 @@ def compute_allowed_shops(
         return allowed, False
 
     def _norm_shop(s: str) -> str:
-        return str(s).strip().lower()
+        # Must match backend comparison style (trim + collapse whitespace).
+        # Case-insensitive here; exact punctuation stays unchanged.
+        s2 = re.sub(r"\s+", " ", str(s).strip())
+        return s2.lower()
 
     # Нормализованные имена сохранённых магазинов
     saved_norm = [_norm_shop(s) for s in saved_shops if _norm_shop(s)]
@@ -208,9 +212,15 @@ def filter_df_by_allowed_shops(
     """Оставляет в df только строки, у которых магазин входит в allowed_shop_names."""
     if not allowed_shop_names or shop_column not in df.columns:
         return df
-    allowed_set = {str(s).strip() for s in allowed_shop_names}
-    series = df[shop_column].fillna("").astype(str).str.strip()
-    return df[series.isin(allowed_set)].copy()
+    # IMPORTANT: do not use raw string equality; normalize the shop labels
+    # to match backend filter logic (upper + collapse whitespace).
+    def _norm_shop_label(s: str) -> str:
+        s2 = re.sub(r"\s+", " ", str(s).strip())
+        return s2.upper()
+
+    allowed_norm_set = {_norm_shop_label(s) for s in allowed_shop_names if s is not None}
+    series_norm = df[shop_column].fillna("").astype(str).map(_norm_shop_label)
+    return df[series_norm.isin(allowed_norm_set)].copy()
 
 
 # Маппинги колонок (из import/import_batch.py)
@@ -342,12 +352,15 @@ def validate_leftout_old_xlsx(file_bytes: bytes) -> None:
     Raises HTTPException(400) if the file is not valid.
     Call this BEFORE any DB operations (before delete_old_data/create_batch).
     """
-    from app.utils.column_mappings import UZ_TO_RU_LEFTOUT_OLD
+    from app.utils.column_mappings import (
+        map_headers_to_canonical,
+        MissingRequiredColumnsError,
+    )
 
     buf = io.BytesIO(file_bytes)
     xl = pd.ExcelFile(buf, engine="openpyxl")
     sheet_names = xl.sheet_names
-    required_lower = LEFTOUT_OLD_REQUIRED_NORMALIZED  # {"штрихкод", "в продаже", ...}
+    required_canonical = REQUIRED.get("leftout_old", [])
 
     for sheet_name in sheet_names:
         for header_row in range(30):
@@ -361,40 +374,24 @@ def validate_leftout_old_xlsx(file_bytes: bytes) -> None:
                 )
             except Exception:
                 continue
-            cols = [c for c in df.columns if c is not None and not str(c).startswith("Unnamed")]
+            cols = [
+                c
+                for c in df.columns
+                if c is not None and not str(c).startswith("Unnamed")
+            ]
             if not cols:
                 continue
-            normalized = [_norm_col_leftout_old(c) for c in cols]
-            norm_set = set(normalized)
-            # RU: required headers present as-is
-            if required_lower <= norm_set:
+
+            # Normalize whitespace/newlines in header names and let map_headers_to_canonical
+            # decide whether it's RU or UZ (or RU variants like "(дней)").
+            headers = [norm(c) for c in cols]
+            try:
+                map_headers_to_canonical("leftout_old", headers, required_canonical)
                 return  # valid
-            # UZ: map normalized headers to canonical (RU) and check coverage
-            mapped_canonical_lower = set()
-            for h in norm_set:
-                if h in required_lower:
-                    mapped_canonical_lower.add(h)
-                elif h in UZ_TO_RU_LEFTOUT_OLD:
-                    mapped_canonical_lower.add(UZ_TO_RU_LEFTOUT_OLD[h].lower())
-            if required_lower <= mapped_canonical_lower:
-                return  # valid (UZ file)
-            # Quick check: need at least штрихкод and в продаже (RU or UZ)
-            if "штрихкод" not in norm_set and "shtrixkod" not in norm_set and not any(
-                UZ_TO_RU_LEFTOUT_OLD.get(h, "").lower() == "штрихкод" for h in norm_set
-            ):
+            except MissingRequiredColumnsError:
                 continue
-            if "в продаже" not in norm_set and "sotuvda" not in norm_set and not any(
-                UZ_TO_RU_LEFTOUT_OLD.get(h, "").lower() == "в продаже" for h in norm_set
-            ):
+            except Exception:
                 continue
-            missing = required_lower - mapped_canonical_lower
-            if missing:
-                logger.warning(
-                    "left-out-report_old validation: missing %s, found %s, mapped %s",
-                    sorted(missing), sorted(norm_set), sorted(mapped_canonical_lower),
-                )
-                raise HTTPException(status_code=400, detail="Неверный формат left-out-report_old")
-            return  # valid
 
     raise HTTPException(status_code=400, detail="Неверный формат left-out-report_old")
 
@@ -1003,7 +1000,7 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
               AND (
                 :is_trial_plan = false
                 OR :trial_cutoff_date IS NULL
-                OR date_created >= (CAST(:trial_cutoff_date AS timestamptz) - interval '60 days')
+                OR date_created >= (CAST(:trial_cutoff_date AS timestamptz) - interval '59 days')
               )
             ON CONFLICT (user_id, order_no, barcode, date_created) DO UPDATE
             SET
@@ -1243,7 +1240,7 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
               AND (
                 :is_trial_plan = false
                 OR :trial_cutoff_date IS NULL
-                OR date_written_off >= (CAST(:trial_cutoff_date AS timestamptz) - interval '60 days')
+                OR date_written_off >= (CAST(:trial_cutoff_date AS timestamptz) - interval '59 days')
               )
             ON CONFLICT (user_id, operation_id) DO UPDATE
             SET
@@ -1762,7 +1759,15 @@ async def import_xlsx(
                 )
                 if store_limit_exceeded:
                     store_limit_max = max_shops
-                df = filter_df_by_allowed_shops(df, allowed_shops, "Магазин")
+                # Trial-only shop mismatch fix:
+                # For trial (max_shops=1) we still want fact_storage_snapshot to contain
+                # the full set of barcodes for the single visible shop, otherwise
+                # shop-filtered KPI differ from paid.
+                #
+                # We therefore skip df row filtering for seller-storage import,
+                # but still hide extra shops on the UI level (see /api/storage/shops).
+                if not (reportType == "storage" and max_shops == 1):
+                    df = filter_df_by_allowed_shops(df, allowed_shops, "Магазин")
                 if df.empty and store_limit_exceeded:
                     logger.warning(
                         "Import: no rows left after shop limit (tariff max_shops=%s); file had shops outside allowed list",
@@ -1885,7 +1890,10 @@ async def import_xlsx(
         
         store_limit_current: Optional[int] = None
         if store_limit_exceeded and store_limit_max is not None:
-            store_limit_current = len(get_saved_shop_names(db, user_id))
+            # UI expects "current connected shops" not to exceed tariff max.
+            # In trial we may have extra rows in dim_shop from earlier imports,
+            # but the tariff limit for the dialog must remain the maximum allowed.
+            store_limit_current = min(store_limit_max, len(get_saved_shop_names(db, user_id)))
         
         out = {
             "ok": True,
@@ -2144,7 +2152,7 @@ async def import_xlsx_batch(
         }
         if batch_store_limit_exceeded and max_shops is not None:
             out_batch["store_limit_max"] = max_shops
-            out_batch["store_limit_current"] = len(get_saved_shop_names(db, user_id))
+            out_batch["store_limit_current"] = min(max_shops, len(get_saved_shop_names(db, user_id)))
         return out_batch
     
     except HTTPException:
