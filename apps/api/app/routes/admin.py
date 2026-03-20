@@ -1153,16 +1153,41 @@ async def admin_tenant_shops(
         if allowed_shops:
             active_shop = allowed_shops[0]
 
+        # Full list for admin tooltip: all uploaded shops from storage snapshots/staging
+        # plus dim_shop (deduplicated by normalized key, display original label).
         rows = db.execute(
             text(
                 f"""
-                SELECT DISTINCT shop_name
-                FROM {qname('dim_shop')}
-                WHERE user_id = :uid
-                  AND shop_name IS NOT NULL
-                  AND TRIM(shop_name) <> ''
-                  AND COALESCE(trim(shop_name), '') != '(Не определено)'
-                ORDER BY shop_name
+                WITH src AS (
+                    SELECT NULLIF(TRIM(fss.shop_raw), '') AS shop_name
+                    FROM {qname('fact_storage_snapshot')} fss
+                    WHERE fss.user_id = CAST(:uid AS uuid)
+                    UNION ALL
+                    SELECT NULLIF(TRIM(ss.shop_raw), '') AS shop_name
+                    FROM {qname('stg_storage')} ss
+                    WHERE ss.user_id = CAST(:uid AS uuid)
+                    UNION ALL
+                    SELECT NULLIF(TRIM(ds.shop_name), '') AS shop_name
+                    FROM {qname('dim_shop')} ds
+                    WHERE ds.user_id = CAST(:uid AS uuid)
+                ),
+                cleaned AS (
+                    SELECT shop_name
+                    FROM src
+                    WHERE shop_name IS NOT NULL
+                      AND shop_name <> ''
+                      AND lower(shop_name) NOT IN ({undefined_list})
+                ),
+                norm AS (
+                    SELECT
+                        upper(regexp_replace(trim(shop_name), '\\s+', ' ', 'g')) AS shop_norm,
+                        MIN(shop_name) AS label
+                    FROM cleaned
+                    GROUP BY 1
+                )
+                SELECT label
+                FROM norm
+                ORDER BY shop_norm
                 """
             ),
             {"uid": uid},
