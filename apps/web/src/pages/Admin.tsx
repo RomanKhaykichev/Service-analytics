@@ -133,7 +133,9 @@ export default function Admin() {
   type TenantSortColumn = "created_at" | "phone" | "shops_count" | "plan" | "trial_days_left" | "paid_amount" | "last_login_at" | "imports_30d" | null;
   const [sortColumn, setSortColumn] = useState<TenantSortColumn>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(null);
-  const [tenantShops, setTenantShops] = useState<Record<string, { loading: boolean; error: string | null; names: string[] }>>({});
+  const [tenantShops, setTenantShops] = useState<
+    Record<string, { loading: boolean; error: string | null; names: string[]; allowedShops?: string[] | null }>
+  >({});
   const [notesModal, setNotesModal] = useState<{ tenantId: string; notes: string } | null>(null);
   const [passwordModal, setPasswordModal] = useState<{ tenantId: string; newPassword: string } | null>(null);
   const [extendTrialModal, setExtendTrialModal] = useState<{ tenantId: string; days: number } | null>(null);
@@ -214,16 +216,18 @@ export default function Admin() {
       return { ...prev, [tenantId]: { loading: true, error: null, names: current?.names ?? [] } };
     });
     try {
-      const res = await apiGet<{ tenant_id: string; shops: string[] }>(`/api/admin/tenants/${tenantId}/shops`);
+      const res = await apiGet<{ tenant_id: string; shops: string[]; active_shop?: string | null; allowed_shops?: string[] | null }>(
+        `/api/admin/tenants/${tenantId}/shops`
+      );
       setTenantShops((prev) => ({
         ...prev,
-        [tenantId]: { loading: false, error: null, names: res.shops ?? [] },
+        [tenantId]: { loading: false, error: null, names: res.shops ?? [], allowedShops: res.allowed_shops ?? null },
       }));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setTenantShops((prev) => ({
         ...prev,
-        [tenantId]: { loading: false, error: msg, names: prev[tenantId]?.names ?? [] },
+        [tenantId]: { loading: false, error: msg, names: prev[tenantId]?.names ?? [], allowedShops: prev[tenantId]?.allowedShops ?? null },
       }));
     }
   }, []);
@@ -942,9 +946,20 @@ export default function Admin() {
                                   `Ошибка: ${tenantShops[row.tenant_id]?.error}`}
                                 {!tenantShops[row.tenant_id]?.loading &&
                                   !tenantShops[row.tenant_id]?.error &&
-                                  (tenantShops[row.tenant_id]?.names?.length
-                                    ? tenantShops[row.tenant_id].names.join("\n")
-                                    : "Магазины не найдены")}
+                                  (tenantShops[row.tenant_id]?.names?.length ? (
+                                    tenantShops[row.tenant_id].names.map((name, idx) => {
+                                      const allowedShops = tenantShops[row.tenant_id]?.allowedShops ?? [];
+                                      const isAllowed = allowedShops.includes(name);
+                                      return (
+                                        <span key={`${name}-${idx}`}>
+                                          {isAllowed ? <span className="font-bold">{name}</span> : name}
+                                          {idx < tenantShops[row.tenant_id].names.length - 1 ? <br /> : null}
+                                        </span>
+                                      );
+                                    })
+                                  ) : (
+                                    "Магазины не найдены"
+                                  ))}
                               </TooltipContent>
                             </UITooltip>
                           ) : (

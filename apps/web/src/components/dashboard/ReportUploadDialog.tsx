@@ -160,6 +160,30 @@ export function ReportUploadDialog({ disabled, onOpenExtendTariff }: ReportUploa
   const [dragOverAll, setDragOverAll] = useState(false);
   const [storeLimitDialogOpen, setStoreLimitDialogOpen] = useState(false);
   const [storeLimitData, setStoreLimitData] = useState<{ maxShops: number; currentCount: number; tariffLabel: string } | null>(null);
+
+  // If we need to show StoreLimitDialog after a reload (triggered by store_limit_exceeded),
+  // we persist the payload in localStorage.
+  useEffect(() => {
+    const key = "pending_store_limit_dialog";
+    const raw = localStorage.getItem(key);
+    if (!raw) return;
+    try {
+      const payload = JSON.parse(raw);
+      if (
+        payload &&
+        typeof payload.maxShops === "number" &&
+        typeof payload.currentCount === "number" &&
+        typeof payload.tariffLabel === "string"
+      ) {
+        setStoreLimitData(payload);
+        setStoreLimitDialogOpen(true);
+      }
+    } catch {
+      // ignore parse errors
+    } finally {
+      localStorage.removeItem(key);
+    }
+  }, []);
   useEffect(() => {
     if (open) {
       loadProducts();
@@ -392,15 +416,18 @@ export function ReportUploadDialog({ disabled, onOpenExtendTariff }: ReportUploa
 
       setOpen(false);
 
+      const reload = () => setTimeout(() => window.location.reload(), 500);
+
       if (anyStoreLimitExceeded && lastStoreLimitMax != null) {
-        setStoreLimitData({
+        const payload = {
           maxShops: lastStoreLimitMax,
           currentCount: lastStoreLimitCurrent ?? lastStoreLimitMax,
           tariffLabel: userTariffLabel,
-        });
-        setTimeout(() => setStoreLimitDialogOpen(true), 150);
+        };
+        localStorage.setItem("pending_store_limit_dialog", JSON.stringify(payload));
+        reload();
       } else {
-        setTimeout(() => window.location.reload(), 500);
+        reload();
       }
     } else if (successCount > 0) {
       toast.warning(`Загружено ${successCount} из ${filesToUpload.length} отчётов`);

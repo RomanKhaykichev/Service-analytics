@@ -110,6 +110,11 @@ class TenantRow(BaseModel):
 class TenantShopsResponse(BaseModel):
     tenant_id: str
     shops: list[str] = []
+    # Shop that is "active" / visible in user UI (for trial this is the single allowed shop).
+    active_shop: Optional[str] = None
+    # Shops that should be treated as "visible/allowed" for tariff in admin tooltip.
+    # For trial => 1, Month 5 => up to 5, Month 10 => up to 10, Gold => all.
+    allowed_shops: list[str] = []
 
 class DashboardFunnel(BaseModel):
     visited_site: int  # Зашли на сайт — количество человек, зашедших на сайт (лендинг)
@@ -1099,7 +1104,55 @@ async def admin_tenant_shops(
     """
     uid = str(tenant_id)
     shops: list[str] = []
+    active_shop: Optional[str] = None
+    allowed_shops: list[str] = []
     try:
+        # Determine tariff max shops.
+        plan_row = db.execute(
+            text(f"SELECT COALESCE(plan, 'trial') FROM {qname('users')} WHERE id = CAST(:uid AS uuid)"),
+            {"uid": uid},
+        ).fetchone()
+        plan_val = (plan_row[0] or "trial").strip().lower() if plan_row else "trial"
+
+        max_shops: Optional[int]
+        if plan_val in ("trial", "", None):
+            max_shops = 1
+        elif plan_val in ("month_5", "month 5", "month5"):
+            max_shops = 5
+        elif plan_val in ("month_10", "month 10", "month10"):
+            max_shops = 10
+        elif plan_val in ("gold", "gold_plan"):
+            max_shops = None
+        else:
+            max_shops = 1
+
+        # allowed_shops for admin tooltip: first N by shop_name (matches store-limit ordering in imports.py).
+        # We also compute active_shop as the first allowed shop (useful for trial UX).
+        undefined_list = (
+            "'не определено','неопределено','undefined','null','(не определено)','не определен'"
+        )
+        limit_sql = "" if max_shops is None else f" LIMIT {int(max_shops)}"
+
+        rows_allowed = db.execute(
+            text(
+                f"""
+                SELECT shop_name
+                FROM {qname('dim_shop')}
+                WHERE user_id = :uid
+                  AND shop_name IS NOT NULL
+                  AND TRIM(shop_name) <> ''
+                  AND lower(TRIM(shop_name)) NOT IN ({undefined_list})
+                ORDER BY shop_name
+                {limit_sql}
+                """
+            ),
+            {"uid": uid},
+        ).fetchall()
+        allowed_shops = [str(r[0]) for r in rows_allowed or []]
+
+        if allowed_shops:
+            active_shop = allowed_shops[0]
+
         rows = db.execute(
             text(
                 f"""
@@ -1118,7 +1171,12 @@ async def admin_tenant_shops(
     except Exception as e:
         logger.debug("admin_tenant_shops failed for %s: %s", uid, e)
 
-    return TenantShopsResponse(tenant_id=uid, shops=shops)
+    return TenantShopsResponse(
+        tenant_id=uid,
+        shops=shops,
+        active_shop=active_shop,
+        allowed_shops=allowed_shops,
+    )
 
 
 @router.get("/admin/tenants/{tenant_id}", response_model=TenantDetailResponse)
