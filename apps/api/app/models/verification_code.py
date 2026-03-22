@@ -7,7 +7,7 @@ from app.db import Base
 
 
 class VerificationChannel(str, enum.Enum):
-    SMS = "sms"
+    SMS = "SMS"
     EMAIL = "email"
 
 

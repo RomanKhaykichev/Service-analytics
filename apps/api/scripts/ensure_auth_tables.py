@@ -40,6 +40,7 @@ def main():
         conn.execute(text(f"ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS trial_ends_at timestamptz"))
         conn.execute(text(f"ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS plan varchar(50) NOT NULL DEFAULT 'trial'"))
         conn.execute(text(f"ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS last_login_at timestamptz"))
+        conn.execute(text(f"ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS phone_verified_at timestamptz"))
         conn.commit()
 
         conn.execute(text(f"""
@@ -83,6 +84,21 @@ def main():
             )
         """))
         conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_verification_codes_user_id ON {schema}.verification_codes (user_id)"))
+        conn.commit()
+
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS {schema}.otp_attempts (
+                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id uuid REFERENCES {schema}.users(id) ON DELETE CASCADE,
+                phone_normalized varchar(64) NOT NULL,
+                kind varchar(32) NOT NULL,
+                created_at timestamptz NOT NULL DEFAULT now()
+            )
+        """))
+        conn.execute(text(f"""
+            CREATE INDEX IF NOT EXISTS ix_otp_attempts_phone_created
+            ON {schema}.otp_attempts (phone_normalized, created_at DESC)
+        """))
         conn.commit()
 
         # Таблица для загрузки отчётов (create_batch в imports.py)

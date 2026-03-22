@@ -12,14 +12,29 @@ settings = get_settings()
 security = HTTPBearer(auto_error=False)
 
 
+def _is_production_env() -> bool:
+    """True when APP_ENV or ENV indicates production (X-User-Id must be disabled)."""
+    if (settings.ENV or "").strip().lower() == "prod":
+        return True
+    return (settings.APP_ENV or "").strip().lower() == "prod"
+
+
+def _allows_x_user_id_header() -> bool:
+    """X-User-Id fallback is allowed only in dev/test-like environments."""
+    if _is_production_env():
+        return False
+    env = (settings.APP_ENV or "").strip().lower()
+    return env in ("dev", "development", "test")
+
+
 def require_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> UUID:
     """
     Unified dependency to get user_id from either:
-    1. JWT Bearer token (Authorization: Bearer <token>) - preferred
-    2. X-User-Id header (dev fallback)
+    1. JWT Bearer token (Authorization: Bearer <token>) — required in production
+    2. X-User-Id header — only when APP_ENV is dev/development/test (not prod)
     
     Returns:
         UUID: Validated user_id as UUID object
@@ -55,24 +70,39 @@ def require_user(
                 )
         except JWTError as e:
             logger.warning(f"JWT decode error: {e}")
-            # Fall through to X-User-Id check
+            if _is_production_env():
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid or expired token",
+                ) from e
         except HTTPException:
             raise
         except Exception as e:
             logger.warning(f"JWT processing error: {e}")
-            # Fall through to X-User-Id check
+            if _is_production_env():
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid authentication",
+                ) from e
     
-    # Fallback to X-User-Id header
+    # Fallback to X-User-Id header (dev/test only)
+    if not _allows_x_user_id_header():
+        if request.headers.get("X-User-Id"):
+            logger.warning("X-User-Id header is not allowed in this environment")
+        raise HTTPException(
+            status_code=401,
+            detail="Missing authentication",
+        )
+
     user_id_str = request.headers.get("X-User-Id")
-    
+
     if not user_id_str:
         logger.warning("Missing authentication (no Authorization header and no X-User-Id)")
         raise HTTPException(
             status_code=401,
             detail="Missing authentication"
         )
-    
-    # Validate UUID format
+
     try:
         return UUID(user_id_str)
     except ValueError:
@@ -89,6 +119,29 @@ def _admin_user_ids_set() -> set:
     if not raw:
         return set()
     return {s.strip().lower() for s in raw.split(",") if s.strip()}
+
+
+def require_phone_verified(user_id: UUID, db) -> None:
+    """
+    Block non-admin users who have a phone on file but have not completed SMS verification.
+    Users without a phone (legacy) are allowed.
+    """
+    if is_user_admin(user_id, db):
+        return
+    from sqlalchemy import text
+    from app.db import qname
+    row = db.execute(
+        text(
+            f"SELECT phone, phone_verified_at FROM {qname('users')} "
+            "WHERE id = CAST(:uid AS uuid)"
+        ),
+        {"uid": str(user_id)},
+    ).fetchone()
+    if not row:
+        return
+    phone, pva = row[0], row[1]
+    if phone and str(phone).strip() and pva is None:
+        raise HTTPException(status_code=403, detail="Phone not verified")
 
 
 def is_user_admin(user_id: UUID, db) -> bool:

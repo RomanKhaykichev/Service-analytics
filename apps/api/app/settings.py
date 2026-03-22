@@ -21,6 +21,8 @@ class Settings:
     
     # App environment (dev/prod, default: dev)
     APP_ENV: str = os.getenv("APP_ENV", "dev")
+    # Optional override (e.g. CI); if set to "prod", same restrictions as APP_ENV=prod
+    ENV: str = os.getenv("ENV", "")
     
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
@@ -39,6 +41,16 @@ class Settings:
 
     # Admin: comma-separated list of emails or UUIDs allowed to access /api/admin/*
     ADMIN_USER_IDS: str = os.getenv("ADMIN_USER_IDS", "")
+
+    # SMS (Eskiz) — https://notify.eskiz.uz/api
+    ESKIZ_BASE_URL: str = os.getenv("ESKIZ_BASE_URL", "https://notify.eskiz.uz/api").rstrip("/")
+    ESKIZ_EMAIL: str = os.getenv("ESKIZ_EMAIL", "")
+    ESKIZ_PASSWORD: str = os.getenv("ESKIZ_PASSWORD", "")
+    ESKIZ_FROM: str = os.getenv("ESKIZ_FROM", "")
+    SMS_DEBUG_LOG_CODE: bool = os.getenv("SMS_DEBUG_LOG_CODE", "false").lower() in ("1", "true", "yes")
+
+    # OTP for phone verification (sha256(OTP_SECRET + code))
+    OTP_SECRET: str = os.getenv("OTP_SECRET", "change-me-otp-secret-min-16-chars")
 
 
 _settings_instance: Optional[Settings] = None

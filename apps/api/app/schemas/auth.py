@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, field_validator
-from typing import Optional
+from typing import Optional, Literal
 from uuid import UUID
 from datetime import datetime
 
@@ -9,15 +9,15 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
     full_name: Optional[str] = None
-    phone: Optional[str] = None
+    phone: str
     consent_processing: bool = False
 
     @field_validator("phone", mode="before")
     @classmethod
-    def phone_empty_to_none(cls, v):
-        if v is None or (isinstance(v, str) and not v.strip()):
-            return None
-        return v.strip() if isinstance(v, str) else v
+    def phone_required_strip(cls, v):
+        if v is None or (isinstance(v, str) and not str(v).strip()):
+            raise ValueError("Phone is required")
+        return str(v).strip() if isinstance(v, str) else v
 
 
 class LoginRequest(BaseModel):
@@ -41,6 +41,18 @@ class LogoutRequest(BaseModel):
     refresh_token может не передаваться в теле — в этом случае он берётся из cookie.
     """
     refresh_token: Optional[str] = None
+
+
+class VerifyPhoneRequest(BaseModel):
+    user_id: UUID
+    email: Optional[EmailStr] = None
+    phone: str
+    code: str
+
+
+class ResendPhoneOtpRequest(BaseModel):
+    user_id: UUID
+    email: EmailStr
 
 
 class UpdateProfileRequest(BaseModel):
@@ -75,12 +87,21 @@ class UserResponse(BaseModel):
     created_at: datetime
     is_admin: bool = False
     preferred_language: Optional[str] = None  # 'ru' | 'uz'
+    phone_verified_at: Optional[datetime] = None
     plan: Optional[str] = None
     trial_ends_at: Optional[str] = None
     trial_days_left: Optional[int] = None
 
     class Config:
         from_attributes = True
+
+
+class RegisterVerifyPendingResponse(BaseModel):
+    ok: bool = True
+    next: Literal["verify_phone"] = "verify_phone"
+    user_id: UUID
+    phone_masked: str
+    expires_in_sec: int = 300
 
 
 class AuthResponse(BaseModel):

@@ -16,6 +16,7 @@ interface User {
   phone?: string;
   is_admin?: boolean;
   preferred_language?: string | null; // 'ru' | 'uz'
+  phone_verified_at?: string | null;
   plan?: string | null;
   trial_ends_at?: string | null;
   trial_days_left?: number | null;
@@ -24,11 +25,32 @@ interface User {
   };
 }
 
+export interface RegisterVerifyPending {
+  ok: boolean;
+  next: 'verify_phone';
+  user_id: string;
+  phone_masked: string;
+  expires_in_sec: number;
+}
+
 interface AuthContextType {
   user: User | null;
   session: { user: User } | null;
   loading: boolean;
-  signUp: (email: string, password: string, fullName?: string, phone?: string, consentProcessing?: boolean) => Promise<{ error: Error | null }>;
+  signUp: (
+    email: string,
+    password: string,
+    fullName?: string,
+    phone?: string,
+    consentProcessing?: boolean,
+  ) => Promise<{ error: Error | null; pending?: RegisterVerifyPending }>;
+  verifyPhone: (
+    userId: string,
+    email: string,
+    phone: string,
+    code: string,
+  ) => Promise<{ error: Error | null }>;
+  resendPhoneOtp: (userId: string, email: string) => Promise<{ error: Error | null; pending?: RegisterVerifyPending }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -46,13 +68,14 @@ interface AuthResponse {
     phone?: string | null;
     is_admin?: boolean;
     preferred_language?: string | null;
+    phone_verified_at?: string | null;
     plan?: string | null;
     trial_ends_at?: string | null;
     trial_days_left?: number | null;
   };
 }
 
-function mapUser(u: AuthResponse['user']): User {
+function mapUser(u: AuthResponse['user'] & { phone_verified_at?: string | null }): User {
   return {
     id: u.id,
     email: u.email ?? undefined,
@@ -60,6 +83,7 @@ function mapUser(u: AuthResponse['user']): User {
     phone: u.phone ?? undefined,
     is_admin: u.is_admin ?? false,
     preferred_language: u.preferred_language ?? undefined,
+    phone_verified_at: u.phone_verified_at ?? undefined,
     plan: u.plan ?? undefined,
     trial_ends_at: u.trial_ends_at ?? undefined,
     trial_days_left: u.trial_days_left ?? undefined,
@@ -83,7 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     (async () => {
       try {
-        const data = await apiGet<{ id: string; email?: string | null; full_name?: string | null; phone?: string | null; is_admin?: boolean; preferred_language?: string | null }>('/api/auth/me');
+        const data = await apiGet<{ id: string; email?: string | null; full_name?: string | null; phone?: string | null; is_admin?: boolean; preferred_language?: string | null; phone_verified_at?: string | null }>('/api/auth/me');
         if (!cancelled) {
           const u: User = mapUser(data);
           setUser(u);
@@ -106,12 +130,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string, fullName?: string, phone?: string, consentProcessing?: boolean) => {
     try {
-      const res = await apiPostNoAuth<AuthResponse>('/api/auth/register', {
+      const res = await apiPostNoAuth<AuthResponse | RegisterVerifyPending>('/api/auth/register', {
         email,
         password,
         full_name: fullName || null,
-        phone: (phone && phone.trim()) || null,
+        phone: (phone && phone.trim()) || '',
         consent_processing: !!consentProcessing,
+      });
+      if ('next' in res && res.next === 'verify_phone') {
+        return { error: null, pending: res };
+      }
+      const ar = res as AuthResponse;
+      setAuthTokens(ar.access_token, ar.refresh_token);
+      const u = mapUser(ar.user);
+      setUser(u);
+      setSession({ user: u });
+      return { error: null };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Ошибка регистрации';
+      return { error: new Error(message) };
+    }
+  };
+
+  const verifyPhone = async (userId: string, email: string, phone: string, code: string) => {
+    try {
+      const res = await apiPostNoAuth<AuthResponse>('/api/auth/verify-phone', {
+        user_id: userId,
+        email,
+        phone,
+        code: code.replace(/\s/g, ''),
       });
       setAuthTokens(res.access_token, res.refresh_token);
       const u = mapUser(res.user);
@@ -119,7 +166,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession({ user: u });
       return { error: null };
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Ошибка регистрации';
+      const message = err instanceof Error ? err.message : 'Ошибка подтверждения';
+      return { error: new Error(message) };
+    }
+  };
+
+  const resendPhoneOtp = async (userId: string, email: string) => {
+    try {
+      const res = await apiPostNoAuth<RegisterVerifyPending>('/api/auth/resend-phone-otp', {
+        user_id: userId,
+        email,
+      });
+      return { error: null, pending: res };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Не удалось отправить код';
       return { error: new Error(message) };
     }
   };
@@ -167,6 +227,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       loading,
       signUp,
+      verifyPhone,
+      resendPhoneOtp,
       signIn,
       signOut,
       refreshProfile,

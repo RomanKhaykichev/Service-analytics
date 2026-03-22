@@ -11,7 +11,8 @@ import io
 import json
 import re
 from app.db import get_db, qname
-from app.deps import require_user
+from app.deps import require_user, require_phone_verified
+from app.auth.access import require_active_access
 from app.settings import get_settings
 from app.utils.barcode import barcode_norm_sql
 from app.utils.column_mappings import (
@@ -1621,6 +1622,8 @@ async def import_xlsx(
     try:
         store_limit_exceeded = False
         ensure_dev_user_exists(db, user_id)
+        require_phone_verified(user_id, db)
+        require_active_access(user_id, db)
         # Step 1: Delete old data ONLY for this report type (overwrite per reportType)
         # This keeps other report types (e.g. inventory vs sales) intact.
         try:
@@ -1986,6 +1989,8 @@ async def import_xlsx_batch(
     # Start transaction - all operations in one transaction
     try:
         ensure_dev_user_exists(db, user_id)
+        require_phone_verified(user_id, db)
+        require_active_access(user_id, db)
         # Step 1: Delete ALL old data for this user (overwrite mode) - ONCE
         try:
             delete_all_user_data(db, user_id)

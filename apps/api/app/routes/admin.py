@@ -734,7 +734,8 @@ async def admin_dashboard_metrics(
             # Неактивны более 30 дней: не заходили 30+ дней (дата входа — last_login_at в таблице users)
             r2 = db.execute(text(f"""
                 SELECT COUNT(*) FROM {qname('users')}
-                WHERE last_login_at IS NULL OR last_login_at::date <= :d30
+                WHERE last_login_at IS NOT NULL
+                  AND last_login_at::date <= :d30
             """), {"d30": d30}).fetchone()
             inactive_30d = r2[0] or 0 if r2 else 0
         else:

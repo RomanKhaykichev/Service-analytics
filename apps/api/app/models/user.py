@@ -18,6 +18,7 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     last_login_at = Column(DateTime(timezone=True), nullable=True)
     preferred_language = Column(String(10), nullable=True)  # 'ru' | 'uz' — язык интерфейса
+    phone_verified_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     auth_identities = relationship("AuthIdentity", back_populates="user", cascade="all, delete-orphan")

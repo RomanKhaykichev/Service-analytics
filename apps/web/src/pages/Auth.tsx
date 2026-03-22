@@ -25,7 +25,7 @@ export interface AuthFormContentProps {
 
 /** Форма входа/регистрации без обёртки страницы. Используется на странице /auth и в модалке на лендинге. */
 export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassName }: AuthFormContentProps) {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, verifyPhone, resendPhoneOtp } = useAuth();
   const { language } = useLanguage();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -35,6 +35,14 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'signin' | 'signup'>(defaultTab);
+  const [pendingVerify, setPendingVerify] = useState<{
+    userId: string;
+    email: string;
+    phoneE164: string;
+    phoneMasked: string;
+  } | null>(null);
+  const [otpCode, setOtpCode] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
   useEffect(() => {
     setActiveTab(defaultTab);
   }, [defaultTab]);
@@ -82,6 +90,12 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
       const msg = error.message || '';
       if (msg.includes('Invalid login credentials') || (msg.includes('Invalid') && msg.includes('password'))) {
         toast.error(language === 'uz' ? 'Email yoki parol noto‘g‘ri' : 'Неверный email или пароль');
+      } else if (msg.includes('Phone not verified') || msg.includes('подтвержд')) {
+        toast.error(
+          language === 'uz'
+            ? 'Avval ro‘yxatdan o‘tishda telefonni SMS orqali tasdiqlang'
+            : 'Сначала подтвердите телефон по SMS при регистрации',
+        );
       } else if (msg.includes('Email not confirmed')) {
         toast.error(
           language === 'uz'
@@ -135,9 +149,36 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
       return;
     }
 
+    if (phone.length !== 9) {
+      toast.error(
+        language === 'uz'
+          ? 'Telefon raqamini to‘liq kiriting (9 raqam)'
+          : 'Введите номер телефона полностью (9 цифр)',
+      );
+      return;
+    }
+
     setLoading(true);
-    const { error } = await signUp(email.trim(), password, fullName.trim(), phoneForSubmit(), consentProcessing);
+    const { error, pending } = await signUp(email.trim(), password, fullName.trim(), phoneForSubmit(), consentProcessing);
     setLoading(false);
+
+    if (pending?.next === 'verify_phone') {
+      const ph = phoneForSubmit();
+      setPendingVerify({
+        userId: pending.user_id,
+        email: email.trim(),
+        phoneE164: ph || '',
+        phoneMasked: pending.phone_masked,
+      });
+      setOtpCode('');
+      setResendCooldown(60);
+      toast.success(
+        language === 'uz'
+          ? 'SMS-kod telefoningizga yuborildi'
+          : 'Код подтверждения отправлен по SMS',
+      );
+      return;
+    }
 
     if (error) {
       const msg = (error.message || '').trim();
@@ -177,13 +218,109 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
       return;
     }
 
-    toast.success(
-      language === 'uz'
-        ? 'Ro‘yxatdan o‘tish muvaffaqiyatli yakunlandi! Xush kelibsiz!'
-        : 'Регистрация успешна! Добро пожаловать!',
-    );
+    if (!error) {
+      toast.error(language === 'uz' ? 'Kutilmagan javob' : 'Неожиданный ответ сервера');
+    }
+  };
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = setInterval(() => setResendCooldown((c) => (c <= 1 ? 0 : c - 1)), 1000);
+    return () => clearInterval(t);
+  }, [resendCooldown]);
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pendingVerify) return;
+    const code = otpCode.replace(/\D/g, '').slice(0, 6);
+    if (code.length !== 6) {
+      toast.error(language === 'uz' ? '6 raqamli kodni kiriting' : 'Введите 6-значный код');
+      return;
+    }
+    setLoading(true);
+    const { error } = await verifyPhone(pendingVerify.userId, pendingVerify.email, pendingVerify.phoneE164, code);
+    setLoading(false);
+    if (error) {
+      toast.error(error.message || (language === 'uz' ? 'Kod noto‘g‘ri' : 'Неверный код'));
+      return;
+    }
+    toast.success(language === 'uz' ? 'Telefon tasdiqlandi!' : 'Телефон подтверждён!');
+    setPendingVerify(null);
     onSuccess();
   };
+
+  const handleResendOtp = async () => {
+    if (!pendingVerify || resendCooldown > 0 || loading) return;
+    setLoading(true);
+    const { error } = await resendPhoneOtp(pendingVerify.userId, pendingVerify.email);
+    setLoading(false);
+    if (error) {
+      if (error.message.includes('429') || error.message.toLowerCase().includes('too many')) {
+        toast.error(language === 'uz' ? 'Juda ko‘p so‘rov. Keyinroq urinib ko‘ring.' : 'Слишком много запросов. Попробуйте позже.');
+      } else {
+        toast.error(error.message);
+      }
+      return;
+    }
+    setResendCooldown(60);
+    toast.success(language === 'uz' ? 'Kod qayta yuborildi' : 'Код отправлен повторно');
+  };
+
+  if (pendingVerify) {
+    return (
+      <Card className={cn('w-full max-w-md', cardClassName)}>
+        <CardHeader className="text-center pb-2">
+          <CardTitle className="text-xl">
+            {language === 'uz' ? 'Telefonni tasdiqlang' : 'Подтвердите телефон'}
+          </CardTitle>
+          <CardDescription>
+            {language === 'uz' ? 'Kod yuborildi: ' : 'Код отправлен на '}
+            {pendingVerify.phoneMasked}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleVerifyOtp} className="space-y-4">
+            <Input
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              placeholder="000000"
+              maxLength={6}
+              value={otpCode}
+              onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              disabled={loading}
+              className="text-center text-2xl tracking-[0.5em] font-mono"
+            />
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {language === 'uz' ? 'Tekshirilmoqda...' : 'Проверка...'}
+                </>
+              ) : (
+                (language === 'uz' ? 'Tasdiqlash' : 'Подтвердить')
+              )}
+            </Button>
+            <Button type="button" variant="outline" className="w-full" disabled={loading || resendCooldown > 0} onClick={handleResendOtp}>
+              {resendCooldown > 0
+                ? (language === 'uz' ? `Qayta yuborish (${resendCooldown}s)` : `Отправить снова (${resendCooldown}s)`)
+                : (language === 'uz' ? 'Kodni qayta yuborish' : 'Отправить код повторно')}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              onClick={() => {
+                setPendingVerify(null);
+                setOtpCode('');
+              }}
+            >
+              {language === 'uz' ? 'Orqaga' : 'Назад'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className={cn('w-full max-w-md', cardClassName)}>
