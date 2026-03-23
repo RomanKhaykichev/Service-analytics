@@ -36,9 +36,7 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'signin' | 'signup'>(defaultTab);
   const [pendingVerify, setPendingVerify] = useState<{
-    userId: string;
-    email: string;
-    phoneE164: string;
+    pendingId: string;
     phoneMasked: string;
   } | null>(null);
   const [otpCode, setOtpCode] = useState('');
@@ -163,11 +161,8 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
     setLoading(false);
 
     if (pending?.next === 'verify_phone') {
-      const ph = phoneForSubmit();
       setPendingVerify({
-        userId: pending.user_id,
-        email: email.trim(),
-        phoneE164: ph || '',
+        pendingId: pending.pending_id,
         phoneMasked: pending.phone_masked,
       });
       setOtpCode('');
@@ -238,7 +233,7 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
       return;
     }
     setLoading(true);
-    const { error } = await verifyPhone(pendingVerify.userId, pendingVerify.email, pendingVerify.phoneE164, code);
+    const { error } = await verifyPhone(pendingVerify.pendingId, code);
     setLoading(false);
     if (error) {
       toast.error(error.message || (language === 'uz' ? 'Kod noto‘g‘ri' : 'Неверный код'));
@@ -252,7 +247,7 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
   const handleResendOtp = async () => {
     if (!pendingVerify || resendCooldown > 0 || loading) return;
     setLoading(true);
-    const { error } = await resendPhoneOtp(pendingVerify.userId, pendingVerify.email);
+    const { error } = await resendPhoneOtp(pendingVerify.pendingId);
     setLoading(false);
     if (error) {
       if (error.message.includes('429') || error.message.toLowerCase().includes('too many')) {
@@ -554,7 +549,12 @@ export function AuthDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md w-[calc(100vw-2rem)] sm:w-full overflow-hidden" hideCloseButton>
+      <DialogContent
+        className="max-w-md w-[calc(100vw-2rem)] sm:w-full overflow-hidden"
+        // Registration OTP flow must be closed only via explicit "X" button.
+        onPointerDownOutside={(event) => event.preventDefault()}
+        onInteractOutside={(event) => event.preventDefault()}
+      >
         <AuthFormContent key={defaultTab} defaultTab={defaultTab} onSuccess={handleSuccess} cardClassName="border-0 shadow-none w-full max-w-none" />
       </DialogContent>
     </Dialog>

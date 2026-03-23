@@ -28,7 +28,7 @@ interface User {
 export interface RegisterVerifyPending {
   ok: boolean;
   next: 'verify_phone';
-  user_id: string;
+  pending_id: string;
   phone_masked: string;
   expires_in_sec: number;
 }
@@ -45,12 +45,10 @@ interface AuthContextType {
     consentProcessing?: boolean,
   ) => Promise<{ error: Error | null; pending?: RegisterVerifyPending }>;
   verifyPhone: (
-    userId: string,
-    email: string,
-    phone: string,
+    pendingId: string,
     code: string,
   ) => Promise<{ error: Error | null }>;
-  resendPhoneOtp: (userId: string, email: string) => Promise<{ error: Error | null; pending?: RegisterVerifyPending }>;
+  resendPhoneOtp: (pendingId: string) => Promise<{ error: Error | null; expiresInSec?: number }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -140,11 +138,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if ('next' in res && res.next === 'verify_phone') {
         return { error: null, pending: res };
       }
-      const ar = res as AuthResponse;
-      setAuthTokens(ar.access_token, ar.refresh_token);
-      const u = mapUser(ar.user);
-      setUser(u);
-      setSession({ user: u });
       return { error: null };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Ошибка регистрации';
@@ -152,12 +145,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const verifyPhone = async (userId: string, email: string, phone: string, code: string) => {
+  const verifyPhone = async (pendingId: string, code: string) => {
     try {
       const res = await apiPostNoAuth<AuthResponse>('/api/auth/verify-phone', {
-        user_id: userId,
-        email,
-        phone,
+        pending_id: pendingId,
         code: code.replace(/\s/g, ''),
       });
       setAuthTokens(res.access_token, res.refresh_token);
@@ -171,13 +162,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const resendPhoneOtp = async (userId: string, email: string) => {
+  const resendPhoneOtp = async (pendingId: string) => {
     try {
-      const res = await apiPostNoAuth<RegisterVerifyPending>('/api/auth/resend-phone-otp', {
-        user_id: userId,
-        email,
+      const res = await apiPostNoAuth<{ ok: boolean; expires_in_sec: number }>('/api/auth/resend-phone-otp', {
+        pending_id: pendingId,
       });
-      return { error: null, pending: res };
+      return { error: null, expiresInSec: res.expires_in_sec };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Не удалось отправить код';
       return { error: new Error(message) };

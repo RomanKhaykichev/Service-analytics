@@ -35,7 +35,7 @@ def unique_email():
 
 @pytest.fixture
 def phone_digits():
-    return "90" + uuid.uuid4().hex[:7]  # 9 digits after +998
+    return f"90{uuid.uuid4().int % 10_000_000:07d}"  # 9 digits after +998
 
 
 def _async_post(path: str, json: dict, headers: dict | None = None):
@@ -48,7 +48,7 @@ def _async_post(path: str, json: dict, headers: dict | None = None):
 
 
 @patch("app.phone_verification.send_registration_otp_sms", lambda *a, **k: None)
-def test_register_does_not_issue_tokens_returns_next_verify_phone(unique_email, phone_digits):
+def test_register_creates_pending_only_no_user_created(unique_email, phone_digits):
     body = {
         "email": unique_email,
         "password": "secret12",
@@ -60,14 +60,22 @@ def test_register_does_not_issue_tokens_returns_next_verify_phone(unique_email, 
     assert r.status_code == 201, r.text
     data = r.json()
     assert data.get("next") == "verify_phone"
-    assert "user_id" in data
+    assert "pending_id" in data
     assert "phone_masked" in data
     assert "access_token" not in data
     assert "refresh_token" not in data
+    pending_id = data["pending_id"]
+    with engine.connect() as c:
+        users_cnt = c.execute(text("SELECT count(*) FROM app.users WHERE lower(email)=lower(:email)"), {"email": unique_email}).scalar()
+        ids_cnt = c.execute(text("SELECT count(*) FROM app.auth_identities WHERE lower(identifier)=lower(:email)"), {"email": unique_email}).scalar()
+        pending_cnt = c.execute(text("SELECT count(*) FROM app.pending_registrations WHERE id=CAST(:pid AS uuid)"), {"pid": pending_id}).scalar()
+    assert int(users_cnt or 0) == 0
+    assert int(ids_cnt or 0) == 0
+    assert int(pending_cnt or 0) == 1
 
 
 @patch("app.phone_verification.send_registration_otp_sms", lambda *a, **k: None)
-def test_verify_phone_sets_phone_verified_at_and_issues_tokens(unique_email, phone_digits):
+def test_verify_creates_user_and_identity_and_deletes_pending(unique_email, phone_digits):
     with patch("app.routes.auth.generate_otp_code", return_value="123456"):
         reg = _async_post(
             "/api/auth/register",
@@ -80,14 +88,12 @@ def test_verify_phone_sets_phone_verified_at_and_issues_tokens(unique_email, pho
             },
         )
     assert reg.status_code == 201, reg.text
-    uid = reg.json()["user_id"]
+    pending_id = reg.json()["pending_id"]
 
     r = _async_post(
         "/api/auth/verify-phone",
         {
-            "user_id": uid,
-            "email": unique_email,
-            "phone": f"+998{phone_digits}",
+            "pending_id": pending_id,
             "code": "123456",
         },
     )
@@ -96,6 +102,13 @@ def test_verify_phone_sets_phone_verified_at_and_issues_tokens(unique_email, pho
     assert data.get("access_token")
     assert data.get("refresh_token")
     assert data.get("user", {}).get("phone_verified_at")
+    with engine.connect() as c:
+        users_cnt = c.execute(text("SELECT count(*) FROM app.users WHERE lower(email)=lower(:email)"), {"email": unique_email}).scalar()
+        ids_cnt = c.execute(text("SELECT count(*) FROM app.auth_identities WHERE lower(identifier)=lower(:email)"), {"email": unique_email}).scalar()
+        pending_cnt = c.execute(text("SELECT count(*) FROM app.pending_registrations WHERE id=CAST(:pid AS uuid)"), {"pid": pending_id}).scalar()
+    assert int(users_cnt or 0) == 1
+    assert int(ids_cnt or 0) == 1
+    assert int(pending_cnt or 0) == 0
 
 
 def test_import_forbidden_when_phone_not_verified():
@@ -159,13 +172,85 @@ def test_rate_limit_send_otp(unique_email, phone_digits):
         }
         reg = _async_post("/api/auth/register", body)
         assert reg.status_code == 201
-        uid = reg.json()["user_id"]
-        email = unique_email
+        pending_id = reg.json()["pending_id"]
 
         # register = 1 SMS; max 3 per 15 min → 2 resends OK, 3rd resend → 429
-        r1 = _async_post("/api/auth/resend-phone-otp", {"user_id": uid, "email": email})
-        r2 = _async_post("/api/auth/resend-phone-otp", {"user_id": uid, "email": email})
+        r1 = _async_post("/api/auth/resend-phone-otp", {"pending_id": pending_id})
+        r2 = _async_post("/api/auth/resend-phone-otp", {"pending_id": pending_id})
         assert r1.status_code == 200, r1.text
         assert r2.status_code == 200, r2.text
-        r3 = _async_post("/api/auth/resend-phone-otp", {"user_id": uid, "email": email})
+        r3 = _async_post("/api/auth/resend-phone-otp", {"pending_id": pending_id})
         assert r3.status_code == 429, r3.text
+
+
+@patch("app.phone_verification.send_registration_otp_sms", lambda *a, **k: None)
+def test_repeat_register_updates_pending_and_resends_otp_without_unique_email_error(unique_email, phone_digits):
+    first_phone = f"+998{phone_digits}"
+    second_phone = f"+99891{uuid.uuid4().int % 10_000_000:07d}"
+    with patch("app.routes.auth.generate_otp_code", return_value="222222"):
+        r1 = _async_post(
+            "/api/auth/register",
+            {
+                "email": unique_email,
+                "password": "secret12",
+                "full_name": "First Name",
+                "phone": first_phone,
+                "consent_processing": True,
+            },
+        )
+    assert r1.status_code == 201, r1.text
+    pending_id_1 = r1.json()["pending_id"]
+
+    with patch("app.routes.auth.generate_otp_code", return_value="333333"):
+        r2 = _async_post(
+            "/api/auth/register",
+            {
+                "email": unique_email,
+                "password": "secret34",
+                "full_name": "Second Name",
+                "phone": second_phone,
+                "consent_processing": True,
+            },
+        )
+    assert r2.status_code == 201, r2.text
+    pending_id_2 = r2.json()["pending_id"]
+    assert pending_id_1 == pending_id_2
+
+    with engine.connect() as c:
+        row = c.execute(
+            text(
+                """
+                SELECT full_name, phone
+                FROM app.pending_registrations
+                WHERE id = CAST(:pid AS uuid)
+                """
+            ),
+            {"pid": pending_id_1},
+        ).fetchone()
+    assert row is not None
+    assert row[0] == "Second Name"
+    assert row[1] == second_phone
+
+
+@patch("app.phone_verification.send_registration_otp_sms", lambda *a, **k: None)
+def test_expired_pending_cannot_verify(unique_email, phone_digits):
+    with patch("app.routes.auth.generate_otp_code", return_value="444444"):
+        reg = _async_post(
+            "/api/auth/register",
+            {
+                "email": unique_email,
+                "password": "secret12",
+                "full_name": "Test User",
+                "phone": f"+998{phone_digits}",
+                "consent_processing": True,
+            },
+        )
+    assert reg.status_code == 201, reg.text
+    pending_id = reg.json()["pending_id"]
+    with engine.begin() as c:
+        c.execute(
+            text("UPDATE app.pending_registrations SET expires_at = now() - interval '1 minute' WHERE id = CAST(:pid AS uuid)"),
+            {"pid": pending_id},
+        )
+    r = _async_post("/api/auth/verify-phone", {"pending_id": pending_id, "code": "444444"})
+    assert r.status_code == 400, r.text

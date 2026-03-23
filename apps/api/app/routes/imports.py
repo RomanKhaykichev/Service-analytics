@@ -27,6 +27,39 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def sql_parse_decimal(col_expr: str) -> str:
+    """
+    Robust SQL parser for locale-formatted numeric strings.
+    Supports values like:
+    - 1234
+    - 1,234.56
+    - 1.234,56
+    - 1 234,56
+    - 1,0
+    """
+    raw = f"regexp_replace(trim(COALESCE({col_expr}, '')), '[^0-9,.-]', '', 'g')"
+    normalized = f"""
+    (
+        CASE
+            WHEN {raw} = '' THEN NULL
+            WHEN position(',' in {raw}) > 0 AND position('.' in {raw}) > 0 THEN
+                CASE
+                    WHEN strpos(reverse({raw}), ',') < strpos(reverse({raw}), '.') THEN replace(replace({raw}, '.', ''), ',', '.')
+                    ELSE replace({raw}, ',', '')
+                END
+            WHEN position(',' in {raw}) > 0 THEN replace({raw}, ',', '.')
+            ELSE {raw}
+        END
+    )
+    """
+    return normalized
+
+
+def sql_parse_int(col_expr: str) -> str:
+    """Parse integer via sql_parse_decimal (avoids locale-induced x10 errors)."""
+    return f"COALESCE(({sql_parse_decimal(col_expr)})::numeric::int, 0)"
+
+
 def table_exists(db: Session, full_name: str) -> bool:
     """
     Check if a table exists in the database.
@@ -965,17 +998,18 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                     s.barcode,
                     s.product_name,
                     s.category,
-                    -- Integer fields: remove all non-digit characters except minus sign
-                    COALESCE(NULLIF(regexp_replace(trim(s.qty_raw), '[^0-9-]', '', 'g'), '')::numeric::int, 0) AS qty,
-                    COALESCE(NULLIF(regexp_replace(trim(s.returns_raw), '[^0-9-]', '', 'g'), '')::numeric::int, 0) AS returns_qty,
+                    -- Quantity fields: keep decimal separator (comma/dot), then cast numeric->int.
+                    -- Prevents 1,0 from becoming 10 (old regex removed comma and overcounted x10).
+                    {sql_parse_int('s.qty_raw')} AS qty,
+                    {sql_parse_int('s.returns_raw')} AS returns_qty,
                     -- Numeric fields: remove all non-digit characters except digits, comma, dot, minus
-                    COALESCE(NULLIF(replace(regexp_replace(trim(s.revenue_raw), '[^0-9,.-]', '', 'g'), ',', '.'), '')::numeric, 0) AS revenue_sum,
-                    COALESCE(NULLIF(replace(regexp_replace(trim(s.revenue_net_raw), '[^0-9,.-]', '', 'g'), ',', '.'), '')::numeric, 0) AS revenue_net_sum,
-                    COALESCE(NULLIF(replace(regexp_replace(trim(s.commission_raw), '[^0-9,.-]', '', 'g'), ',', '.'), '')::numeric, 0) AS commission_sum,
-                    COALESCE(NULLIF(replace(regexp_replace(trim(s.logistics_raw), '[^0-9,.-]', '', 'g'), ',', '.'), '')::numeric, 0) AS logistics_sum,
-                    COALESCE(NULLIF(replace(regexp_replace(trim(s.price_raw), '[^0-9,.-]', '', 'g'), ',', '.'), '')::numeric, 0) AS price_sum,
-                    COALESCE(NULLIF(replace(regexp_replace(trim(s.promo_raw), '[^0-9,.-]', '', 'g'), ',', '.'), '')::numeric, 0) AS promo_sum,
-                    COALESCE(NULLIF(replace(regexp_replace(trim(s.cogs_raw), '[^0-9,.-]', '', 'g'), ',', '.'), '')::numeric, 0) AS cogs_sum,
+                    COALESCE(({sql_parse_decimal('s.revenue_raw')})::numeric, 0) AS revenue_sum,
+                    COALESCE(({sql_parse_decimal('s.revenue_net_raw')})::numeric, 0) AS revenue_net_sum,
+                    COALESCE(({sql_parse_decimal('s.commission_raw')})::numeric, 0) AS commission_sum,
+                    COALESCE(({sql_parse_decimal('s.logistics_raw')})::numeric, 0) AS logistics_sum,
+                    COALESCE(({sql_parse_decimal('s.price_raw')})::numeric, 0) AS price_sum,
+                    COALESCE(({sql_parse_decimal('s.promo_raw')})::numeric, 0) AS promo_sum,
+                    COALESCE(({sql_parse_decimal('s.cogs_raw')})::numeric, 0) AS cogs_sum,
                     {barcode_norm_sql('s.barcode')} AS barcode_norm
                 FROM src s
                 LEFT JOIN {qname('map_shop_sku')} m
@@ -1097,9 +1131,9 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
             ),
             stg_agg AS (
                 SELECT 
-                    COALESCE(SUM(COALESCE(NULLIF(replace(replace(trim(qty_raw), ' ', ''), ',', '.'), '')::numeric::int, 0)), 0) AS stg_qty,
-                    COALESCE(SUM(COALESCE(NULLIF(replace(replace(trim(revenue_raw), ' ', ''), ',', '.'), '')::numeric, 0)), 0) AS stg_revenue,
-                    COALESCE(SUM(COALESCE(NULLIF(replace(replace(trim(returns_raw), ' ', ''), ',', '.'), '')::numeric::int, 0)), 0) AS stg_returns
+                    COALESCE(SUM({sql_parse_int('qty_raw')}), 0) AS stg_qty,
+                    COALESCE(SUM(COALESCE(({sql_parse_decimal('revenue_raw')})::numeric, 0)), 0) AS stg_revenue,
+                    COALESCE(SUM({sql_parse_int('returns_raw')}), 0) AS stg_returns
                 FROM {qname('stg_sales')}
                 WHERE user_id = CAST(:user_id AS uuid) 
                   AND upload_batch_id = CAST(:batch_id AS uuid)
@@ -1221,9 +1255,9 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                             END)
                         ELSE NULL
                     END AS date_written_off,
-                    NULLIF(replace(replace(cost_raw, ' ', ''), ',', '.'), '')::numeric AS cost_sum,
-                    COALESCE(NULLIF(replace(replace(qty_raw, ' ', ''), ',', '.'), '')::numeric::int, 0) AS qty,
-                    NULLIF(replace(replace(amount_raw, ' ', ''), ',', '.'), '')::numeric AS amount_sum,
+                    ({sql_parse_decimal('cost_raw')})::numeric AS cost_sum,
+                    {sql_parse_int('qty_raw')} AS qty,
+                    ({sql_parse_decimal('amount_raw')})::numeric AS amount_sum,
                     operation_type
                 FROM src
             )
@@ -1375,7 +1409,7 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                     END AS planned_end_date,
                     CASE 
                         WHEN coverage_days_raw IS NULL OR trim(coverage_days_raw) = '' THEN NULL
-                        WHEN trim(coverage_days_raw) ~ '^\\s*\\d+(\\.\\d+)?\\s*$' THEN CAST(replace(regexp_replace(trim(coverage_days_raw), '[^0-9,.-]', '', 'g'), ',', '.') AS numeric(10,2))
+                        WHEN trim(coverage_days_raw) <> '' THEN CAST(({sql_parse_decimal('coverage_days_raw')}) AS numeric(10,2))
                         ELSE NULL
                     END AS coverage_days,
                     CAST(NULLIF(regexp_replace(trim(recommended_qty_raw), '[^0-9]', '', 'g'), '') AS int) AS recommended_qty,
@@ -1388,8 +1422,8 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                     CAST(NULLIF(regexp_replace(trim(sdh_raw), '[^0-9]', '', 'g'), '') AS int) AS sdh_stock,
                     CAST(NULLIF(regexp_replace(trim(photo_raw), '[^0-9]', '', 'g'), '') AS int) AS photo_stock,
                     CAST(NULLIF(regexp_replace(trim(defect_raw), '[^0-9]', '', 'g'), '') AS int) AS defect_stock,
-                    CAST(replace(NULLIF(regexp_replace(trim(potential_per_unit_raw), '[^0-9,.-]', '', 'g'), ''), ',', '.') AS numeric(18,2)) AS potential_per_unit,
-                    CAST(replace(NULLIF(regexp_replace(trim(potential_total_raw), '[^0-9,.-]', '', 'g'), ''), ',', '.') AS numeric(18,2)) AS potential_total,
+                    CAST(({sql_parse_decimal('potential_per_unit_raw')}) AS numeric(18,2)) AS potential_per_unit,
+                    CAST(({sql_parse_decimal('potential_total_raw')}) AS numeric(18,2)) AS potential_total,
                     {barcode_norm_sql('barcode_raw')} AS barcode_norm
                 FROM src
             ),
@@ -1497,9 +1531,9 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                     NULLIF(trim(sku_raw), '') AS sku,
                     NULLIF(trim(barcode_raw), '') AS barcode,
                     NULLIF(trim(size_group_raw), '') AS size_group,
-                    CAST(replace(NULLIF(regexp_replace(trim(turnover_days_raw), '[^0-9,.-]', '', 'g'), ''), ',', '.') AS numeric(18,4)) AS turnover_days,
+                    CAST(({sql_parse_decimal('turnover_days_raw')}) AS numeric(18,4)) AS turnover_days,
                     NULLIF(trim(storage_type_raw), '') AS storage_type,
-                    CAST(replace(NULLIF(regexp_replace(trim(fee_total_30d_raw), '[^0-9,.-]', '', 'g'), ''), ',', '.') AS numeric(18,2)) AS fee_total_30d
+                    CAST(({sql_parse_decimal('fee_total_30d_raw')}) AS numeric(18,2)) AS fee_total_30d
                 FROM src
             ),
             casted_with_norm AS (
@@ -1559,9 +1593,9 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                 sl.upload_batch_id,
                 NULLIF(trim(sl.barcode_raw), '') AS barcode,
                 NULLIF(trim(regexp_replace(COALESCE(sl.barcode_raw, ''), '\\s+', '', 'g')), '') AS barcode_norm,
-                GREATEST(0, COALESCE(CAST(NULLIF(replace(replace(regexp_replace(trim(COALESCE(sl.in_sale_raw, '')), '\\s+', '', 'g'), ',', ''), '\u2014', ''), '') AS int), 0)) AS in_sale_qty,
-                CAST(NULLIF(replace(regexp_replace(trim(COALESCE(sl.cost_raw, '')), '\\s+', '', 'g'), ',', '.'), '') AS numeric(18,2)) AS cost_sum,
-                CAST(NULLIF(replace(regexp_replace(trim(COALESCE(sl.price_raw, '')), '\\s+', '', 'g'), ',', '.'), '') AS numeric(18,2)) AS price_sum,
+                GREATEST(0, {sql_parse_int("sl.in_sale_raw")}) AS in_sale_qty,
+                CAST(({sql_parse_decimal("sl.cost_raw")}) AS numeric(18,2)) AS cost_sum,
+                CAST(({sql_parse_decimal("sl.price_raw")}) AS numeric(18,2)) AS price_sum,
                 now() AS loaded_at
             FROM {qname('stg_leftout_old')} sl
             WHERE sl.user_id = CAST(:user_id AS uuid) AND sl.upload_batch_id = CAST(:batch_id AS uuid)

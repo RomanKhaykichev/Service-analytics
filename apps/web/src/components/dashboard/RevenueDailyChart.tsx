@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceDot, LabelList } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceDot } from "recharts";
 import { MessageSquarePlus, MessageSquare } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -48,54 +48,26 @@ export function RevenueDailyChart({
   const chartData = data && data.length > 0 ? data : [];
   const hasData = chartData.length > 0;
 
-  // Fixed orders Y-axis configuration: domain [0, 48], ticks with step 6
-  const ordersTicks = [0, 6, 12, 18, 24, 30, 36, 42, 48];
-
   const hasProductMetrics = hideAvgCheck;
 
-  // Prepare data with clamped orders/returns for display (max 48) but keep original for tooltip
+  // Prepare normalized numeric values for chart and tooltip.
   const data2 = useMemo(() => {
     return chartData.map((point) => {
       const ordersOriginal = Number(point.orders ?? 0);
-      const ordersClamped = Math.min(ordersOriginal, 48);
       const returnsOriginal = Number(point.returns ?? 0);
-      const returnsClamped = Math.min(returnsOriginal, 48);
       const revenueValue = Number(point.revenue ?? 0);
       const profitValue = Math.round(Number(point.profit ?? 0));
       const avgCheckValue = Number(point.avgCheck ?? (point as any).averageCheck ?? 0);
       return {
         ...point,
         ordersOriginal,
-        ordersClamped,
         returnsOriginal,
-        returnsClamped,
         revenueValue,
         profitValue,
         avgCheckValue,
       };
     });
   }, [chartData]);
-
-  // Custom label for orders > 48
-  const renderOrdersLabel = (props: any) => {
-    const { payload, x, y } = props;
-    if (!payload || payload.ordersOriginal === undefined) return null;
-    if (payload.ordersOriginal > 48) {
-      return (
-        <text
-          x={x}
-          y={y - 8}
-          fill="hsl(var(--destructive))"
-          fontSize={10}
-          fontWeight="bold"
-          textAnchor="middle"
-        >
-          48+
-        </text>
-      );
-    }
-    return null;
-  };
 
   const handleLegendClick = (dataKey: string) => {
     setHiddenLines(prev => {
@@ -224,9 +196,7 @@ export function RevenueDailyChart({
           }} />
             <YAxis 
               yAxisId="orders" 
-              domain={[0, 48]}
-              ticks={ordersTicks}
-              interval={0}
+              domain={[0, "auto"]}
               allowDecimals={false}
               tick={{
                 fill: "hsl(var(--muted-foreground))",
@@ -286,18 +256,16 @@ export function RevenueDailyChart({
                   const v = payload?.profitValue ?? value;
                   return [`${Math.round(v).toLocaleString("ru-RU")} ${t("common.sum")}`, t('summary.finance.profit')];
                 }
-                if (entry?.dataKey === "ordersClamped") {
+                if (entry?.dataKey === "ordersOriginal") {
                   const payload = entry?.payload;
                   const ordersOriginal = payload?.ordersOriginal ?? value;
                   const pcs = t('common.pieces');
-                  if (ordersOriginal > 48) return [`48+ (${t('chart.reallyOrders')}: ${ordersOriginal} ${pcs})`, t('summary.sales.orders')];
                   return [`${ordersOriginal} ${pcs}`, t('summary.sales.orders')];
                 }
-                if (entry?.dataKey === "returnsClamped") {
+                if (entry?.dataKey === "returnsOriginal") {
                   const payload = entry?.payload;
                   const returnsOriginal = payload?.returnsOriginal ?? value;
                   const pcs = t('common.pieces');
-                  if (returnsOriginal > 48) return [`48+ (${t('chart.reallyOrders')}: ${returnsOriginal} ${pcs})`, t('summary.sales.returns')];
                   return [`${returnsOriginal} ${pcs}`, t('summary.sales.returns')];
                 }
                 return [value, name];
@@ -307,27 +275,25 @@ export function RevenueDailyChart({
             <Line 
               yAxisId="orders" 
               type="monotone" 
-              dataKey="ordersClamped"
+              dataKey="ordersOriginal"
               name={t('summary.sales.orders')}
               stroke="hsl(var(--chart-4))" 
               strokeWidth={2} 
               dot={false} 
               activeDot={{ r: 4 }} 
-              hide={hiddenLines.has("ordersClamped")}
-            >
-              <LabelList content={renderOrdersLabel} />
-            </Line>
+              hide={hiddenLines.has("ordersOriginal")}
+            />
             {hasProductMetrics && (
             <Line 
               yAxisId="orders" 
               type="monotone" 
-              dataKey="returnsClamped"
+              dataKey="returnsOriginal"
               name={t('summary.sales.returns')}
               stroke="hsl(var(--chart-2))" 
               strokeWidth={2} 
               dot={false} 
               activeDot={{ r: 4 }} 
-              hide={hiddenLines.has("returnsClamped")} 
+              hide={hiddenLines.has("returnsOriginal")} 
             />
             )}
             <Line 

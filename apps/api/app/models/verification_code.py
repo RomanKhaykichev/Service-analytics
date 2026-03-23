@@ -17,6 +17,7 @@ class VerificationCode(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("app.users.id", ondelete="CASCADE"), nullable=True, index=True)  # nullable for pre-registration
+    pending_id = Column(UUID(as_uuid=True), ForeignKey("app.pending_registrations.id", ondelete="CASCADE"), nullable=True, index=True)
     channel = Column(SQLEnum(VerificationChannel), nullable=False)
     destination = Column(String(255), nullable=False, index=True)  # phone or email
     code_hash = Column(String(255), nullable=False)
@@ -26,3 +27,4 @@ class VerificationCode(Base):
 
     # Relationships
     user = relationship("User", back_populates="verification_codes")
+    pending_registration = relationship("PendingRegistration", back_populates="verification_codes")

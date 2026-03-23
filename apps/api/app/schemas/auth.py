@@ -44,15 +44,13 @@ class LogoutRequest(BaseModel):
 
 
 class VerifyPhoneRequest(BaseModel):
-    user_id: UUID
-    email: Optional[EmailStr] = None
-    phone: str
+    pending_id: UUID
+    phone: Optional[str] = None
     code: str
 
 
 class ResendPhoneOtpRequest(BaseModel):
-    user_id: UUID
-    email: EmailStr
+    pending_id: UUID
 
 
 class UpdateProfileRequest(BaseModel):
@@ -99,7 +97,7 @@ class UserResponse(BaseModel):
 class RegisterVerifyPendingResponse(BaseModel):
     ok: bool = True
     next: Literal["verify_phone"] = "verify_phone"
-    user_id: UUID
+    pending_id: UUID
     phone_masked: str
     expires_in_sec: int = 300
 

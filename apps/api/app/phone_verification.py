@@ -125,13 +125,15 @@ def assert_verify_fail_rate_limit(db: Session, phone_norm: str) -> None:
 
 def create_sms_verification(
     db: Session,
-    user_id: UUID,
     destination_norm: str,
     code_plain: str,
+    user_id: UUID | None = None,
+    pending_id: UUID | None = None,
 ) -> VerificationCode:
     expires = _now() + timedelta(minutes=OTP_TTL_MIN)
     vc = VerificationCode(
         user_id=user_id,
+        pending_id=pending_id,
         channel=VerificationChannel.SMS,
         destination=destination_norm,
         code_hash=otp_hash(code_plain),
@@ -140,6 +142,10 @@ def create_sms_verification(
     )
     db.add(vc)
     return vc
+
+
+def pending_expires_at(hours: int = 24) -> datetime:
+    return _now() + timedelta(hours=hours)
 
 
 def send_registration_otp_sms(destination_norm: str, code_plain: str) -> None:

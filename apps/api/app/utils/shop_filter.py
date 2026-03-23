@@ -55,10 +55,24 @@ def storage_barcode_filter_sql(
         if outer_barcode_norm_expr is not None
         else f"COALESCE({alias}.barcode_norm, {barcode_norm_sql(f'{alias}.barcode')})"
     )
+    # Normalize trailing ".0" for Excel-imported numeric barcodes (e.g. 12345.0 -> 12345).
+    # Using RIGHT/LEFT avoids regex escaping edge cases in SQL strings.
+    left_base = f"COALESCE(fss.barcode_norm, {barcode_norm_sql('fss.barcode')})"
+    right_base = f"{outer_side}"
+    left_norm = (
+        f"CASE WHEN RIGHT({left_base}, 2) = '.0' "
+        f"THEN LEFT({left_base}, LENGTH({left_base}) - 2) "
+        f"ELSE {left_base} END"
+    )
+    right_norm = (
+        f"CASE WHEN RIGHT({right_base}, 2) = '.0' "
+        f"THEN LEFT({right_base}, LENGTH({right_base}) - 2) "
+        f"ELSE {right_base} END"
+    )
     fragment = f"""EXISTS (
                 SELECT 1 FROM {qname("fact_storage_snapshot")} fss
                 WHERE fss.user_id = {alias}.user_id
-                  AND COALESCE(fss.barcode_norm, {barcode_norm_sql("fss.barcode")}) = {outer_side}
+                  AND {left_norm} = {right_norm}
                   AND upper(regexp_replace(trim(COALESCE(fss.shop_raw, '')), '\\s+', ' ', 'g')) = :shop_norm
             )"""
     return f"AND {fragment}" if prefix_and else fragment
@@ -82,6 +96,18 @@ def storage_barcode_filter_by_shop_id_sql(
         if outer_barcode_norm_expr is not None
         else f"COALESCE({alias}.barcode_norm, {barcode_norm_sql(f'{alias}.barcode')})"
     )
+    left_base = f"COALESCE(fss.barcode_norm, {barcode_norm_sql('fss.barcode')})"
+    right_base = f"{outer_side}"
+    left_norm = (
+        f"CASE WHEN RIGHT({left_base}, 2) = '.0' "
+        f"THEN LEFT({left_base}, LENGTH({left_base}) - 2) "
+        f"ELSE {left_base} END"
+    )
+    right_norm = (
+        f"CASE WHEN RIGHT({right_base}, 2) = '.0' "
+        f"THEN LEFT({right_base}, LENGTH({right_base}) - 2) "
+        f"ELSE {right_base} END"
+    )
     fragment = f"""EXISTS (
                 SELECT 1 FROM {qname("fact_storage_snapshot")} fss
                 INNER JOIN (
@@ -93,7 +119,7 @@ def storage_barcode_filter_by_shop_id_sql(
                     ) t WHERE rn = 1
                 ) last ON fss.user_id = last.user_id AND fss.upload_batch_id = last.upload_batch_id
                 WHERE fss.user_id = {alias}.user_id
-                  AND COALESCE(fss.barcode_norm, {barcode_norm_sql("fss.barcode")}) = {outer_side}
+                  AND {left_norm} = {right_norm}
                   AND fss.shop_id = CAST(:shop_id AS uuid)
             )"""
     return f"AND {fragment}" if prefix_and else fragment

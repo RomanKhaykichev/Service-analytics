@@ -12,7 +12,7 @@ from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 from app.deps import require_user, is_user_admin
-from app.models import User, AuthIdentity, RefreshToken, VerificationCode
+from app.models import User, AuthIdentity, RefreshToken, VerificationCode, PendingRegistration
 from app.models.verification_code import VerificationChannel
 from app.models.auth_identity import AuthProvider
 from app.schemas.auth import (
@@ -36,6 +36,7 @@ from app.phone_verification import (
     mask_phone,
     normalize_uz_phone,
     otp_hash,
+    pending_expires_at,
     record_verify_fail,
     send_registration_otp_sms,
 )
@@ -102,7 +103,8 @@ async def register(
     db: Session = Depends(get_db)
 ):
     """
-    Register a new user; sends SMS OTP — access/refresh tokens are issued only after /verify-phone.
+    Start registration by creating/updating pending draft and sending SMS OTP.
+    User/auth_identity are created only after /verify-phone succeeds.
     """
     if not request.consent_processing:
         raise HTTPException(
@@ -120,7 +122,8 @@ async def register(
 
         assert_send_rate_limit(db, phone_norm)
 
-        existing_user = db.query(User).filter(User.email == request.email).first()
+        email_norm = str(request.email).strip().lower()
+        existing_user = db.query(User).filter(func.lower(User.email) == email_norm).first()
         if existing_user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -137,7 +140,7 @@ async def register(
         existing_identity = db.query(AuthIdentity).filter(
             and_(
                 AuthIdentity.provider == AuthProvider.EMAIL_PASSWORD,
-                AuthIdentity.identifier == request.email
+                func.lower(AuthIdentity.identifier) == email_norm
             )
         ).first()
         if existing_identity:
@@ -146,41 +149,30 @@ async def register(
                 detail="User with this email already exists"
             )
 
-        user = User(
-            email=request.email,
-            full_name=request.full_name or None,
-            phone=phone_norm,
-            is_active=True,
-            phone_verified_at=None,
-        )
-        db.add(user)
+        password_hash = hash_password(request.password)
+        pending = db.query(PendingRegistration).filter(func.lower(PendingRegistration.email) == email_norm).first()
+        if pending:
+            # Reuse existing pending record (even if expired) and refresh the data.
+            pending.full_name = request.full_name or None
+            pending.phone = phone_norm
+            pending.password_hash = password_hash
+            pending.consent_processing = request.consent_processing
+            pending.expires_at = pending_expires_at(hours=24)
+        else:
+            pending = PendingRegistration(
+                email=email_norm,
+                full_name=request.full_name or None,
+                phone=phone_norm,
+                password_hash=password_hash,
+                consent_processing=request.consent_processing,
+                expires_at=pending_expires_at(hours=24),
+                attempts=0,
+            )
+            db.add(pending)
         db.flush()
 
-        try:
-            now_utc = datetime.now(timezone.utc)
-            trial_ends = now_utc + timedelta(days=10)
-            db.execute(
-                text(
-                    f"UPDATE {qname('users')} "
-                    "SET trial_ends_at = :end, plan = COALESCE(plan, 'trial') "
-                    "WHERE id = :uid"
-                ),
-                {"end": trial_ends, "uid": user.id},
-            )
-        except Exception as e:
-            logger.debug("trial_ends_at update skipped: %s", e)
-
-        password_hash = hash_password(request.password)
-        auth_identity = AuthIdentity(
-            user_id=user.id,
-            provider=AuthProvider.EMAIL_PASSWORD,
-            identifier=request.email,
-            password_hash=password_hash
-        )
-        db.add(auth_identity)
-
         code_plain = generate_otp_code()
-        create_sms_verification(db, user.id, phone_norm, code_plain)
+        create_sms_verification(db, phone_norm, code_plain, pending_id=pending.id)
 
         try:
             send_registration_otp_sms(phone_norm, code_plain)
@@ -194,7 +186,7 @@ async def register(
 
         db.commit()
         return RegisterVerifyPendingResponse(
-            user_id=user.id,
+            pending_id=pending.id,
             phone_masked=mask_phone(phone_norm),
             expires_in_sec=300,
         )
@@ -253,11 +245,7 @@ async def verify_phone(
     response: Response,
     db: Session = Depends(get_db),
 ):
-    """Confirm SMS code and activate phone; returns tokens (same as login)."""
-    try:
-        phone_norm = normalize_uz_phone(request.phone)
-    except ValueError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid phone number")
+    """Confirm SMS code and only then create user/auth identity and issue tokens."""
 
     code_in = (request.code or "").strip().replace(" ", "")
     if len(code_in) != 6 or not code_in.isdigit():
@@ -266,30 +254,27 @@ async def verify_phone(
             detail="Enter the 6-digit verification code",
         )
 
-    user = db.query(User).filter(User.id == request.user_id).first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    pending = db.query(PendingRegistration).filter(PendingRegistration.id == request.pending_id).first()
+    if not pending:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pending registration not found")
 
-    if request.email and user.email and user.email.lower() != str(request.email).lower():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email does not match this account")
+    now_utc = datetime.now(timezone.utc)
+    if pending.expires_at <= now_utc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pending registration expired. Start again.")
 
     try:
-        u_phone = normalize_uz_phone(user.phone or "")
+        phone_norm = normalize_uz_phone(request.phone) if request.phone else normalize_uz_phone(pending.phone)
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User has no valid phone on file")
-    if u_phone != phone_norm:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Phone does not match this account")
-
-    if user.phone_verified_at is not None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Phone already verified")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid phone number")
+    if phone_norm != normalize_uz_phone(pending.phone):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Phone does not match pending registration")
 
     assert_verify_fail_rate_limit(db, phone_norm)
 
-    now_utc = datetime.now(timezone.utc)
     vc = (
         db.query(VerificationCode)
         .filter(
-            VerificationCode.user_id == user.id,
+            VerificationCode.pending_id == pending.id,
             VerificationCode.destination == phone_norm,
             or_(
                 VerificationCode.channel == VerificationChannel.SMS,
@@ -302,7 +287,7 @@ async def verify_phone(
         .first()
     )
     if not vc:
-        record_verify_fail(db, user.id, phone_norm)
+        record_verify_fail(db, None, phone_norm)
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -311,15 +296,55 @@ async def verify_phone(
 
     expected_hash = otp_hash(code_in)
     if not hmac.compare_digest(vc.code_hash, expected_hash):
-        record_verify_fail(db, user.id, phone_norm)
+        record_verify_fail(db, None, phone_norm)
         db.commit()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid verification code",
         )
 
-    user.phone_verified_at = now_utc
     vc.consumed_at = now_utc
+    if db.query(User).filter(func.lower(User.email) == str(pending.email).lower()).first():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User with this email already exists")
+    if db.query(User).filter(User.phone == phone_norm).first():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User with this phone number already exists")
+    if db.query(AuthIdentity).filter(
+        and_(
+            AuthIdentity.provider == AuthProvider.EMAIL_PASSWORD,
+            func.lower(AuthIdentity.identifier) == str(pending.email).lower(),
+        )
+    ).first():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User with this email already exists")
+    user = User(
+        email=pending.email,
+        full_name=pending.full_name or None,
+        phone=phone_norm,
+        is_active=True,
+        phone_verified_at=now_utc,
+    )
+    db.add(user)
+    db.flush()
+    try:
+        trial_ends = now_utc + timedelta(days=10)
+        db.execute(
+            text(
+                f"UPDATE {qname('users')} "
+                "SET trial_ends_at = :end, plan = COALESCE(plan, 'trial') "
+                "WHERE id = :uid"
+            ),
+            {"end": trial_ends, "uid": user.id},
+        )
+    except Exception as e:
+        logger.debug("trial_ends_at/consent update skipped: %s", e)
+
+    auth_identity = AuthIdentity(
+        user_id=user.id,
+        provider=AuthProvider.EMAIL_PASSWORD,
+        identifier=pending.email,
+        password_hash=pending.password_hash,
+    )
+    db.add(auth_identity)
+    db.delete(pending)
 
     return _issue_auth_response(user, db, response)
 
@@ -330,25 +355,19 @@ async def resend_phone_otp(
     db: Session = Depends(get_db),
 ):
     """Resend SMS OTP for pending registration (rate-limited)."""
-    user = db.query(User).filter(User.id == body.user_id).first()
-    if not user or not user.email or user.email.lower() != str(body.email).lower():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid user or email",
-        )
-    if user.phone_verified_at is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Phone already verified",
-        )
+    pending = db.query(PendingRegistration).filter(PendingRegistration.id == body.pending_id).first()
+    if not pending:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pending registration not found")
+    if pending.expires_at <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pending registration expired. Start again.")
     try:
-        phone_norm = normalize_uz_phone(user.phone or "")
+        phone_norm = normalize_uz_phone(pending.phone or "")
     except ValueError:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No phone on file")
 
     assert_send_rate_limit(db, phone_norm)
     code_plain = generate_otp_code()
-    create_sms_verification(db, user.id, phone_norm, code_plain)
+    create_sms_verification(db, phone_norm, code_plain, pending_id=pending.id)
     try:
         send_registration_otp_sms(phone_norm, code_plain)
     except Exception as e:
@@ -359,11 +378,7 @@ async def resend_phone_otp(
             detail=f"Failed to send SMS: {str(e)}",
         )
     db.commit()
-    return RegisterVerifyPendingResponse(
-        user_id=user.id,
-        phone_masked=mask_phone(phone_norm),
-        expires_in_sec=300,
-    )
+    return {"ok": True, "expires_in_sec": 300}
 
 
 @router.post("/login", response_model=AuthResponse)

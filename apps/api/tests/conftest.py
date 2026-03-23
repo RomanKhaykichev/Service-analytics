@@ -46,3 +46,36 @@ def ensure_phone_verification_schema():
                 ON {schema}.otp_attempts (phone_normalized, created_at DESC)
             """)
         )
+        conn.execute(
+            text(
+                f"""
+                CREATE TABLE IF NOT EXISTS {schema}.pending_registrations (
+                    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                    email text UNIQUE NOT NULL,
+                    full_name text NULL,
+                    phone text NOT NULL,
+                    password_hash text NOT NULL,
+                    consent_processing boolean NULL,
+                    created_at timestamptz NOT NULL DEFAULT now(),
+                    expires_at timestamptz NOT NULL,
+                    attempts int NOT NULL DEFAULT 0
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                f"""
+                CREATE INDEX IF NOT EXISTS ix_pending_registrations_phone
+                ON {schema}.pending_registrations (phone)
+                """
+            )
+        )
+        conn.execute(
+            text(
+                f"""
+                ALTER TABLE {schema}.verification_codes
+                ADD COLUMN IF NOT EXISTS pending_id uuid NULL
+                """
+            )
+        )

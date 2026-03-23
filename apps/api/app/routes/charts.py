@@ -110,12 +110,24 @@ async def get_revenue_daily(
         shop_condition = f"AND {shop_condition_frag}" if shop_condition_frag else ""
 
         # Product_id filter: только штрихкоды, принадлежащие карточке (ID товара из left-out)
+        # Normalize trailing ".0" to match sales barcode_norm persisted from Excel numeric cells.
         product_id_condition = ""
         if product_id and str(product_id).strip():
             params["product_id"] = str(product_id).strip()
             product_id_condition = f"""
-                AND fact_sales.barcode_norm IN (
-                    SELECT NULLIF(trim(regexp_replace(COALESCE(sl.barcode_raw, ''), '\\s+', '', 'g')), '')
+                AND (
+                    CASE
+                        WHEN RIGHT(COALESCE(fact_sales.barcode_norm, ''), 2) = '.0'
+                            THEN LEFT(COALESCE(fact_sales.barcode_norm, ''), LENGTH(COALESCE(fact_sales.barcode_norm, '')) - 2)
+                        ELSE COALESCE(fact_sales.barcode_norm, '')
+                    END
+                ) IN (
+                    SELECT
+                        CASE
+                            WHEN RIGHT(COALESCE(NULLIF(trim(regexp_replace(COALESCE(sl.barcode_raw, ''), '\\s+', '', 'g')), ''), ''), 2) = '.0'
+                                THEN LEFT(COALESCE(NULLIF(trim(regexp_replace(COALESCE(sl.barcode_raw, ''), '\\s+', '', 'g')), ''), ''), LENGTH(COALESCE(NULLIF(trim(regexp_replace(COALESCE(sl.barcode_raw, ''), '\\s+', '', 'g')), ''), '')) - 2)
+                            ELSE COALESCE(NULLIF(trim(regexp_replace(COALESCE(sl.barcode_raw, ''), '\\s+', '', 'g')), ''), '')
+                        END
                     FROM {qname("stg_leftout_old")} sl
                     WHERE sl.user_id = CAST(:user_id AS uuid)
                       AND sl.upload_batch_id = (
@@ -898,6 +910,12 @@ async def get_products_table(
     """
     try:
         import math
+        fs_barcode_norm_expr = (
+            "CASE "
+            "WHEN RIGHT(COALESCE(fs.barcode_norm, ''), 2) = '.0' "
+            "THEN LEFT(COALESCE(fs.barcode_norm, ''), LENGTH(COALESCE(fs.barcode_norm, '')) - 2) "
+            "ELSE COALESCE(fs.barcode_norm, '') END"
+        )
         # Определяем диапазон дат для основных метрик
         date_from_dt = None
         date_to_dt = None
@@ -1007,7 +1025,7 @@ async def get_products_table(
         
         sales_query = text(f"""
             SELECT
-                fs.barcode_norm,
+                {fs_barcode_norm_expr} AS barcode_norm,
                 SUM(COALESCE(fs.qty, 0))::int AS sales_qty,
                 SUM(COALESCE(fs.returns_qty, 0))::int AS returns_qty,
                 SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.revenue_sum, 0) ELSE 0 END)::double precision AS revenue,
@@ -1018,7 +1036,7 @@ async def get_products_table(
             WHERE fs.user_id = CAST(:user_id AS uuid)
               AND fs.barcode_norm IS NOT NULL
             {date_filter_sql}
-            GROUP BY fs.barcode_norm
+            GROUP BY {fs_barcode_norm_expr}
         """)
         sales_result = db.execute(sales_query, sales_params)
         sales_by_barcode: dict = {}
@@ -1066,24 +1084,24 @@ async def get_products_table(
         last_unit_query = text(f"""
             WITH last_dates AS (
                 SELECT
-                    fs.barcode_norm,
+                    {fs_barcode_norm_expr} AS barcode_norm,
                     MAX(fs.date_created::date) AS last_date
                 FROM {qname("fact_sales")} fs
                 WHERE fs.user_id = CAST(:user_id AS uuid)
                   AND fs.barcode_norm IS NOT NULL
                   AND {_STATUS_REVENUE_SQL}
                   {last_unit_date_filter_sql}
-                GROUP BY fs.barcode_norm
+                GROUP BY {fs_barcode_norm_expr}
             ),
             last_rows AS (
                 SELECT
-                    fs.barcode_norm,
+                    {fs_barcode_norm_expr} AS barcode_norm,
                     fs.revenue_sum,
                     fs.cogs_sum,
                     fs.qty
                 FROM {qname("fact_sales")} fs
                 JOIN last_dates ld
-                  ON ld.barcode_norm = fs.barcode_norm
+                  ON ld.barcode_norm = {fs_barcode_norm_expr}
                  AND fs.date_created::date = ld.last_date
                 WHERE fs.user_id = CAST(:user_id AS uuid)
                   AND {_STATUS_REVENUE_SQL}
@@ -1120,7 +1138,7 @@ async def get_products_table(
         # ABC анализ всегда считается за последние 30 дней от последней даты в выгрузке (независимо от фильтров date_from/date_to).
         abc_sales_query = text(f"""
             SELECT
-                fs.barcode_norm,
+                {fs_barcode_norm_expr} AS barcode_norm,
                 SUM(COALESCE(fs.qty, 0))::int AS sales_qty,
                 SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.revenue_sum, 0) ELSE 0 END)::double precision AS revenue,
                 SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.cogs_sum * fs.qty, 0) ELSE 0 END)::double precision AS cogs,
@@ -1131,7 +1149,7 @@ async def get_products_table(
               AND fs.barcode_norm IS NOT NULL
               AND fs.date_created >= CAST(:abc_date_from AS date)
               AND fs.date_created < CAST(:abc_date_to AS date) + INTERVAL '1 day'
-            GROUP BY fs.barcode_norm
+            GROUP BY {fs_barcode_norm_expr}
         """)
         abc_sales_result = db.execute(abc_sales_query, {
             "user_id": str(user_id), 
@@ -1343,8 +1361,19 @@ async def get_product_card_all_time_metrics(
     try:
         params = {"user_id": str(user_id), "product_id": product_id}
         product_id_condition = f"""
-            AND fact_sales.barcode_norm IN (
-                SELECT NULLIF(trim(regexp_replace(COALESCE(sl.barcode_raw, ''), '\\s+', '', 'g')), '')
+            AND (
+                CASE
+                    WHEN RIGHT(COALESCE(fact_sales.barcode_norm, ''), 2) = '.0'
+                        THEN LEFT(COALESCE(fact_sales.barcode_norm, ''), LENGTH(COALESCE(fact_sales.barcode_norm, '')) - 2)
+                    ELSE COALESCE(fact_sales.barcode_norm, '')
+                END
+            ) IN (
+                SELECT
+                    CASE
+                        WHEN RIGHT(COALESCE(NULLIF(trim(regexp_replace(COALESCE(sl.barcode_raw, ''), '\\s+', '', 'g')), ''), ''), 2) = '.0'
+                            THEN LEFT(COALESCE(NULLIF(trim(regexp_replace(COALESCE(sl.barcode_raw, ''), '\\s+', '', 'g')), ''), ''), LENGTH(COALESCE(NULLIF(trim(regexp_replace(COALESCE(sl.barcode_raw, ''), '\\s+', '', 'g')), ''), '')) - 2)
+                        ELSE COALESCE(NULLIF(trim(regexp_replace(COALESCE(sl.barcode_raw, ''), '\\s+', '', 'g')), ''), '')
+                    END
                 FROM {qname("stg_leftout_old")} sl
                 WHERE sl.user_id = CAST(:user_id AS uuid)
                   AND sl.upload_batch_id = (
