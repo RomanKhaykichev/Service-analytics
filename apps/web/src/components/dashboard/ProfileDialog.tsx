@@ -190,8 +190,8 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
                     type="tel"
                     placeholder="+998 90 123 45 67"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="pl-10"
+                    readOnly
+                    className="pl-10 opacity-80 cursor-not-allowed"
                   />
                 </div>
               </div>
