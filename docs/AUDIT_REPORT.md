@@ -111,25 +111,25 @@
 | **Trial 10** | `trial`, пусто, null         | 1                | Только последние **60 дней** от макс. даты в выгрузке (при записи в fact_sales / fact_expenses) | При регистрации по умолчанию; trial_ends_at = now + 10 дней. После истечения дней кнопка загрузки блокируется у **всех** тарифов; админ может добавлять дни **любому** тарифу (extend-trial). |
 | **Month 5**  | `month 5`, `month_5`, `month5` | 5                | Нет (все загруженные данные) | Платный. По правилу при оплате даётся **30 дней доступа** (см. ниже). Админ может продлевать дни через extend-trial. |
 | **Month 10** | `month 10`, `month_10`, `month10` | 10               | Нет                         | Платный; при оплате по правилу — **30 дней доступа**. Админ может продлевать дни через extend-trial. |
-| **Gold**     | `gold`, `gold_plan`          | Без лимита       | Нет                         | Спецтариф; лимит магазинов не проверяется (`get_user_max_shops` возвращает None). |
-| **Админы**   | любой план                   | Без лимита       | По плану                    | Пользователи из `ADMIN_USER_IDS` (email/UUID в env) — лимит магазинов не применяется. |
+| **Gold**     | `gold`, `gold_plan`          | Без лимита       | Нет                         | Платный спецтариф; при назначении из админки получает **30 дней доступа**. Админ может продлевать дни через extend-trial. |
+| **Admin**    | любой plan (`users.plan` может быть любым) | Без лимита       | Без ограничения по дням/сроку | Пользователи из `ADMIN_USER_IDS` (email/UUID в env). В UI отображаются как тариф **Admin** (платиновый); в таблице пользователей для админ-аккаунтов действия скрыты. |
 
-**Общее для всех тарифов:** при истечении срока (trial_ends_at в прошлом, т.е. trial_days_left ≤ 0) кнопка загрузки файлов блокируется (фронт: `HeaderActions.tsx`, условие `plan !== 'paid' && trial_days_left <= 0` — у Month 5 / Month 10 план не равен `'paid'`, поэтому при истечении дней кнопка тоже неактивна). Админ может добавлять дни любому тарифу через `POST /api/admin/tenants/{tenant_id}/extend-trial` с телом `{ "days": N }`.
+**Общее для всех не-админ тарифов:** при истечении срока (trial_ends_at в прошлом, т.е. trial_days_left ≤ 0) кнопка загрузки файлов блокируется (фронт: `HeaderActions.tsx`, условие `plan !== 'paid' && trial_days_left <= 0`). Для **Admin** блокировка не применяется: админ не ограничен по дням и может загружать отчёты без срока. Админ может добавлять дни любому тарифу через `POST /api/admin/tenants/{tenant_id}/extend-trial` с телом `{ "days": N }`.
 
-**Оплата тарифов Month 5 и Month 10: 30 дней доступа.** При записи платежа (`POST /api/admin/tenants/{tenant_id}/payment`) для пользователей с планом Month 5 или Month 10 автоматически продлевается доступ: `trial_ends_at = GREATEST(COALESCE(trial_ends_at, paid_at), paid_at) + 30 days` (в `apps/api/app/routes/admin.py`). То есть при оплате даётся 30 дней доступа; если текущий trial_ends_at уже в будущем, новый срок = trial_ends_at + 30 дней.
+**Оплата/назначение тарифов Month 5, Month 10 и Gold: 30 дней доступа.** При записи платежа (`POST /api/admin/tenants/{tenant_id}/payment`) для пользователей с выбранным планом Month 5 / Month 10 / Gold автоматически продлевается доступ: `trial_ends_at = GREATEST(COALESCE(trial_ends_at, paid_at), paid_at) + 30 days` (в `apps/api/app/routes/admin.py`). То есть при назначении тарифа админом даётся 30 дней доступа; если текущий trial_ends_at уже в будущем, новый срок = trial_ends_at + 30 дней.
 
 ### 3.0.1 Запись платежа: админ и автоматическая оплата (последние изменения)
 
 **Сейчас настроено так:**
 
-- **Админ вручную записывает платёж:** в админке в таблице пользователей есть кнопка «Записать платёж» (иконка купюры). В модальном окне админ вводит сумму и выбирает тариф: «Не менять тариф», «Month 5» или «Month 10». При выборе Month 5 или Month 10 пользователь **переводится на этот тариф** и получает **30 дней доступа** (в БД обновляются `users.plan` и `users.trial_ends_at`). Сумма сохраняется в таблице `app.user_payments` и в поле `users.paid_amount`; данные попадают в график «Аналитика подписок». Код: `apps/api/app/routes/admin.py` — `POST /api/admin/tenants/{tenant_id}/payment` (тело: `amount`, опционально `plan`: `"month_5"` / `"month_10"`); фронт: `apps/web/src/pages/Admin.tsx` — кнопка, модалка с полями сумма и тариф, вызов API и обновление списка после успеха.
+- **Админ вручную записывает платёж:** в админке в таблице пользователей есть кнопка «Записать платёж» (иконка купюры). В модальном окне админ вводит сумму и выбирает тариф: «Не менять тариф», «Month 5», «Month 10» или «Gold». При выборе тарифа пользователь **переводится на этот тариф** и получает **30 дней доступа** (в БД обновляются `users.plan` и `users.trial_ends_at`). Сумма сохраняется в таблице `app.user_payments` и в поле `users.paid_amount`; данные попадают в график «Аналитика подписок». Код: `apps/api/app/routes/admin.py` — `POST /api/admin/tenants/{tenant_id}/payment` (тело: `amount`, опционально `plan`: `"month_5"` / `"month_10"` / `"gold"`); фронт: `apps/web/src/pages/Admin.tsx` — кнопка, модалка с полями сумма и тариф, вызов API и обновление списка после успеха.
 - При необходимости перед записью платежа в коде создаются таблица `app.user_payments` и колонки `users.paid_amount`, `users.trial_ends_at`, `users.plan` (если миграции к этой БД не применялись).
 
 **При подключении оплаты (интеграция с платёжной системой):**
 
 - Та же логика будет проходить **автоматически**: при успешной оплате (webhook или вызов API от платёжного провайдера) достаточно вызвать тот же сценарий — запись в `user_payments`, обновление `users.paid_amount`, установка `users.plan` и продление `users.trial_ends_at` на 30 дней. То есть текущая реализация рассчитана на то, что при подключении автоматической оплаты повторно используется та же бизнес-логика (тот же endpoint или вынесенная в общую функцию), без дублирования правил переключения тарифа и начисления 30 дней.
 
-Логика лимитов и ограничения 60 дней: `apps/api/app/routes/imports.py` — `get_user_max_shops()`, в `populate_facts()` — `is_trial_plan` и фильтр по 60 дням только для trial. Отображение названий тарифов на фронте: `ProfileDialog`, `ReportUploadDialog`, `Admin.tsx` (Trial 10, Month 5, Month 10, Gold).
+Логика лимитов и ограничения 60 дней: `apps/api/app/routes/imports.py` — `get_user_max_shops()` (для Admin/Gold без лимита), в `populate_facts()` — `is_trial_plan` и фильтр по 60 дням только для trial (для Admin принудительно `is_trial_plan = false`). В KPI/Charts также отключена trial-отсечка 60 дней для админов. Отображение названий тарифов на фронте: `ProfileDialog`, `ReportUploadDialog`, `Admin.tsx` (Trial 10, Month 5, Month 10, Gold, Admin).
 
 **Как проверить:** Зарегистрировать нового пользователя → в БД `plan = 'trial'`, `trial_ends_at` через 10 дней; открыть дашборд под этим пользователем — в хедере/профиле отображается тариф Trial 10 и срок триала.
 
@@ -156,9 +156,9 @@
 **Status: PARTIAL**
 
 **Где в коде:**
-- **У всех тарифов после истечения дней блокируется кнопка загрузки:** `apps/web/src/components/dashboard/HeaderActions.tsx` — `isTrialExpired = (plan !== 'paid' && trial_days_left != null && trial_days_left <= 0)`; `ReportUploadDialog` получает `disabled={isTrialExpired}`. У планов Trial, Month 5 и Month 10 значение plan не равно `'paid'`, поэтому при истечении trial_ends_at (trial_days_left ≤ 0) кнопка «Загрузить отчёты» неактивна для любого из этих тарифов.
-- **Админ может добавлять дни всем тарифам:** `POST /api/admin/tenants/{tenant_id}/extend-trial` в `apps/api/app/routes/admin.py` — тело `{ "days": 7 }` (или любое N); обновляется `users.trial_ends_at` у любого выбранного tenant (Trial, Month 5, Month 10 и т.д.). Доступ только у пользователей из `ADMIN_USER_IDS`.
-- **Бэкенд:** Явной проверки trial_ends_at в маршруте импорта нет — блокировка загрузки реализована на фронте (disabled). По плану: `get_user_max_shops()` — trial 1 магазин, Month 5 → 5, Month 10 → 10.
+- **У всех не-админ тарифов после истечения дней блокируется кнопка загрузки:** `apps/web/src/components/dashboard/HeaderActions.tsx` — `isTrialExpired = !user.is_admin && (plan !== 'paid' && trial_days_left != null && trial_days_left <= 0)`; `ReportUploadDialog` получает `disabled={isTrialExpired}`. У планов Trial, Month 5, Month 10 и Gold значение plan не равно `'paid'`, поэтому при истечении trial_ends_at (trial_days_left ≤ 0) кнопка неактивна. Для Admin блокировки по сроку нет.
+- **Админ может добавлять дни всем тарифам:** `POST /api/admin/tenants/{tenant_id}/extend-trial` в `apps/api/app/routes/admin.py` — тело `{ "days": 7 }` (или любое N); обновляется `users.trial_ends_at` у любого выбранного tenant (Trial, Month 5, Month 10, Gold и т.д.). Доступ только у пользователей из `ADMIN_USER_IDS`.
+- **Бэкенд:** Явной проверки trial_ends_at в маршруте импорта нет — блокировка загрузки реализована на фронте (disabled). По плану: `get_user_max_shops()` — trial 1 магазин, Month 5 → 5, Month 10 → 10, Gold/Admin → без лимита. Для Admin trial-ограничения по данным также отключены в `populate_facts()`, KPI и Charts.
 - **Фронт:** Баннер об окончании триала, автооткрытие окна продления, кнопки «Продлить»/тарифы.
 
 **Как проверить:**
@@ -228,9 +228,9 @@
 **Status: DONE**
 
 **Где в коде:**
-- Список: `GET /api/admin/tenants` — пагинация, поиск, фильтр по plan, сортировка. Ответ: tenant_id, email, full_name, created_at, plan, trial_ends_at, last_login_at, shops_count, imports_30d, failed_30d и др.
+- Список: `GET /api/admin/tenants` — пагинация, поиск, фильтр по plan, сортировка. Ответ: tenant_id, email, full_name, created_at, `is_admin`, plan, trial_ends_at, last_login_at, shops_count, imports_30d, failed_30d и др.
 - Карточка: `GET /api/admin/tenants/{tenant_id}` — детали пользователя, plan, trial_ends_at, admin_notes, last_import_at, last_batch_id, imports_30d, failed_30d, data_freshness_days.
-- **Запись платежа:** в списке у каждого клиента кнопка «Записать платёж» (иконка купюры); модальное окно — сумма и выбор тарифа (Month 5 / Month 10). При выборе тарифа пользователь переводится на него и получает 30 дней доступа. API: `POST /api/admin/tenants/{tenant_id}/payment` (body: `amount`, опционально `plan`: `month_5` / `month_10`). При подключении автоматической оплаты предусмотрено использование той же логики (запись в `user_payments`, обновление плана и trial_ends_at).
+- **Запись платежа:** в списке у каждого клиента кнопка «Записать платёж» (иконка купюры); модальное окно — сумма и выбор тарифа (Month 5 / Month 10 / Gold). При выборе тарифа пользователь переводится на него и получает 30 дней доступа. API: `POST /api/admin/tenants/{tenant_id}/payment` (body: `amount`, опционально `plan`: `month_5` / `month_10` / `gold`). Для строк пользователей с `is_admin=true` кнопки действий в таблице скрыты (нет disable/enable/extend/payment/notes/password/delete).
 
 **Как проверить:** Открыть админку в браузере (под админом), список и клик по клиенту — карточка с деталями; нажать «Записать платёж», ввести сумму и тариф — после успеха в таблице обновятся план и остаток дней.
 
@@ -363,7 +363,7 @@
 | **TENANT ISOLATION** | tenant_id в таблицах           | DONE     |
 | **TENANT ISOLATION** | Фильтрация по auth context     | DONE     |
 | **TENANT ISOLATION** | Негативный тест A vs B         | NOT DONE |
-| **TRIAL/PAYWALL**    | Регистрация → тариф Trial; описание тарифов (Trial 10, Month 5, Month 10, Gold) | DONE     |
+| **TRIAL/PAYWALL**    | Регистрация → тариф Trial; описание тарифов (Trial 10, Month 5, Month 10, Gold, Admin) | DONE     |
 | **TRIAL/PAYWALL**    | trial_ends_at                  | DONE     |
 | **TRIAL/PAYWALL**    | trial_started_at               | PARTIAL  |
 | **TRIAL/PAYWALL**    | После истечения: кнопка загрузки неактивна; админ может продлевать дни любому тарифу (extend-trial) | DONE     |

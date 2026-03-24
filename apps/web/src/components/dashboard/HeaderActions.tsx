@@ -27,7 +27,7 @@ function getUserDisplayName(user: { full_name?: string; user_metadata?: { full_n
 }
 
 export function HeaderActions() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [tariffOpen, setTariffOpen] = useState(false);
@@ -44,6 +44,9 @@ export function HeaderActions() {
   const displayName = getUserDisplayName(user);
 
   const validUntilLabel = (() => {
+    if (user?.is_admin) {
+      return null;
+    }
     if (user?.trial_ends_at) {
       const d = new Date(user.trial_ends_at);
       if (!isNaN(d.getTime())) return d.toLocaleDateString("ru-RU");
@@ -55,10 +58,14 @@ export function HeaderActions() {
     }
     return null;
   })();
-  const dateIsSoon = typeof user?.trial_days_left === "number" && user.trial_days_left <= 3;
+  const dateIsSoon =
+    !user?.is_admin &&
+    typeof user?.trial_days_left === "number" &&
+    user.trial_days_left <= 3;
 
   const isTrialExpired =
     !!user &&
+    !user.is_admin &&
     (user.plan ?? "trial").toLowerCase() !== "paid" &&
     user.trial_days_left != null &&
     user.trial_days_left <= 0;
@@ -110,10 +117,16 @@ export function HeaderActions() {
             <div className="flex flex-col items-start text-left">
               <span className="text-sm font-medium">{displayName}</span>
               <span className="text-xs text-muted-foreground">
-                <span>до: </span>
-                <span className={dateIsSoon ? "text-red-600 font-medium" : ""}>
-                  {validUntilLabel ?? "—"}
-                </span>
+                {user?.is_admin ? (
+                  <span>{language === "uz" ? "Administrator" : "Администратор"}</span>
+                ) : (
+                  <>
+                    <span>до: </span>
+                    <span className={dateIsSoon ? "text-red-600 font-medium" : ""}>
+                      {validUntilLabel ?? "—"}
+                    </span>
+                  </>
+                )}
               </span>
             </div>
             <ChevronDown className="w-4 h-4 ml-1" />

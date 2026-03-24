@@ -6,7 +6,7 @@ from uuid import UUID
 from datetime import datetime, timedelta
 import logging
 from app.db import get_db, qname
-from app.deps import require_user
+from app.deps import require_user, is_user_admin
 from app.utils.statuses import get_status_sql_condition
 from app.utils.barcode import barcode_norm_sql
 from app.utils.metrics import get_status_conditions
@@ -217,6 +217,8 @@ def kpi_summary(
         ).fetchone()
         plan_val = (plan_row[0] or "trial").strip().lower() if plan_row else "trial"
         is_trial_plan = plan_val in ("trial", "", None) or not plan_val
+        if is_user_admin(user_id, db):
+            is_trial_plan = False
 
         trial_exp_to = None
         trial_exp_from = None

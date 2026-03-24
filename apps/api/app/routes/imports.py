@@ -11,7 +11,7 @@ import io
 import json
 import re
 from app.db import get_db, qname
-from app.deps import require_user, require_phone_verified
+from app.deps import require_user, require_phone_verified, is_user_admin
 from app.auth.access import require_active_access
 from app.settings import get_settings
 from app.utils.barcode import barcode_norm_sql
@@ -831,6 +831,8 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
         plan_val = "trial"
 
     is_trial_plan = plan_val in ("trial", "", None) or not plan_val
+    if is_user_admin(user_id, db):
+        is_trial_plan = False
     params["is_trial_plan"] = is_trial_plan
 
     # Для Trial 10 считаем "последние 60 дней" от последней даты в выгрузке (а не от now()).

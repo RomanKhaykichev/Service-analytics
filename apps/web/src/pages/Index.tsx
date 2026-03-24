@@ -71,7 +71,7 @@ function Dashboard() {
   const [taxPercentInput, setTaxPercentInput] = useState("1");
   const [taxPercent, setTaxPercent] = useState(1);
   const rawPlan = (user?.plan ?? "trial").trim().toLowerCase();
-  const isTrial10 = !rawPlan || rawPlan === "trial";
+  const isTrial10 = !user?.is_admin && (!rawPlan || rawPlan === "trial");
 
   const handleTaxPercentKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {

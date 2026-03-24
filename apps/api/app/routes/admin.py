@@ -12,7 +12,7 @@ from pydantic import BaseModel
 import logging
 
 from app.db import get_db, qname
-from app.deps import require_admin
+from app.deps import require_admin, is_user_admin
 from app.settings import get_settings
 from app.auth import hash_password
 from app.models import User, RefreshToken
@@ -83,6 +83,7 @@ class TenantRow(BaseModel):
     owner_email: Optional[str] = None
     phone: Optional[str] = None
     created_at: Optional[str] = None
+    is_admin: bool = False
     plan: str
     trial_ends_at: Optional[str] = None
     next_billing_date: Optional[str] = None
@@ -939,6 +940,11 @@ async def admin_tenants_list(
 
     for row in rows or []:
         uid = str(row[0])
+        row_is_admin = False
+        try:
+            row_is_admin = is_user_admin(UUID(uid), db)
+        except Exception:
+            pass
         email = row[1]
         full_name = row[2]
         created_at = _safe_ts(row, 3)
@@ -1063,6 +1069,7 @@ async def admin_tenants_list(
             company_name=full_name or email or None,
             owner_email=email,
             created_at=created_at[:10] if created_at else None,
+            is_admin=row_is_admin,
             plan=plan_val,
             trial_ends_at=trial_ends_at[:10] if trial_ends_at else None,
             next_billing_date=None,
@@ -1108,24 +1115,26 @@ async def admin_tenant_shops(
     active_shop: Optional[str] = None
     allowed_shops: list[str] = []
     try:
-        # Determine tariff max shops.
-        plan_row = db.execute(
-            text(f"SELECT COALESCE(plan, 'trial') FROM {qname('users')} WHERE id = CAST(:uid AS uuid)"),
-            {"uid": uid},
-        ).fetchone()
-        plan_val = (plan_row[0] or "trial").strip().lower() if plan_row else "trial"
-
-        max_shops: Optional[int]
-        if plan_val in ("trial", "", None):
-            max_shops = 1
-        elif plan_val in ("month_5", "month 5", "month5"):
-            max_shops = 5
-        elif plan_val in ("month_10", "month 10", "month10"):
-            max_shops = 10
-        elif plan_val in ("gold", "gold_plan"):
+        # Determine tariff max shops (админы — без лимита по магазинам).
+        if is_user_admin(tenant_id, db):
             max_shops = None
         else:
-            max_shops = 1
+            plan_row = db.execute(
+                text(f"SELECT COALESCE(plan, 'trial') FROM {qname('users')} WHERE id = CAST(:uid AS uuid)"),
+                {"uid": uid},
+            ).fetchone()
+            plan_val = (plan_row[0] or "trial").strip().lower() if plan_row else "trial"
+
+            if plan_val in ("trial", "", None):
+                max_shops = 1
+            elif plan_val in ("month_5", "month 5", "month5"):
+                max_shops = 5
+            elif plan_val in ("month_10", "month 10", "month10"):
+                max_shops = 10
+            elif plan_val in ("gold", "gold_plan"):
+                max_shops = None
+            else:
+                max_shops = 1
 
         # allowed_shops for admin tooltip: first N by shop_name (matches store-limit ordering in imports.py).
         # We also compute active_shop as the first allowed shop (useful for trial UX).
@@ -1460,7 +1469,7 @@ async def admin_tenant_extend_trial(
 class PaymentBody(BaseModel):
     amount: float  # сумма оплаты (попадает в колонку Оплачено и в график дохода по месяцу paid_at)
     paid_at: Optional[str] = None  # ISO datetime; по умолчанию now()
-    plan: Optional[str] = None  # тариф, на который переключается пользователь при оплате: "month_5" или "month_10"
+    plan: Optional[str] = None  # тариф, на который переключается пользователь при оплате: "month_5" | "month_10" | "gold"
 
 
 @router.post("/admin/tenants/{tenant_id}/payment")
@@ -1470,7 +1479,7 @@ async def admin_tenant_payment(
     _: UUID = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Записать платёж клиента: сумма в «Оплачено» и график. Если указан plan (month_5/month_10), пользователь переключается на этот тариф и получает 30 дней доступа."""
+    """Записать платёж клиента: сумма в «Оплачено» и график. Если указан plan (month_5/month_10/gold), пользователь переключается на этот тариф и получает 30 дней доступа."""
     uid = str(tenant_id)
     if body.amount <= 0:
         raise HTTPException(status_code=400, detail="amount must be positive")
@@ -1514,6 +1523,8 @@ async def admin_tenant_payment(
                 plan_canonical = "Month 5"
             elif plan_key in ("month_10", "month10"):
                 plan_canonical = "Month 10"
+            elif plan_key in ("gold", "gold_plan"):
+                plan_canonical = "Gold"
         # Текущий план пользователя для решения: смена тарифа (обнулить дни) или докупка (прибавить 30 дней)
         plan_row = db.execute(text(f"""
             SELECT LOWER(TRIM(COALESCE(plan, ''))) FROM {qname('users')} WHERE id = :uid
@@ -1523,6 +1534,7 @@ async def admin_tenant_payment(
             is_same_plan = (
                 (plan_canonical == "Month 5" and current_plan_norm in ("month_5", "month5"))
                 or (plan_canonical == "Month 10" and current_plan_norm in ("month_10", "month10"))
+                or (plan_canonical == "Gold" and current_plan_norm in ("gold", "gold_plan"))
             )
             if is_same_plan:
                 # Докупка того же тарифа — прибавляем 30 дней

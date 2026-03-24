@@ -59,6 +59,7 @@ interface TenantRow {
   owner_email?: string | null;
   phone?: string | null;
   created_at?: string | null;
+  is_admin?: boolean;
   plan: string;
   trial_ends_at?: string | null;
   last_import_at?: string | null;
@@ -249,6 +250,7 @@ export default function Admin() {
   };
 
   const getPlanSortKey = (row: TenantRow) => {
+    if (row.is_admin) return -1;
     const rawPlan = (row.plan || "").trim().toLowerCase();
     if (!rawPlan || rawPlan === "trial") return 0;       // Trial 10
     if (rawPlan === "month_5" || rawPlan === "month 5" || rawPlan === "month5") return 1; // Month 5
@@ -339,7 +341,7 @@ export default function Admin() {
     }
     try {
       const body: { amount: number; plan?: string } = { amount: paymentModal.amount };
-      if (paymentModal.plan === "month_5" || paymentModal.plan === "month_10") {
+      if (paymentModal.plan === "month_5" || paymentModal.plan === "month_10" || paymentModal.plan === "gold") {
         body.plan = paymentModal.plan;
       }
       await apiPost(`/api/admin/tenants/${paymentModal.tenantId}/payment`, body);
@@ -968,6 +970,15 @@ export default function Admin() {
                         </TableCell>
                         <TableCell className="text-center">
                           {(() => {
+                            if (row.is_admin) {
+                              return (
+                                <span
+                                  className="inline-block rounded-full px-3 py-1.5 text-sm font-medium bg-gradient-to-br from-[#e8e9ec] via-[#cfd1d9] to-[#9ca3af] text-slate-900 border border-slate-400/60 shadow-md shadow-slate-500/25"
+                                >
+                                  Admin
+                                </span>
+                              );
+                            }
                             const rawPlan = (row.plan || "").trim().toLowerCase();
                             let label: string;
 
@@ -1009,17 +1020,23 @@ export default function Admin() {
                           <Badge
                             variant="secondary"
                             className={
-                              row.trial_days_left != null && row.trial_days_left > 0
+                              row.is_admin
+                                ? "bg-green-500 text-white"
+                                : row.trial_days_left != null && row.trial_days_left > 0
                                 ? "bg-green-500 text-white"
                                 : "bg-red-500 text-white"
                             }
                           >
-                            {row.trial_days_left != null && row.trial_days_left > 0
+                            {row.is_admin
+                              ? t("profile.active")
+                              : row.trial_days_left != null && row.trial_days_left > 0
                               ? t("profile.active")
                               : t("profile.inactive")}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-center font-medium">{row.trial_days_left != null ? row.trial_days_left : "—"}</TableCell>
+                        <TableCell className="text-center font-medium">
+                          {row.is_admin ? "—" : row.trial_days_left != null ? row.trial_days_left : "—"}
+                        </TableCell>
                         <TableCell className="text-center">
                           {row.paid_amount != null && row.paid_amount !== 0
                             ? Number(row.paid_amount).toLocaleString("ru-RU", { minimumFractionDigits: 0, maximumFractionDigits: 2 })
@@ -1030,7 +1047,9 @@ export default function Admin() {
                         <TableCell className="text-center">{row.last_login_at ? row.last_login_at.slice(0, 10) : "—"}</TableCell>
                         <TableCell className="text-center font-medium">{row.imports_30d}</TableCell>
                         <TableCell className="text-center">
-                          {row.notes && row.notes.trim() ? (
+                          {row.is_admin ? (
+                            "—"
+                          ) : row.notes && row.notes.trim() ? (
                             <UITooltip>
                               <TooltipTrigger asChild>
                                 <Button
@@ -1067,7 +1086,7 @@ export default function Admin() {
                           )}
                         </TableCell>
                         <TableCell className="text-center">
-                          {row.owner_email && row.owner_email === user?.email ? (
+                          {row.is_admin || (row.owner_email && row.owner_email === user?.email) ? (
                             "—"
                           ) : (
                             <div className="flex flex-wrap gap-1 justify-center items-center">
@@ -1342,6 +1361,7 @@ export default function Admin() {
                     <SelectItem value="none">Не менять тариф</SelectItem>
                     <SelectItem value="month_5">Month 5</SelectItem>
                     <SelectItem value="month_10">Month 10</SelectItem>
+                    <SelectItem value="gold">Gold</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

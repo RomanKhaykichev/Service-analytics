@@ -453,6 +453,9 @@ export function ReportUploadDialog({ disabled, onOpenExtendTariff }: ReportUploa
 
   // Человекочитаемый тариф пользователя (как в профиле/админке)
   const userTariffLabel = (() => {
+    if (user?.is_admin) {
+      return "Admin";
+    }
     const rawPlan = (user?.plan ?? "trial").trim().toLowerCase();
 
     // План из БД

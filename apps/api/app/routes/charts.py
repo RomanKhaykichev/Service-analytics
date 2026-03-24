@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import logging
 import re
 from app.db import get_db, qname
-from app.deps import require_user
+from app.deps import require_user, is_user_admin
 from app.settings import get_settings
 from app.routes.kpi import get_data_end_date, period_range, normalize_period, resolve_date_range
 from app.utils.statuses import get_status_sql_condition
@@ -588,6 +588,8 @@ async def get_uzum_services_daily(
         ).fetchone()
         plan_val = (plan_row[0] or "trial").strip().lower() if plan_row else "trial"
         is_trial_plan = plan_val in ("trial", "", None) or not plan_val
+        if is_user_admin(user_id, db):
+            is_trial_plan = False
 
         exp_from = date_from
         exp_to = date_to_date

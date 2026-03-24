@@ -33,6 +33,9 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
   // Subscription data based on user trial info
   const subscriptionPlan = t('profile.tariffPlan');
   const tariffLabel = (() => {
+    if (user?.is_admin) {
+      return "Admin";
+    }
     const rawPlan = (user?.plan ?? "trial").trim().toLowerCase();
 
     // План из БД
@@ -52,7 +55,9 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
     return user?.plan || "—";
   })();
   const tariffPillClass =
-    tariffLabel === "Trial 10"
+    tariffLabel === "Admin"
+      ? "bg-gradient-to-br from-[#e8e9ec] via-[#cfd1d9] to-[#9ca3af] text-slate-900 border border-slate-400/60 shadow-md shadow-slate-500/25"
+      : tariffLabel === "Trial 10"
       ? "bg-gradient-to-br from-sky-100 via-slate-100 to-amber-50 text-gray-800 shadow-sm shadow-gray-400/25"
       : tariffLabel === "Silver"
         ? "bg-gradient-to-br from-slate-200 via-gray-100 to-slate-300 text-slate-800 shadow-sm shadow-slate-400/30"
@@ -62,10 +67,14 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
         ? "bg-gradient-to-r from-indigo-300 to-violet-100 text-indigo-900"
         : "bg-blue-400 text-white shadow-md shadow-blue-600/30";
   const rawDaysLeft = typeof user?.trial_days_left === "number" ? user.trial_days_left : null;
-  const daysRemaining = rawDaysLeft != null ? Math.max(rawDaysLeft, 0) : null;
-  const isTariffActive = rawDaysLeft != null && rawDaysLeft > 0;
-  const dateIsSoon = rawDaysLeft != null && rawDaysLeft <= 3;
+  const daysRemaining =
+    user?.is_admin ? null : rawDaysLeft != null ? Math.max(rawDaysLeft, 0) : null;
+  const isTariffActive = user?.is_admin ? true : rawDaysLeft != null && rawDaysLeft > 0;
+  const dateIsSoon = !user?.is_admin && rawDaysLeft != null && rawDaysLeft <= 3;
   const subscriptionEndDate = (() => {
+    if (user?.is_admin) {
+      return null;
+    }
     if (user?.trial_ends_at) {
       const d = new Date(user.trial_ends_at);
       if (!isNaN(d.getTime())) {
@@ -257,24 +266,28 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
                 </Badge>
               </div>
               
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Calendar className="w-4 h-4" />
-                <span>
-                  {t('profile.validUntil')}{": "}
-                  <strong className={dateIsSoon ? "text-red-600" : "text-foreground"}>
-                    {subscriptionEndDate ?? "—"}
-                  </strong>
-                </span>
-              </div>
-              
-              <div className="mt-2 text-sm text-muted-foreground">
-                {t('profile.daysRemaining')}{": "}
-                {daysRemaining != null ? (
-                  <strong className="text-foreground text-base">{daysRemaining}</strong>
-                ) : (
-                  "—"
-                )}
-              </div>
+              {!user?.is_admin && (
+                <>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Calendar className="w-4 h-4" />
+                    <span>
+                      {t('profile.validUntil')}{": "}
+                      <strong className={dateIsSoon ? "text-red-600" : "text-foreground"}>
+                        {subscriptionEndDate ?? "—"}
+                      </strong>
+                    </span>
+                  </div>
+                  
+                  <div className="mt-2 text-sm text-muted-foreground">
+                    {t('profile.daysRemaining')}{": "}
+                    {daysRemaining != null ? (
+                      <strong className="text-foreground text-base">{daysRemaining}</strong>
+                    ) : (
+                      "—"
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

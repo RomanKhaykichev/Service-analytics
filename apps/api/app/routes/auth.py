@@ -75,6 +75,13 @@ def _enrich_user_trial_info(resp: UserResponse, user_id: UUID, db: Session) -> N
   plan_val = (row[0] or "trial")
   trial_ends_at = row[1]
 
+  # Админы: без ограничения по сроку доступа; на фронте тариф показывается как «Admin» по is_admin.
+  if is_user_admin(user_id, db):
+      resp.plan = plan_val
+      resp.trial_ends_at = None
+      resp.trial_days_left = None
+      return
+
   trial_days_left = None
   if trial_ends_at:
       try:
