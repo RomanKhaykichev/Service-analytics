@@ -14,6 +14,7 @@ import { ExpensesView } from "@/components/dashboard/ExpensesView";
 import { ShipmentView } from "@/components/dashboard/ShipmentView";
 import { HeaderActions } from "@/components/dashboard/HeaderActions";
 import { ProductsView } from "@/components/dashboard/ProductsView";
+import { useAuth } from "@/hooks/useAuth";
 import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
 import { useCumulativeRevenueGlobal } from "@/hooks/useCumulativeRevenueGlobal";
 import { useStorageShops } from "@/hooks/useStorageShops";
@@ -28,7 +29,8 @@ import { DateRangeProvider, useDateRange } from "@/contexts/DateRangeContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 function Dashboard() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("summary");
   const [store, setStore] = useState(() => searchParams.get("shop") ?? "all");
@@ -68,6 +70,8 @@ function Dashboard() {
   // Пользовательский процент для налога (по умолчанию 1%)
   const [taxPercentInput, setTaxPercentInput] = useState("1");
   const [taxPercent, setTaxPercent] = useState(1);
+  const rawPlan = (user?.plan ?? "trial").trim().toLowerCase();
+  const isTrial10 = !rawPlan || rawPlan === "trial";
 
   const handleTaxPercentKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
@@ -396,8 +400,18 @@ function Dashboard() {
         </div>
       </div>
 
+      {isTrial10 && (
+        <div className="mt-8 flex justify-center">
+          <div className="inline-block rounded-md border border-amber-300/80 bg-amber-50 px-4 py-3 text-center text-sm text-amber-900">
+            {language === "uz"
+              ? "Trial: faqat oxirgi 60 kunlik ma'lumotlar ko'rsatiladi. To'liq davr pullik tarifda mavjud."
+              : "Trial: отображаются данные за последние 60 дней. Полный период доступен на платном тарифе."}
+          </div>
+        </div>
+      )}
+
       {/* Tabs и фильтры на одном уровне */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-14">
+      <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${isTrial10 ? "mt-6" : "mt-14"}`}>
         <SummaryTabs activeTab={activeTab} onTabChange={setActiveTab} />
         {activeTab !== "expenses" && activeTab !== "monthly" ? (
           <SummaryFilters 
