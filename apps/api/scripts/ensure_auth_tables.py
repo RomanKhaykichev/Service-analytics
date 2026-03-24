@@ -41,6 +41,7 @@ def main():
         conn.execute(text(f"ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS plan varchar(50) NOT NULL DEFAULT 'trial'"))
         conn.execute(text(f"ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS last_login_at timestamptz"))
         conn.execute(text(f"ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS phone_verified_at timestamptz"))
+        conn.execute(text(f"ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS allowed_shops text"))
         conn.commit()
 
         conn.execute(text(f"""

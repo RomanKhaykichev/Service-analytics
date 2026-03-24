@@ -5,7 +5,8 @@ from uuid import UUID
 import logging
 from typing import Optional
 from app.db import get_db, qname
-from app.deps import require_user
+from app.deps import require_user, is_user_admin
+from app.utils.tenant_shop_allowlist import get_user_allowed_shops_list, norm_shop_label
 from app.schemas import ShopsResponse, Shop
 
 logger = logging.getLogger(__name__)
@@ -106,27 +107,31 @@ async def get_storage_shops(
     shops: list[Shop] = []
 
     # Tariff-based limit for what we show in the shop filter UI.
-    # Trial: 1 shop, Month 5: 5 shops, Month 10: 10 shops, Gold: unlimited.
+    # Trial: 1 shop, Month 5: 5 shops, Month 10: 10 shops, Gold/admin: unlimited.
     max_shops: Optional[int] = None
     try:
-        plan_row = db.execute(
-            text(f"SELECT COALESCE(plan, 'trial') FROM {qname('users')} WHERE id = CAST(:uid AS uuid)"),
-            {"uid": str(user_id)},
-        ).fetchone()
-        plan_val = (plan_row[0] or "trial").strip().lower() if plan_row else "trial"
-        if plan_val in ("trial", "", None) or not plan_val:
-            max_shops = 1
-        elif plan_val in ("month_5", "month 5", "month5"):
-            max_shops = 5
-        elif plan_val in ("month_10", "month 10", "month10"):
-            max_shops = 10
-        elif plan_val in ("gold", "gold_plan"):
+        if is_user_admin(user_id, db):
             max_shops = None
         else:
-            # fail-safe: show 1 shop for unknown plan
-            max_shops = 1
+            plan_row = db.execute(
+                text(f"SELECT COALESCE(plan, 'trial') FROM {qname('users')} WHERE id = CAST(:uid AS uuid)"),
+                {"uid": str(user_id)},
+            ).fetchone()
+            plan_val = (plan_row[0] or "trial").strip().lower() if plan_row else "trial"
+            if plan_val in ("trial", "", None) or not plan_val:
+                max_shops = 1
+            elif plan_val in ("month_5", "month 5", "month5"):
+                max_shops = 5
+            elif plan_val in ("month_10", "month 10", "month10"):
+                max_shops = 10
+            elif plan_val in ("gold", "gold_plan"):
+                max_shops = None
+            else:
+                max_shops = 1
     except Exception:
         max_shops = 1
+
+    allow_override = get_user_allowed_shops_list(db, user_id)
     
     logger.info(f"get_storage_shops: user_id={user_id}")
     
@@ -166,7 +171,14 @@ async def get_storage_shops(
                 )
                 for row in rows
             ]
-            if max_shops is not None:
+            if allow_override:
+                allowed_norms = {norm_shop_label(s) for s in allow_override}
+                order_ix = {norm_shop_label(o): i for i, o in enumerate(allow_override)}
+                shops = sorted(
+                    [s for s in shops if norm_shop_label(s.shop_name) in allowed_norms],
+                    key=lambda s: order_ix.get(norm_shop_label(s.shop_name), 999),
+                )
+            elif max_shops is not None:
                 shops = shops[:max_shops]
             return ShopsResponse(shops=shops)
         
@@ -203,7 +215,14 @@ async def get_storage_shops(
                 Shop(shop_id=row[0] or "", shop_name=row[1] or row[0] or "")
                 for row in rows
             ]
-            if max_shops is not None:
+            if allow_override:
+                allowed_norms = {norm_shop_label(s) for s in allow_override}
+                order_ix = {norm_shop_label(o): i for i, o in enumerate(allow_override)}
+                shops = sorted(
+                    [s for s in shops if norm_shop_label(s.shop_name) in allowed_norms],
+                    key=lambda s: order_ix.get(norm_shop_label(s.shop_name), 999),
+                )
+            elif max_shops is not None:
                 shops = shops[:max_shops]
         else:
             logger.info(f"get_storage_shops: no shops found")

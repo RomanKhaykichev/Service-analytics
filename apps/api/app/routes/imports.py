@@ -12,6 +12,7 @@ import json
 import re
 from app.db import get_db, qname
 from app.deps import require_user, require_phone_verified, is_user_admin
+from app.utils.tenant_shop_allowlist import get_user_allowed_shops_list, norm_shop_label as _allow_norm_shop
 from app.auth.access import require_active_access
 from app.settings import get_settings
 from app.utils.barcode import barcode_norm_sql
@@ -1785,26 +1786,35 @@ async def import_xlsx(
                     detail=f"ОШИБКА МАППИНГА: Колонка 'SKU' НЕ должна маппиться в 'shop_raw', должна маппиться в 'sku_raw'"
                 )
         
-        # Ограничение по тарифу: сохранённые магазины + новые из файла до лимита (например 2 было + 3 из файла = 5)
+        # Ограничение по тарифу: явный список от админа иначе сохранённые + новые из файла до лимита
         store_limit_exceeded = False
         store_limit_max: Optional[int] = None  # для ответа при store_limit_exceeded
         if reportType in ("inventory", "storage") and "Магазин" in df.columns:
             saved_shops = get_saved_shop_names(db, user_id)
             max_shops = get_user_max_shops(db, user_id)
             file_shop_names = _file_shop_names_ordered(df, "Магазин")
-            if max_shops is not None:
+            explicit = get_user_allowed_shops_list(db, user_id)
+            if explicit:
+                allowed_norms = {_allow_norm_shop(s) for s in explicit}
+                file_norms = {_allow_norm_shop(s) for s in file_shop_names}
+                extra_in_file = file_norms - allowed_norms
+                store_limit_exceeded = len(extra_in_file) > 0
+                store_limit_max = max_shops if store_limit_exceeded and max_shops is not None else None
+                allowed_shops = list(explicit)
+                skip_storage_filter = reportType == "storage" and max_shops == 1
+                if not skip_storage_filter:
+                    df = filter_df_by_allowed_shops(df, allowed_shops, "Магазин")
+                if df.empty and store_limit_exceeded:
+                    logger.warning(
+                        "Import: no rows left after explicit allowlist; file had shops outside allowed list",
+                    )
+            elif max_shops is not None:
                 allowed_shops, store_limit_exceeded = compute_allowed_shops(
                     saved_shops, file_shop_names, max_shops
                 )
                 if store_limit_exceeded:
                     store_limit_max = max_shops
-                # Trial-only shop mismatch fix:
-                # For trial (max_shops=1) we still want fact_storage_snapshot to contain
-                # the full set of barcodes for the single visible shop, otherwise
-                # shop-filtered KPI differ from paid.
-                #
-                # We therefore skip df row filtering for seller-storage import,
-                # but still hide extra shops on the UI level (see /api/storage/shops).
+                # Trial-only shop mismatch fix (только авто-тариф, без явного списка):
                 if not (reportType == "storage" and max_shops == 1):
                     df = filter_df_by_allowed_shops(df, allowed_shops, "Магазин")
                 if df.empty and store_limit_exceeded:
@@ -2116,14 +2126,24 @@ async def import_xlsx_batch(
                         detail=f"{report_type}: {str(e)}"
                     )
                 
-                # Ограничение по тарифу: сохранённые + новые из файла до лимита
-                if report_type in ("inventory", "storage") and "Магазин" in df.columns and max_shops is not None:
+                # Ограничение по тарифу: явный allowlist или сохранённые + новые до лимита
+                if report_type in ("inventory", "storage") and "Магазин" in df.columns:
+                    explicit_bt = get_user_allowed_shops_list(db, user_id)
                     file_shop_names = _file_shop_names_ordered(df, "Магазин")
-                    allowed_shops, exceeded = compute_allowed_shops(
-                        saved_shops, file_shop_names, max_shops
-                    )
-                    df = filter_df_by_allowed_shops(df, allowed_shops, "Магазин")
-                    batch_store_limit_exceeded = batch_store_limit_exceeded or exceeded
+                    if explicit_bt:
+                        allowed_norms = {_allow_norm_shop(s) for s in explicit_bt}
+                        file_norms = {_allow_norm_shop(s) for s in file_shop_names}
+                        exceeded = len(file_norms - allowed_norms) > 0
+                        batch_store_limit_exceeded = batch_store_limit_exceeded or exceeded
+                        skip_storage_filter = report_type == "storage" and max_shops == 1
+                        if not skip_storage_filter:
+                            df = filter_df_by_allowed_shops(df, list(explicit_bt), "Магазин")
+                    elif max_shops is not None:
+                        allowed_shops, exceeded = compute_allowed_shops(
+                            saved_shops, file_shop_names, max_shops
+                        )
+                        df = filter_df_by_allowed_shops(df, allowed_shops, "Магазин")
+                        batch_store_limit_exceeded = batch_store_limit_exceeded or exceeded
                 
                 # Load to staging
                 try:

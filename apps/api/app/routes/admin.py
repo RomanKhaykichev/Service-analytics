@@ -16,6 +16,14 @@ from app.deps import require_admin, is_user_admin
 from app.settings import get_settings
 from app.auth import hash_password
 from app.models import User, RefreshToken
+from app.routes.imports import get_user_max_shops
+from app.utils.tenant_shop_allowlist import (
+    get_user_allowed_shops_list,
+    set_user_allowed_shops_list,
+    fetch_all_tenant_shop_labels,
+    canonicalize_allowlist,
+    norm_shop_label as _allow_norm_shop,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -1141,30 +1149,8 @@ async def admin_tenant_shops(
         undefined_list = (
             "'не определено','неопределено','undefined','null','(не определено)','не определен'"
         )
-        limit_sql = "" if max_shops is None else f" LIMIT {int(max_shops)}"
 
-        rows_allowed = db.execute(
-            text(
-                f"""
-                SELECT shop_name
-                FROM {qname('dim_shop')}
-                WHERE user_id = :uid
-                  AND shop_name IS NOT NULL
-                  AND TRIM(shop_name) <> ''
-                  AND lower(TRIM(shop_name)) NOT IN ({undefined_list})
-                ORDER BY shop_name
-                {limit_sql}
-                """
-            ),
-            {"uid": uid},
-        ).fetchall()
-        allowed_shops = [str(r[0]) for r in rows_allowed or []]
-
-        if allowed_shops:
-            active_shop = allowed_shops[0]
-
-        # Full list for admin tooltip: all uploaded shops from storage snapshots/staging
-        # plus dim_shop (deduplicated by normalized key, display original label).
+        # Full list: storage / staging / dim_shop (как в подсказке админки).
         rows = db.execute(
             text(
                 f"""
@@ -1203,6 +1189,37 @@ async def admin_tenant_shops(
             {"uid": uid},
         ).fetchall()
         shops = [str(r[0]) for r in rows or []]
+
+        override = get_user_allowed_shops_list(db, tenant_id)
+        if override:
+            label_by_norm = {_allow_norm_shop(lbl): lbl for lbl in shops}
+            allowed_shops = []
+            for o in override:
+                n = _allow_norm_shop(o)
+                if n in label_by_norm:
+                    allowed_shops.append(label_by_norm[n])
+            if allowed_shops:
+                active_shop = allowed_shops[0]
+        else:
+            limit_sql = "" if max_shops is None else f" LIMIT {int(max_shops)}"
+            rows_allowed = db.execute(
+                text(
+                    f"""
+                    SELECT shop_name
+                    FROM {qname('dim_shop')}
+                    WHERE user_id = :uid
+                      AND shop_name IS NOT NULL
+                      AND TRIM(shop_name) <> ''
+                      AND lower(TRIM(shop_name)) NOT IN ({undefined_list})
+                    ORDER BY shop_name
+                    {limit_sql}
+                    """
+                ),
+                {"uid": uid},
+            ).fetchall()
+            allowed_shops = [str(r[0]) for r in rows_allowed or []]
+            if allowed_shops:
+                active_shop = allowed_shops[0]
     except Exception as e:
         logger.debug("admin_tenant_shops failed for %s: %s", uid, e)
 
@@ -1573,6 +1590,108 @@ async def admin_tenant_payment(
     if plan_canonical:
         out["plan"] = plan_canonical
     return out
+
+
+class ShopAllowlistResponse(BaseModel):
+    tenant_id: str
+    all_shops: list[str]
+    selected: list[str]
+    max_shops: Optional[int] = None
+    uses_override: bool = False
+
+
+class ShopAllowlistPutBody(BaseModel):
+    shops: list[str] = []
+
+
+def _ensure_users_allowed_shops_column(db: Session) -> None:
+    schema = get_settings().DB_SCHEMA
+    db.execute(text(f"ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS allowed_shops text"))
+
+
+@router.get("/admin/tenants/{tenant_id}/shop-allowlist", response_model=ShopAllowlistResponse)
+async def admin_tenant_shop_allowlist_get(
+    tenant_id: UUID,
+    _: UUID = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Список всех магазинов тенанта и явно разрешённые админом (override)."""
+    uid = str(tenant_id)
+    _ensure_users_allowed_shops_column(db)
+    r = db.execute(text(f"SELECT id FROM {qname('users')} WHERE id = :uid"), {"uid": uid}).fetchone()
+    if not r:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    all_shops = fetch_all_tenant_shop_labels(db, tenant_id)
+    raw = get_user_allowed_shops_list(db, tenant_id)
+    max_shops = get_user_max_shops(db, tenant_id)
+    selected = list(raw) if raw else []
+    uses_override = raw is not None
+    return ShopAllowlistResponse(
+        tenant_id=uid,
+        all_shops=all_shops,
+        selected=selected,
+        max_shops=max_shops,
+        uses_override=uses_override,
+    )
+
+
+@router.put("/admin/tenants/{tenant_id}/shop-allowlist", response_model=ShopAllowlistResponse)
+async def admin_tenant_shop_allowlist_put(
+    tenant_id: UUID,
+    body: ShopAllowlistPutBody,
+    _: UUID = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Задать разрешённые магазины или сбросить (пустой список → авто по тарифу)."""
+    uid = str(tenant_id)
+    _ensure_users_allowed_shops_column(db)
+    r = db.execute(text(f"SELECT id FROM {qname('users')} WHERE id = :uid"), {"uid": uid}).fetchone()
+    if not r:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    if is_user_admin(tenant_id, db):
+        raise HTTPException(status_code=400, detail="Нельзя задавать список магазинов для аккаунта администратора")
+
+    all_shops = fetch_all_tenant_shop_labels(db, tenant_id)
+    if not body.shops:
+        set_user_allowed_shops_list(db, tenant_id, [])
+        try:
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+        return ShopAllowlistResponse(
+            tenant_id=uid,
+            all_shops=all_shops,
+            selected=[],
+            max_shops=get_user_max_shops(db, tenant_id),
+            uses_override=False,
+        )
+
+    try:
+        canon = canonicalize_allowlist(body.shops, all_shops)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    max_shops = get_user_max_shops(db, tenant_id)
+    if max_shops is not None and len(canon) > max_shops:
+        raise HTTPException(
+            status_code=400,
+            detail=f"По тарифу можно разрешить не более {max_shops} магазинов",
+        )
+
+    set_user_allowed_shops_list(db, tenant_id, canon)
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    return ShopAllowlistResponse(
+        tenant_id=uid,
+        all_shops=all_shops,
+        selected=canon,
+        max_shops=max_shops,
+        uses_override=True,
+    )
 
 
 class NotesBody(BaseModel):

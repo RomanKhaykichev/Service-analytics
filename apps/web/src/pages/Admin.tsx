@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Shield, Users, UserPlus, AlertCircle, Pencil, Trash2, UserMinus, CalendarPlus, Banknote, Upload, BarChart3, ChevronUp, ChevronDown } from "lucide-react";
+import { Shield, Users, UserPlus, AlertCircle, Pencil, Trash2, UserMinus, CalendarPlus, Banknote, Upload, BarChart3, ChevronUp, ChevronDown, Store } from "lucide-react";
 import { Tooltip as UITooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -49,9 +49,14 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { useNavigate } from "react-router-dom";
-import { apiGet, apiPatch, apiPost, apiDelete } from "@/lib/api";
+import { apiGet, apiPatch, apiPost, apiDelete, apiPut } from "@/lib/api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
+
+function adminNormShopKey(s: string): string {
+  return s.trim().replace(/\s+/g, " ").toUpperCase();
+}
 
 interface TenantRow {
   tenant_id: string;
@@ -141,6 +146,14 @@ export default function Admin() {
   const [passwordModal, setPasswordModal] = useState<{ tenantId: string; newPassword: string } | null>(null);
   const [extendTrialModal, setExtendTrialModal] = useState<{ tenantId: string; days: number } | null>(null);
   const [paymentModal, setPaymentModal] = useState<{ tenantId: string; amount: number; plan: string } | null>(null);
+  const [shopAllowTenantId, setShopAllowTenantId] = useState<string | null>(null);
+  const [shopAllowLoading, setShopAllowLoading] = useState(false);
+  const [shopAllowPayload, setShopAllowPayload] = useState<{
+    all_shops: string[];
+    selected: Set<string>;
+    max_shops: number | null;
+    uses_override: boolean;
+  } | null>(null);
   const [confirmAction, setConfirmAction] = useState<null | { type: "disable" | "delete"; tenantId: string }>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [dashboardMetrics, setDashboardMetrics] = useState<DashboardMetrics | null>(null);
@@ -310,6 +323,95 @@ export default function Admin() {
       fetchDashboardMetrics();
     }
   }, [accessDenied, fetchTenants, fetchDashboardMetrics]);
+
+  useEffect(() => {
+    if (!shopAllowTenantId) {
+      setShopAllowPayload(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setShopAllowLoading(true);
+      try {
+        const d = await apiGet<{
+          all_shops: string[];
+          selected: string[];
+          max_shops: number | null;
+          uses_override: boolean;
+        }>(`/api/admin/tenants/${shopAllowTenantId}/shop-allowlist`);
+        if (cancelled) return;
+        const labelByNorm = new Map<string, string>();
+        for (const l of d.all_shops) {
+          labelByNorm.set(adminNormShopKey(l), l);
+        }
+        const selected = new Set<string>();
+        for (const s of d.selected) {
+          const canon = labelByNorm.get(adminNormShopKey(s));
+          if (canon) selected.add(canon);
+        }
+        setShopAllowPayload({
+          all_shops: d.all_shops,
+          selected,
+          max_shops: d.max_shops,
+          uses_override: d.uses_override,
+        });
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Не удалось загрузить список магазинов");
+        if (!cancelled) setShopAllowTenantId(null);
+      } finally {
+        if (!cancelled) setShopAllowLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [shopAllowTenantId]);
+
+  const toggleShopAllow = (label: string) => {
+    setShopAllowPayload((p) => {
+      if (!p) return p;
+      const next = new Set(p.selected);
+      const k = adminNormShopKey(label);
+      const existing = [...next].find((x) => adminNormShopKey(x) === k);
+      if (existing) {
+        next.delete(existing);
+      } else {
+        if (p.max_shops != null && next.size >= p.max_shops) {
+          toast.error(`Можно выбрать не более ${p.max_shops} магазинов`);
+          return p;
+        }
+        const canon = p.all_shops.find((x) => adminNormShopKey(x) === k) ?? label;
+        next.add(canon);
+      }
+      return { ...p, selected: next };
+    });
+  };
+
+  const handleSaveShopAllow = async () => {
+    if (!shopAllowTenantId || !shopAllowPayload) return;
+    try {
+      await apiPut(`/api/admin/tenants/${shopAllowTenantId}/shop-allowlist`, {
+        shops: Array.from(shopAllowPayload.selected),
+      });
+      toast.success("Список разрешённых магазинов сохранён");
+      setShopAllowTenantId(null);
+      fetchTenants();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Ошибка сохранения");
+    }
+  };
+
+  const handleResetShopAllow = async () => {
+    if (!shopAllowTenantId) return;
+    try {
+      await apiPut(`/api/admin/tenants/${shopAllowTenantId}/shop-allowlist`, { shops: [] });
+      toast.success("Используется автоматический список по тарифу");
+      setShopAllowTenantId(null);
+      fetchTenants();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Ошибка сброса");
+    }
+  };
 
   const handleDisable = async (tenantId: string) => {
     setConfirmAction({ type: "disable", tenantId });
@@ -1149,6 +1251,19 @@ export default function Admin() {
                                     size="icon"
                                     variant="ghost"
                                     className="h-8 w-8"
+                                    onClick={() => setShopAllowTenantId(row.tenant_id)}
+                                  >
+                                    <Store className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Разрешённые магазины</TooltipContent>
+                              </UITooltip>
+                              <UITooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8"
                                     onClick={() =>
                                       setPaymentModal({
                                         tenantId: row.tenant_id,
@@ -1372,6 +1487,64 @@ export default function Admin() {
             <Button onClick={handleRecordPayment} disabled={!paymentModal || paymentModal.amount <= 0}>
               Записать платёж
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!shopAllowTenantId}
+        onOpenChange={(open) => {
+          if (!open) setShopAllowTenantId(null);
+        }}
+      >
+        <DialogContent className="max-w-md max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Разрешённые магазины</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Отметьте магазины, которые видит пользователь в сервисе и которые учитываются при загрузке отчётов с колонкой «Магазин».
+              Кнопка «По тарифу (авто)» сбрасывает ручной список.
+            </p>
+          </DialogHeader>
+          {shopAllowLoading || !shopAllowPayload ? (
+            <Skeleton className="h-40 w-full shrink-0" />
+          ) : (
+            <>
+              <p className="text-xs text-muted-foreground shrink-0">
+                {shopAllowPayload.max_shops != null
+                  ? `Лимит тарифа: до ${shopAllowPayload.max_shops} магазинов.`
+                  : "По тарифу без лимита по количеству магазинов."}{" "}
+                {shopAllowPayload.uses_override
+                  ? "Сейчас задан явный список."
+                  : "Сейчас: первые магазины по правилам тарифа."}
+              </p>
+              <div className="flex-1 min-h-[200px] max-h-[50vh] overflow-y-auto space-y-2 border rounded-md p-3">
+                {shopAllowPayload.all_shops.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">У пользователя пока нет магазинов в загруженных данных.</p>
+                ) : (
+                  shopAllowPayload.all_shops.map((name) => (
+                    <label key={name} className="flex items-start gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        className="mt-0.5"
+                        checked={shopAllowPayload.selected.has(name)}
+                        onCheckedChange={() => toggleShopAllow(name)}
+                      />
+                      <span className="break-all leading-snug">{name}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+          <DialogFooter className="flex-col sm:flex-row gap-2 sm:justify-between">
+            <Button variant="outline" onClick={handleResetShopAllow} disabled={!shopAllowTenantId || shopAllowLoading}>
+              По тарифу (авто)
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShopAllowTenantId(null)}>Закрыть</Button>
+              <Button onClick={handleSaveShopAllow} disabled={shopAllowLoading || !shopAllowPayload}>
+                Сохранить
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
