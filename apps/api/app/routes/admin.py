@@ -134,9 +134,9 @@ class DashboardFunnel(BaseModel):
 
 
 class DashboardFiles(BaseModel):
-    total: int  # Всего загружено файлов
-    errors: int  # Из них ошибок
-    error_pct: float  # Процент ошибки
+    total: int  # Загружено файлов за последние 30 дней (rolling)
+    errors: int  # Из них ошибок за тот же период
+    error_pct: float  # Процент ошибки за тот же период
 
 
 class DashboardTotals(BaseModel):
@@ -708,6 +708,7 @@ async def admin_dashboard_metrics(
 
     files_total = 0
     files_errors = 0
+    files_since = datetime.now(timezone.utc) - timedelta(days=30)
     try:
         r = db.execute(text("""
             SELECT 1 FROM information_schema.tables
@@ -717,13 +718,25 @@ async def admin_dashboard_metrics(
             row = db.execute(text(f"""
                 SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'failed')
                 FROM {qname('import_file_attempts')}
-            """)).fetchone()
+                WHERE created_at >= :files_since
+            """), {"files_since": files_since}).fetchone()
             if row:
                 files_total = row[0] or 0
                 files_errors = row[1] or 0
         else:
-            row = db.execute(text(f"SELECT COUNT(*) FROM {qname('upload_batch')}")).fetchone()
-            files_total = row[0] or 0 if row else 0
+            r_ts = db.execute(text(f"""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = :s AND table_name = 'upload_batch' AND column_name = 'created_at'
+            """), {"s": schema}).fetchone()
+            if r_ts:
+                row = db.execute(text(f"""
+                    SELECT COUNT(*) FROM {qname('upload_batch')} b
+                    WHERE b.created_at >= :files_since
+                """), {"files_since": files_since}).fetchone()
+                files_total = row[0] or 0 if row else 0
+            else:
+                # Без created_at нельзя ограничить 30 днями — оставляем 0
+                files_total = 0
             # Ошибки = батчи без данных в fact-таблицах (упрощённо не считаем по батчам — 0)
             files_errors = 0
     except Exception as e:

@@ -188,7 +188,10 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
         commission: sum((r) => r.commission),
         logistics: sum((r) => r.logistics),
         barcode: rows.length > 1 ? "—" : (first.barcode ?? null),
-        storage_cost_per_day: same((r) => r.storage_cost_per_day) ?? null,
+        // Для группировки по карточкам показываем сумму хранения по всем вариантам карточки.
+        storage_cost_per_day: rows.some((r) => r.storage_cost_per_day != null)
+          ? sum((r) => r.storage_cost_per_day ?? 0)
+          : null,
         shop: same((r) => r.shop) ?? null,
         abc_orders: sameAbc((r) => r.abc_orders),
         abc_profit: sameAbc((r) => r.abc_profit),

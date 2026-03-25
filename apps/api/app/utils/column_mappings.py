@@ -37,6 +37,7 @@ CANONICAL_STORAGE = {
 CANONICAL_LEFTOUT_OLD = {
     "Штрихкод", "SKU", "ID товара", "Наименование", "В продаже",
     "Себест. (сумы)", "Стоимость продажи (сумы)", "Оборачиваемость, дней",
+    "Стоимость хранения 1 дня, сум",
     "Среднесуточные продажи", "Среднесуточные продажи FBO за 15 дней, шт",
     "К отправке", "Общий остаток",
 }
@@ -220,6 +221,16 @@ UZ_TO_RU_LEFTOUT_OLD: Dict[str, str] = {
     _n("Sotuv qiymati (soʻm)"): "Стоимость продажи (сумы)",
     _n("Sotuv qiymati (summa) (so'm)"): "Стоимость продажи (сумы)",
     _n("Sotuv qiymati (summa) (soʻm)"): "Стоимость продажи (сумы)",
+    # Стоимость хранения за 1 день (узбекские варианты)
+    _n("1 kunlik saqlash qiymati, so'm"): "Стоимость хранения 1 дня, сум",
+    _n("1 kunlik saqlash qiymati, soʻm"): "Стоимость хранения 1 дня, сум",
+    _n("1 kunlik saqlash narxi (so'm)"): "Стоимость хранения 1 дня, сум",
+    _n("1 kunlik saqlash narxi (soʻm)"): "Стоимость хранения 1 дня, сум",
+    _n("Saqlash narxi 1 kun, so'm"): "Стоимость хранения 1 дня, сум",
+    _n("Saqlash narxi 1 kun, soʻm"): "Стоимость хранения 1 дня, сум",
+    _n("1 ta birlikni 1 kun saqlash evaziga, so'm"): "Стоимость хранения 1 дня, сум",
+    _n("1 ta birlikni 1 kun saqlash evaziga, so‘m"): "Стоимость хранения 1 дня, сум",
+    _n("1 ta birlikni 1 kun saqlash evaziga, soʻm"): "Стоимость хранения 1 дня, сум",
     # Оборачиваемость (дней) — для рекомендаций по отгрузке и расчётов
     _n("Aylanib turish"): "Оборачиваемость, дней",
     _n("Aylanma, kunlar"): "Оборачиваемость, дней",
@@ -380,6 +391,10 @@ def map_headers_to_canonical(
                     canonical = "Себест. (сумы)"
                 elif "стоимость продажи" in lower and "сум" in lower:
                     canonical = "Стоимость продажи (сумы)"
+                elif "стоимость хранения" in lower and ("1 дня" in lower or "1 день" in lower or "сут" in lower):
+                    canonical = "Стоимость хранения 1 дня, сум"
+                elif ("хранение" in lower or "хранения" in lower) and ("дн" in lower or "сут" in lower):
+                    canonical = "Стоимость хранения 1 дня, сум"
                 elif "штрихкод" in lower:
                     canonical = "Штрихкод"
                 elif lower == "sku" or lower.endswith(" sku") or " sku" in lower:

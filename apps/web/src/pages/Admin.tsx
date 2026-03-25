@@ -689,7 +689,7 @@ export default function Admin() {
               </CardContent>
             </Card>
 
-            {/* Колонка 2: Всего зарегистрировано (сверху) + Загружено файлов (снизу), ширина по заголовку */}
+            {/* Колонка 2: Всего зарегистрировано (сверху) + Загружено файлов за 30 дней (снизу), ширина по заголовку */}
             <div className="flex flex-col gap-2 min-h-[280px] w-max max-w-full">
               <Card className="flex-1 min-h-0 flex flex-col">
                 <CardHeader className="pb-2 shrink-0">
@@ -714,7 +714,7 @@ export default function Admin() {
                 <CardHeader className="pb-2 shrink-0">
                   <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-2">
                     <Upload className="h-4 w-4 text-primary" />
-                    Загружено файлов
+                    Загружено файлов 30д
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1">
