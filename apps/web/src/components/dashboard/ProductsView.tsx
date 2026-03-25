@@ -277,7 +277,7 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
     );
   });
 
-  const ABC_FIELDS: SortField[] = ["abc_orders", "abc_profit", "abc_revenue"];
+  const ABC_FIELDS: SortField[] = ["abc_orders", "abc_revenue", "abc_profit"];
   const abcRank = (v: string | null | undefined): number => {
     const s = (v ?? "").toString().trim().toUpperCase();
     if (s === "A") return 1;
@@ -432,7 +432,12 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
 
   const SortableHeader = ({ field, children, className }: { field: SortField; children: React.ReactNode; className?: string }) => (
       <TableHead 
-        className={cn("cursor-pointer select-none text-muted-foreground px-2 py-1 bg-violet-50/80 dark:bg-violet-950/30 hover:bg-violet-100/80 dark:hover:bg-violet-900/40", className)}
+        className={cn(
+          "sticky top-0 z-20 cursor-pointer select-none text-muted-foreground px-2 py-1",
+          "border-b border-border bg-violet-50/95 dark:bg-violet-950/95 backdrop-blur-sm",
+          "hover:bg-violet-100/90 dark:hover:bg-violet-900/50",
+          className
+        )}
         onClick={() => handleSort(field)}
       >
         <div className="flex items-center justify-center gap-1">
@@ -443,7 +448,7 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
   );
 
   return (
-    <div className="space-y-4">
+    <div className="w-full min-w-0 space-y-4">
       {/* Filters & Settings */}
       <div className="flex flex-col gap-4">
         <div className="flex flex-col md:flex-row md:items-center gap-4">
@@ -483,12 +488,27 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
           Загрузка товаров…
         </div>
       ) : (
-      <div className="data-table animate-fade-in rounded-lg border border-border">
-        <div className="overflow-x-auto overflow-y-visible">
-          <Table className="min-w-[1100px] md:min-w-[1400px] lg:min-w-[1600px]">
+      <div className="data-table animate-fade-in w-full min-w-0 max-w-full rounded-lg border border-border">
+        <div
+          className={cn(
+            "max-h-[min(70vh,42rem)] sm:max-h-[min(75vh,48rem)] lg:max-h-[min(78vh,52rem)]",
+            "overflow-auto overscroll-contain",
+            "touch-pan-x touch-pan-y [scrollbar-gutter:stable]"
+          )}
+        >
+          <Table
+            wrapperClassName="overflow-visible min-w-0"
+            className="w-max min-w-full caption-bottom"
+          >
             <TableHeader>
-              <TableRow className="bg-violet-50/80 dark:bg-violet-950/30 border-border">
-                <SortableHeader field="product_name" className="min-w-[400px] max-w-[400px] sticky left-0 bg-violet-50 dark:bg-violet-950 z-10 border-r border-border text-center">
+              <TableRow className="border-border">
+                <SortableHeader
+                  field="product_name"
+                  className={cn(
+                    "sticky left-0 z-40 border-r border-border text-center",
+                    "min-w-[min(260px,72vw)] sm:min-w-[300px] md:min-w-[360px] max-w-[min(400px,88vw)] md:max-w-[400px]"
+                  )}
+                >
                   {t('table.productName')}
                 </SortableHeader>
                 <SortableHeader field="price" className="text-center min-w-[100px]">
@@ -527,11 +547,11 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
                 <SortableHeader field="abc_orders" className="text-center min-w-[80px]">
                   {t('table.abcOrders')}
                 </SortableHeader>
-                <SortableHeader field="abc_profit" className="text-center min-w-[80px]">
-                  {t('table.abcProfit')}
-                </SortableHeader>
                 <SortableHeader field="abc_revenue" className="text-center min-w-[80px]">
                   {t('table.abcRevenue')}
+                </SortableHeader>
+                <SortableHeader field="abc_profit" className="text-center min-w-[80px]">
+                  {t('table.abcProfit')}
                 </SortableHeader>
                 <SortableHeader field="barcode" className="text-center min-w-[130px]">
                   {t('product.barcode')}
@@ -560,7 +580,12 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
                   className="cursor-pointer hover:bg-muted/50"
                   onClick={() => setSelectedProduct(product)}
                 >
-                  <TableCell className="sticky left-0 bg-gray-50 dark:bg-gray-800/60 z-10 min-w-[400px] max-w-[400px] border-r border-border pl-4">
+                  <TableCell
+                    className={cn(
+                      "sticky left-0 z-10 border-r border-border bg-gray-50/95 pl-4 backdrop-blur-sm dark:bg-gray-800/90",
+                      "min-w-[min(260px,72vw)] sm:min-w-[300px] md:min-w-[360px] max-w-[min(400px,88vw)] md:max-w-[400px]"
+                    )}
+                  >
                     <div className="flex items-center gap-3 min-w-0">
                       <span className="w-3 h-3 rounded-full border-2 border-purple-500 bg-transparent shrink-0" aria-hidden />
                       <div className="min-w-0 break-words whitespace-normal text-sm">
@@ -614,10 +639,10 @@ export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: Product
                     {getAbcBadge(product.abc_orders) ?? <span className="text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell className="text-center">
-                    {getAbcBadge(product.abc_profit) ?? <span className="text-muted-foreground">—</span>}
+                    {getAbcBadge(product.abc_revenue) ?? <span className="text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell className="text-center">
-                    {getAbcBadge(product.abc_revenue) ?? <span className="text-muted-foreground">—</span>}
+                    {getAbcBadge(product.abc_profit) ?? <span className="text-muted-foreground">—</span>}
                   </TableCell>
                   <TableCell className="text-center text-muted-foreground text-sm font-mono">
                     {product.barcode ?? "—"}

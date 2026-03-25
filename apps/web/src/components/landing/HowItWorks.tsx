@@ -26,7 +26,7 @@ const stepsRu = [
 const stepsUz = [
   {
     step: 1,
-    title: "Sotuvchi LK’sida 4 ta hisobotni shakllantiring.",
+    title: "Sotuvchi SK’sida 4 ta hisobotni shakllantiring.",
     text: "Savdolar hisobotini, xizmatlar bo‘yicha hisobotni, qoldiqlar hisobotini (eski format), saqlash bo‘yicha hisobotni yuklab oling.",
     image: "/how-it-works-1.png",
   },
