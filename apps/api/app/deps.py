@@ -27,6 +27,28 @@ def _allows_x_user_id_header() -> bool:
     return env in ("dev", "development", "test")
 
 
+def _ensure_user_is_active(user_id: UUID) -> None:
+    """
+    Reject requests from disabled users.
+    This makes existing access tokens effectively unusable right after tenant disable.
+    """
+    from app.db import SessionLocal, qname
+    from sqlalchemy import text
+
+    db = SessionLocal()
+    try:
+        row = db.execute(
+            text(f"SELECT is_active FROM {qname('users')} WHERE id = CAST(:uid AS uuid)"),
+            {"uid": str(user_id)},
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=401, detail="User not found")
+        if not bool(row[0]):
+            raise HTTPException(status_code=401, detail="User is inactive")
+    finally:
+        db.close()
+
+
 def require_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security)
@@ -62,7 +84,9 @@ def require_user(
                 )
             
             try:
-                return UUID(user_id_str)
+                user_id = UUID(user_id_str)
+                _ensure_user_is_active(user_id)
+                return user_id
             except ValueError:
                 raise HTTPException(
                     status_code=401,
@@ -104,7 +128,9 @@ def require_user(
         )
 
     try:
-        return UUID(user_id_str)
+        user_id = UUID(user_id_str)
+        _ensure_user_is_active(user_id)
+        return user_id
     except ValueError:
         logger.warning(f"Invalid X-User-Id format: {user_id_str}")
         raise HTTPException(

@@ -200,6 +200,12 @@ class AuthExpiredError extends Error {
   }
 }
 
+function notifyAuthExpired(): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("auth-expired"));
+  }
+}
+
 async function handleWithRefresh(path: string, init: RequestInit): Promise<Response> {
   const baseUrl = getApiBaseUrl();
   const url = buildUrl(baseUrl, path, init.method === 'GET' ? (init as any).params : undefined);
@@ -219,6 +225,7 @@ async function handleWithRefresh(path: string, init: RequestInit): Promise<Respo
     await performTokenRefresh();
   } catch {
     clearAuthTokens();
+    notifyAuthExpired();
     throw new AuthExpiredError();
   }
 
@@ -236,6 +243,7 @@ async function handleWithRefresh(path: string, init: RequestInit): Promise<Respo
 
   if (response.status === 401) {
     clearAuthTokens();
+    notifyAuthExpired();
     throw new AuthExpiredError();
   }
 

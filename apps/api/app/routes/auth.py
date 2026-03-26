@@ -545,6 +545,30 @@ async def refresh(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid user_id in token"
             )
+
+        # Disabled users must not receive new tokens.
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user or not user.is_active:
+            # Proactively revoke current refresh token if it exists in DB.
+            try:
+                refresh_token_hash = hash_token(raw_refresh_token)
+                db_refresh_token = db.query(RefreshToken).filter(
+                    and_(
+                        RefreshToken.token_hash == refresh_token_hash,
+                        RefreshToken.user_id == user_id,
+                        RefreshToken.revoked_at.is_(None),
+                    )
+                ).first()
+                if db_refresh_token:
+                    db_refresh_token.revoked_at = datetime.now(timezone.utc)
+                    db.commit()
+            except Exception:
+                db.rollback()
+            response.delete_cookie(key="refresh_token", path="/api/auth")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User is inactive"
+            )
         
         # Find refresh token in database
         refresh_token_hash = hash_token(raw_refresh_token)

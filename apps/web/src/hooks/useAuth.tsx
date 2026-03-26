@@ -126,6 +126,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    const onAuthExpired = () => {
+      clearAuthTokens();
+      setUser(null);
+      setSession(null);
+    };
+    window.addEventListener("auth-expired", onAuthExpired);
+    return () => {
+      window.removeEventListener("auth-expired", onAuthExpired);
+    };
+  }, []);
+
   const signUp = async (email: string, password: string, fullName?: string, phone?: string, consentProcessing?: boolean) => {
     try {
       const res = await apiPostNoAuth<AuthResponse | RegisterVerifyPending>('/api/auth/register', {

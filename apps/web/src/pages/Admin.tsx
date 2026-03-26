@@ -1241,7 +1241,7 @@ export default function Admin() {
                                     <Button
                                       size="icon"
                                       variant="ghost"
-                                      className="h-8 w-8"
+                                      className="h-8 w-8 text-destructive bg-destructive/10 hover:bg-destructive/20 hover:text-destructive"
                                       onClick={() => handleEnable(row.tenant_id)}
                                     >
                                       <UserPlus className="h-4 w-4" />
