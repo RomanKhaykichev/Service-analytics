@@ -16,6 +16,9 @@ export function RevenueProgressBar({
 }: RevenueProgressBarProps) {
   const { t } = useLanguage();
   const percentage = Math.min(current / target * 100, 100);
+  const displayCurrent = Math.min(current, target);
+  const isOverBillion = current > 1_000_000_000;
+  const exceededBy = Math.max(current - target, 0);
   const formatNumber = (num: number) => {
     if (num >= 1000000000) return `${(num / 1000000000).toFixed(0)} ${t('progress.billion')}`;
     if (num >= 1000000) return `${(num / 1000000).toFixed(0)} ${t('progress.mln')}`;
@@ -61,9 +64,14 @@ export function RevenueProgressBar({
           </div>
         </div>
         <div className="flex flex-col items-end flex-shrink-0 mt-1 sm:mt-0">
-          <span className="text-sm sm:text-base font-semibold text-purple-700 dark:text-purple-300">
-            {formatNumber(current)} / {formatNumber(target)}
+          <span className={`text-sm sm:text-base font-semibold ${isOverBillion ? "text-red-600 dark:text-red-400" : "text-purple-700 dark:text-purple-300"}`}>
+            {formatNumber(displayCurrent)} / {formatNumber(target)}
           </span>
+          {isOverBillion && (
+            <span className="text-xs sm:text-sm font-medium text-red-600/90 dark:text-red-400/90">
+              +{formatNumber(exceededBy)}
+            </span>
+          )}
         </div>
       </div>
     );
@@ -80,10 +88,17 @@ export function RevenueProgressBar({
             <span className="text-sm text-purple-600/80 dark:text-purple-400/80">{year}</span>
           )}
         </div>
-        <span className="text-base font-semibold text-purple-600 dark:text-purple-400">
-          {formatNumber(current)} / {formatNumber(target)} {t('common.sum')}
+        <span className={`text-base font-semibold ${isOverBillion ? "text-red-600 dark:text-red-400" : "text-purple-600 dark:text-purple-400"}`}>
+          {formatNumber(displayCurrent)} / {formatNumber(target)} {t('common.sum')}
         </span>
       </div>
+      {isOverBillion && (
+        <div className="mb-2 text-right">
+          <span className="text-sm font-medium text-red-600/90 dark:text-red-400/90">
+            +{formatNumber(exceededBy)}
+          </span>
+        </div>
+      )}
       <div className="relative h-4 bg-purple-100 dark:bg-purple-900/40 rounded-full overflow-hidden">
         <div 
           className="absolute inset-y-0 left-0 bg-gradient-to-r from-purple-500 via-violet-500 to-fuchsia-500 rounded-full transition-all duration-500 shadow-lg shadow-purple-500/30" 
