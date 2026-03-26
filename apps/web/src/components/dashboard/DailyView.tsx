@@ -385,23 +385,36 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
             {t('daily.exportXLSX')}
           </Button>
         </div>
-        <div className="overflow-x-auto">
+        <div
+          className={cn(
+            // Скролл справа и снизу — как в таблице Товары
+            "w-full min-w-0 max-w-full",
+            (filteredAndSortedData?.length ?? 0) > 15
+              ? "max-h-[min(70vh,32rem)] sm:max-h-[min(75vh,36rem)] lg:max-h-[min(78vh,40rem)] overflow-auto"
+              : "overflow-auto",
+            "overscroll-contain touch-pan-x touch-pan-y [scrollbar-gutter:stable]"
+          )}
+        >
           {loadingTable ? (
             <div className="py-8 text-center text-muted-foreground">{t('daily.loading')}</div>
           ) : errorTable ? (
             <div className="py-8 text-center text-destructive">{t('daily.loadError')}</div>
           ) : (
-            <Table className="table-auto w-full min-w-[1100px] md:min-w-[1300px] lg:min-w-[1500px]">
+            <Table
+              wrapperClassName="overflow-visible min-w-0"
+              className="table-auto w-max min-w-[1100px] md:min-w-[1300px] lg:min-w-[1500px] caption-bottom"
+            >
               <TableHeader>
                 <TableRow className="bg-violet-50/80 dark:bg-violet-950/30 border-border">
                   {columns.map((col, index) => (
                     <TableHead
                       key={col.key}
                       className={cn(
-                        "text-muted-foreground px-2 py-1 bg-violet-50/80 dark:bg-violet-950/30",
+                        "sticky top-0 z-20 text-muted-foreground px-2 py-1 border-b border-border",
+                        "bg-violet-50/95 dark:bg-violet-950/95 backdrop-blur-sm",
                         isUz ? "whitespace-normal break-words min-w-0" : "whitespace-nowrap",
                         col.key === "dateFormatted" ? "text-left" : "text-center",
-                        index === 0 && "sticky left-0 z-10 bg-violet-50/80 dark:bg-violet-950/30 border-r border-border min-w-[120px] max-w-[160px]"
+                        index === 0 && "sticky left-0 z-40 border-r border-border min-w-[120px] max-w-[160px]"
                       )}
                     >
                       <button

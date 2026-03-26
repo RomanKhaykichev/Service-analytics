@@ -133,8 +133,7 @@ export default function Admin() {
   const [accessDenied, setAccessDenied] = useState(false);
   const [search, setSearch] = useState("");
   const [planFilter, setPlanFilter] = useState<string>("all");
-  const [page, setPage] = useState(1);
-  const [pageSize] = useState(20);
+  const API_PAGE_SIZE = 100;
   const [sort, setSort] = useState("created_at");
   type TenantSortColumn = "created_at" | "phone" | "shops_count" | "plan" | "trial_days_left" | "paid_amount" | "last_login_at" | "imports_30d" | null;
   const [sortColumn, setSortColumn] = useState<TenantSortColumn>(null);
@@ -192,25 +191,38 @@ export default function Admin() {
     setError(null);
     setAccessDenied(false);
       try {
-        const params: Record<string, string | number> = {
-          page,
-          page_size: pageSize,
+        const baseParams: Record<string, string | number> = {
+          page_size: API_PAGE_SIZE,
           sort,
         };
-        if (search.trim()) params.search = search.trim();
+        if (search.trim()) baseParams.search = search.trim();
         if (planFilter !== "all") {
-          let planParam: string | null = null;
-          if (planFilter === "trial") {
-            planParam = "trial";
-          } else if (planFilter === "month_5" || planFilter === "month_10") {
-            planParam = "paid";
-          }
-          if (planParam) {
-            params.plan = planParam;
+          baseParams.plan = planFilter;
+        }
+
+        const firstPage = await apiGet<TenantsResponse>("/api/admin/tenants", {
+          ...baseParams,
+          page: 1,
+        });
+
+        const allTenants: TenantRow[] = [...(firstPage.tenants ?? [])];
+        const totalCount = firstPage.total_count ?? allTenants.length;
+        const totalPages = Math.max(1, Math.ceil(totalCount / API_PAGE_SIZE));
+
+        for (let p = 2; p <= totalPages; p++) {
+          const nextPage = await apiGet<TenantsResponse>("/api/admin/tenants", {
+            ...baseParams,
+            page: p,
+          });
+          if (nextPage.tenants?.length) {
+            allTenants.push(...nextPage.tenants);
           }
         }
-      const data = await apiGet<TenantsResponse>("/api/admin/tenants", params);
-      setTenants(data);
+
+        setTenants({
+          tenants: allTenants,
+          total_count: totalCount,
+        });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg.includes("403") || msg.includes("Admin")) {
@@ -221,7 +233,7 @@ export default function Admin() {
     } finally {
       setLoadingTenants(false);
     }
-  }, [page, pageSize, sort, search, planFilter]);
+  }, [sort, search, planFilter]);
 
   const loadTenantShops = useCallback(async (tenantId: string) => {
     setTenantShops((prev) => {
@@ -894,7 +906,6 @@ export default function Admin() {
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
-                  setPage(1);
                   fetchTenants();
                 }
               }}
@@ -909,9 +920,9 @@ export default function Admin() {
                 <SelectItem value="trial">Trial 10</SelectItem>
                 <SelectItem value="month_5">Month 5</SelectItem>
                 <SelectItem value="month_10">Month 10</SelectItem>
+                <SelectItem value="gold">Gold</SelectItem>
               </SelectContent>
             </Select>
-            <Button onClick={() => { setPage(1); fetchTenants(); }}>Применить</Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -919,11 +930,27 @@ export default function Admin() {
             <Skeleton className="h-64 w-full" />
           ) : tenants ? (
             <>
-              <div className="overflow-x-auto -mx-1">
-                <Table className="min-w-[1700px] [&_th]:h-10 [&_th]:py-2 [&_th]:px-3 [&_td]:py-2 [&_td]:px-3">
+              <div
+                className={cn(
+                  "-mx-1 w-full min-w-0 max-w-full",
+                  sortedTenants.length > 10
+                    ? "max-h-[min(70vh,34rem)] sm:max-h-[min(75vh,40rem)] lg:max-h-[min(78vh,46rem)] overflow-auto"
+                    : "overflow-auto",
+                  "overscroll-contain touch-pan-x touch-pan-y [scrollbar-gutter:stable]"
+                )}
+              >
+                <Table
+                  wrapperClassName="overflow-visible min-w-0"
+                  className={cn(
+                    "min-w-[1700px]",
+                    "[&_th]:h-10 [&_th]:py-2 [&_th]:px-3 [&_td]:py-2 [&_td]:px-3",
+                    "[&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20",
+                    "[&_thead_th]:border-b [&_thead_th]:border-border [&_thead_th]:bg-card/95 [&_thead_th]:backdrop-blur-sm"
+                  )}
+                >
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="sticky left-0 z-10 bg-card border-r border-border min-w-[200px] max-w-[260px]">Аккаунт</TableHead>
+                    <TableHead className="sticky left-0 z-40 bg-card border-r border-border min-w-[200px] max-w-[260px]">Аккаунт</TableHead>
                     <TableHead className="text-center">
                       <button
                         type="button"
@@ -1322,26 +1349,6 @@ export default function Admin() {
                   )}
                 </TableBody>
               </Table>
-              </div>
-              <div className="flex items-center justify-end mt-4">
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={page <= 1}
-                    onClick={() => setPage((p) => p - 1)}
-                  >
-                    Назад
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={page * pageSize >= tenants.total_count}
-                    onClick={() => setPage((p) => p + 1)}
-                  >
-                    Вперёд
-                  </Button>
-                </div>
               </div>
             </>
           ) : null}

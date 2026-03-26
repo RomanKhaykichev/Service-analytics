@@ -911,8 +911,22 @@ async def admin_tenants_list(
 
     plan_cond = ""
     if plan and plan.strip() and has_plan_cols:
-        plan_cond = " AND COALESCE(u.plan, 'trial') = :plan"
-        params["plan"] = plan.strip()
+        p = plan.strip().lower()
+        # Нормализованный фильтр тарифов:
+        # trial, month_5, month_10, gold (alias paid оставляем для обратной совместимости)
+        if p == "trial":
+            plan_cond = " AND COALESCE(LOWER(TRIM(u.plan)), 'trial') = 'trial'"
+        elif p in ("month_5", "month 5", "month5"):
+            plan_cond = " AND COALESCE(LOWER(TRIM(u.plan)), 'trial') IN ('month_5', 'month 5', 'month5')"
+        elif p in ("month_10", "month 10", "month10"):
+            plan_cond = " AND COALESCE(LOWER(TRIM(u.plan)), 'trial') IN ('month_10', 'month 10', 'month10')"
+        elif p in ("gold", "gold_plan"):
+            plan_cond = " AND COALESCE(LOWER(TRIM(u.plan)), 'trial') IN ('gold', 'gold_plan')"
+        elif p == "paid":
+            plan_cond = (
+                " AND COALESCE(LOWER(TRIM(u.plan)), 'trial') IN "
+                "('month_5', 'month 5', 'month5', 'month_10', 'month 10', 'month10', 'gold', 'gold_plan')"
+            )
 
     # Count total
     count_sql = f"""
