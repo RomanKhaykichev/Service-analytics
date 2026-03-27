@@ -326,11 +326,12 @@ export function ProductDetailView({
         )
       : product.price * product.stock;
 
+  const qtyUnit = t('common.pieces');
   const salesMetrics = [
-    { icon: <ShoppingCart className="w-4 h-4" />, label: t('summary.sales.orders'), value: formatQuantity(product.sales), subValue: formatCurrency(ordersValue), tooltip: t('summary.sales.ordersTooltip') },
-    { icon: <Truck className="w-4 h-4" />, label: t('summary.sales.processing'), value: formatQuantity(0), subValue: formatCurrency(processingValue), tooltip: t('summary.sales.processingTooltip') },
-    { icon: <Package className="w-4 h-4" />, label: t('summary.sales.completed'), value: formatQuantity(completedQty), subValue: formatCurrency(completedValue), tooltip: t('summary.sales.completedTooltip') },
-    { icon: <RotateCcw className="w-4 h-4" />, label: t('summary.sales.returns'), value: formatQuantity(product.returns), subValue: product.returns > 0 ? `-${formatCurrency(returnsValueNum)}` : formatCurrency(0), tooltip: t('summary.sales.returnsTooltip') },
+    { icon: <ShoppingCart className="w-4 h-4" />, label: t('summary.sales.orders'), value: formatQuantity(product.sales, qtyUnit), subValue: formatCurrency(ordersValue), tooltip: t('summary.sales.ordersTooltip') },
+    { icon: <Truck className="w-4 h-4" />, label: t('summary.sales.processing'), value: formatQuantity(0, qtyUnit), subValue: formatCurrency(processingValue), tooltip: t('summary.sales.processingTooltip') },
+    { icon: <Package className="w-4 h-4" />, label: t('summary.sales.completed'), value: formatQuantity(completedQty, qtyUnit), subValue: formatCurrency(completedValue), tooltip: t('summary.sales.completedTooltip') },
+    { icon: <RotateCcw className="w-4 h-4" />, label: t('summary.sales.returns'), value: formatQuantity(product.returns, qtyUnit), subValue: product.returns > 0 ? `-${formatCurrency(returnsValueNum)}` : formatCurrency(0), tooltip: t('summary.sales.returnsTooltip') },
     { icon: <Percent className="w-4 h-4" />, label: t('summary.sales.returnRate'), value: formatPercent(returnRate), tooltip: t('summary.sales.returnRateTooltip') },
     { icon: <CreditCard className="w-4 h-4" />, label: t('summary.sales.averageCheck'), value: formatMoneyNoDecimals(averageCheck), tooltip: t('summary.sales.averageCheckTooltip') },
   ];
@@ -350,7 +351,7 @@ export function ProductDetailView({
     { icon: <Info className="w-4 h-4" />, label: t('summary.expense.extraExpenses'), value: formatCurrency(productExtraExpenses), tooltip: t('summary.expense.extraExpensesTooltip') },
   ];
   const warehouseMetrics = [
-    { icon: <Warehouse className="w-4 h-4" />, label: t('summary.warehouse.stock'), value: formatQuantity(product.stock), tooltip: t('summary.warehouse.stockTooltip') },
+    { icon: <Warehouse className="w-4 h-4" />, label: t('summary.warehouse.stock'), value: formatQuantity(product.stock, qtyUnit), tooltip: t('summary.warehouse.stockTooltip') },
     { icon: <Tag className="w-4 h-4" />, label: t('summary.warehouse.cost'), value: formatCurrency(stockCost), tooltip: "" },
     { icon: <ShoppingBag className="w-4 h-4" />, label: t('summary.warehouse.retailPrice'), value: formatCurrency(stockRetail), tooltip: t('summary.warehouse.retailPriceTooltip') },
   ];

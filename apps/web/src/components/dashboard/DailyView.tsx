@@ -341,7 +341,12 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
                     formatter={(value: number, name: string) => {
                       const series = CHART_SERIES.find((s) => s.key === name);
                       const formatted = formatNumber(Number(value));
-                      const suffix = series?.axis === "money" ? ` ${t("common.sum")}` : "";
+                      const suffix =
+                        series?.axis === "money"
+                          ? ` ${t("common.sum")}`
+                          : series?.axis === "count"
+                            ? ` ${t("common.pieces")}`
+                            : "";
                       return [formatted + suffix, series?.label ?? name];
                     }}
                   />

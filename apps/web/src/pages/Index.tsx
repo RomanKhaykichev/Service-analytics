@@ -150,32 +150,33 @@ function Dashboard() {
     }
   }, [monthlyYear, maxYear]);
 
+  const qtyUnit = t('common.pieces');
   const salesMetrics = metrics ? [
     {
       icon: <ShoppingCart className="w-4 h-4" />,
       label: t('summary.sales.orders'),
-      value: formatQuantity(metrics.ordersCount),
+      value: formatQuantity(metrics.ordersCount, qtyUnit),
       subValue: formatCurrency(metrics.ordersValue),
       tooltip: t('summary.sales.ordersTooltip')
     },
     {
       icon: <Truck className="w-4 h-4" />,
       label: t('summary.sales.processing'),
-      value: formatQuantity(metrics.processingCount),
+      value: formatQuantity(metrics.processingCount, qtyUnit),
       subValue: formatCurrency(metrics.processingValue),
       tooltip: t('summary.sales.processingTooltip')
     },
     {
       icon: <Package className="w-4 h-4" />,
       label: t('summary.sales.completed'),
-      value: formatQuantity(metrics.completedCount),
+      value: formatQuantity(metrics.completedCount, qtyUnit),
       subValue: formatCurrency(metrics.completedValue),
       tooltip: t('summary.sales.completedTooltip')
     },
     {
       icon: <RotateCcw className="w-4 h-4" />,
       label: t('summary.sales.returns'),
-      value: formatQuantity(metrics.returnsCount),
+      value: formatQuantity(metrics.returnsCount, qtyUnit),
       subValue: metrics.returnsValue > 0 ? `-${formatCurrency(metrics.returnsValue)}` : formatCurrency(0),
       tooltip: t('summary.sales.returnsTooltip')
     },
@@ -322,7 +323,7 @@ function Dashboard() {
     {
       icon: <Warehouse className="w-4 h-4" />,
       label: t('summary.warehouse.stock'),
-      value: formatQuantity(stockQty),
+      value: formatQuantity(stockQty, qtyUnit),
       tooltip: t('summary.warehouse.stockTooltip')
     },
     {
