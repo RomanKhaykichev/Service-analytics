@@ -28,6 +28,7 @@ from app.schemas.auth import (
     TokenResponse,
     UserResponse,
 )
+from app.pending_registration import cleanup_expired_pending
 from app.phone_verification import (
     assert_send_rate_limit,
     assert_verify_fail_rate_limit,
@@ -118,7 +119,9 @@ async def register(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Consent to personal data processing is required"
         )
+    settings = get_settings()
     try:
+        cleanup_expired_pending(db)
         try:
             phone_norm = normalize_uz_phone(request.phone)
         except ValueError:
@@ -164,7 +167,7 @@ async def register(
             pending.phone = phone_norm
             pending.password_hash = password_hash
             pending.consent_processing = request.consent_processing
-            pending.expires_at = pending_expires_at(hours=24)
+            pending.expires_at = pending_expires_at(hours=settings.PENDING_TTL_HOURS)
         else:
             pending = PendingRegistration(
                 email=email_norm,
@@ -172,7 +175,7 @@ async def register(
                 phone=phone_norm,
                 password_hash=password_hash,
                 consent_processing=request.consent_processing,
-                expires_at=pending_expires_at(hours=24),
+                expires_at=pending_expires_at(hours=settings.PENDING_TTL_HOURS),
                 attempts=0,
             )
             db.add(pending)
@@ -260,6 +263,8 @@ async def verify_phone(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Enter the 6-digit verification code",
         )
+
+    cleanup_expired_pending(db)
 
     pending = db.query(PendingRegistration).filter(PendingRegistration.id == request.pending_id).first()
     if not pending:

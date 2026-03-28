@@ -11,8 +11,10 @@ import httpx
 import pytest
 from sqlalchemy import text
 
-from app.db import engine, get_db
+from app.db import SessionLocal, engine, get_db
+from app.deps import require_user
 from app.main import app
+from app.pending_registration import cleanup_expired_pending
 def _db_ok() -> bool:
     try:
         with engine.connect() as c:
@@ -112,7 +114,7 @@ def test_verify_creates_user_and_identity_and_deletes_pending(unique_email, phon
 
 
 def test_import_forbidden_when_phone_not_verified():
-    uid = "550e8400-e29b-41d4-a716-446655440000"
+    uid = uuid.UUID("550e8400-e29b-41d4-a716-446655440000")
 
     def mock_get_db():
         from unittest.mock import MagicMock
@@ -136,6 +138,7 @@ def test_import_forbidden_when_phone_not_verified():
         yield mock_sess
 
     app.dependency_overrides[get_db] = mock_get_db
+    app.dependency_overrides[require_user] = lambda: uid
     try:
         with patch("app.routes.imports.ensure_dev_user_exists", lambda *a, **k: None):
             transport = httpx.ASGITransport(app=app)
@@ -143,7 +146,7 @@ def test_import_forbidden_when_phone_not_verified():
                 async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
                     return await client.post(
                         "/api/import-xlsx",
-                        headers={"X-User-Id": uid},
+                        headers={},
                         data={"reportType": "sales"},
                         files={
                             "file": (
@@ -157,6 +160,7 @@ def test_import_forbidden_when_phone_not_verified():
         assert r.status_code == 403
         assert "Phone not verified" in (r.json().get("detail") or "")
     finally:
+        app.dependency_overrides.pop(require_user, None)
         app.dependency_overrides.pop(get_db, None)
 
 
@@ -253,4 +257,61 @@ def test_expired_pending_cannot_verify(unique_email, phone_digits):
             {"pid": pending_id},
         )
     r = _async_post("/api/auth/verify-phone", {"pending_id": pending_id, "code": "444444"})
-    assert r.status_code == 400, r.text
+    # cleanup_expired_pending runs before lookup; expired row is deleted → 404
+    assert r.status_code == 404, r.text
+    assert "not found" in (r.json().get("detail") or "").lower()
+
+
+def test_cleanup_expired_pending_deletes_rows(unique_email, phone_digits):
+    stale_id = str(uuid.uuid4())
+    with engine.begin() as c:
+        c.execute(
+            text(
+                """INSERT INTO app.pending_registrations
+                (id, email, phone, password_hash, consent_processing, expires_at, attempts)
+                VALUES (CAST(:id AS uuid), :email, :phone, 'hash', true, now() - interval '1 hour', 0)"""
+            ),
+            {"id": stale_id, "email": unique_email, "phone": f"+998{phone_digits}"},
+        )
+    with SessionLocal() as db:
+        db.execute(text("SET search_path TO app, public"))
+        deleted = cleanup_expired_pending(db)
+        db.commit()
+        assert deleted >= 1
+    with engine.connect() as c:
+        n = c.execute(
+            text("SELECT count(*) FROM app.pending_registrations WHERE id=CAST(:id AS uuid)"),
+            {"id": stale_id},
+        ).scalar()
+    assert int(n or 0) == 0
+
+
+@patch("app.phone_verification.send_registration_otp_sms", lambda *a, **k: None)
+def test_register_cleanup_removes_expired_pending_other_email(unique_email, phone_digits):
+    stale_email = f"stale_{uuid.uuid4().hex[:12]}@example.com"
+    stale_phone = f"+99890{uuid.uuid4().int % 10_000_000:07d}"
+    stale_id = str(uuid.uuid4())
+    with engine.begin() as c:
+        c.execute(
+            text(
+                """INSERT INTO app.pending_registrations
+                (id, email, phone, password_hash, consent_processing, expires_at, attempts)
+                VALUES (CAST(:id AS uuid), :email, :phone, 'hash', true, now() - interval '1 day', 0)"""
+            ),
+            {"id": stale_id, "email": stale_email, "phone": stale_phone},
+        )
+    body = {
+        "email": unique_email,
+        "password": "secret12",
+        "full_name": "Test User",
+        "phone": f"+998{phone_digits}",
+        "consent_processing": True,
+    }
+    r = _async_post("/api/auth/register", body)
+    assert r.status_code == 201, r.text
+    with engine.connect() as c:
+        n = c.execute(
+            text("SELECT count(*) FROM app.pending_registrations WHERE id=CAST(:id AS uuid)"),
+            {"id": stale_id},
+        ).scalar()
+    assert int(n or 0) == 0

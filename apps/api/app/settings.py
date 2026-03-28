@@ -38,6 +38,7 @@ class Settings:
     JWT_ISSUER: str = os.getenv("JWT_ISSUER", "service-analytics-api")
     ACCESS_TTL_MIN: int = int(os.getenv("ACCESS_TTL_MIN", "15"))  # 15 minutes
     REFRESH_TTL_DAYS: int = int(os.getenv("REFRESH_TTL_DAYS", "30"))  # 30 days
+    PENDING_TTL_HOURS: int = int(os.getenv("PENDING_TTL_HOURS", "24"))
 
     # Admin: comma-separated list of emails or UUIDs allowed to access /api/admin/*
     ADMIN_USER_IDS: str = os.getenv("ADMIN_USER_IDS", "")
