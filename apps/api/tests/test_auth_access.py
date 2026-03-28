@@ -2,16 +2,31 @@
 Security and access control: JWT vs X-User-Id in prod, trial guard on imports.
 """
 import asyncio
+import uuid
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import httpx
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import text
 
 from app import deps
-from app.db import get_db
+from app.auth import hash_password
+from app.db import SessionLocal, engine
 from app.main import app
+from app.models import User, AuthIdentity
+from app.models.auth_identity import AuthProvider
+from app.settings import get_settings
+
+
+def _db_ok() -> bool:
+    try:
+        with engine.connect() as c:
+            c.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False
 
 
 @pytest.mark.parametrize(
@@ -40,54 +55,85 @@ def test_auth_requires_jwt_in_prod_x_user_id_rejected(app_env, env):
         deps.settings.ENV = orig_env
 
 
+@pytest.mark.skipif(not _db_ok(), reason="DATABASE_URL not available or DB unreachable")
 def test_import_blocked_when_trial_expired():
-    """Import returns 403 when trial_ends_at is in the past (non-admin)."""
-    uid = "550e8400-e29b-41d4-a716-446655440000"
+    """Import returns 403 when trial_ends_at is in the past (non-admin); real JWT via /api/auth/login."""
+    schema = get_settings().DB_SCHEMA
+    uid = uuid.uuid4()
+    email = f"trial_expired_{uuid.uuid4().hex[:12]}@example.com"
+    password = "TrialExpiredTest123!"
+    pw_hash = hash_password(password)
     past = datetime(2020, 1, 1, tzinfo=timezone.utc)
 
-    def mock_get_db():
-        mock_sess = MagicMock()
-
-        def exec_side_effect(statement, params=None):
-            s = str(statement).lower()
-            m = MagicMock()
-            if "trial_ends_at" in s:
-                m.fetchone.return_value = (past,)
-            elif "email" in s and "users" in s:
-                m.fetchone.return_value = ("user@example.com",)
-            else:
-                m.fetchone.return_value = None
-            return m
-
-        mock_sess.execute.side_effect = exec_side_effect
-        yield mock_sess
-
-    app.dependency_overrides[get_db] = mock_get_db
     try:
-        with patch("app.routes.imports.ensure_dev_user_exists", lambda *a, **k: None):
-            async def _call():
-                async with httpx.AsyncClient(
-                    transport=httpx.ASGITransport(app=app),
-                    base_url="http://testserver",
-                ) as client:
-                    return await client.post(
-                        "/api/import-xlsx",
-                        headers={"X-User-Id": uid},
-                        data={"reportType": "sales"},
-                        files={
-                            "file": (
-                                "sales.xlsx",
-                                io_bytes_xlsx_placeholder(),
-                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            )
-                        },
-                    )
+        with SessionLocal() as db:
+            db.execute(text(f"SET search_path TO {schema}, public"))
+            db.add(User(id=uid, email=email, is_active=True))
+            db.add(
+                AuthIdentity(
+                    user_id=uid,
+                    provider=AuthProvider.EMAIL_PASSWORD,
+                    identifier=email,
+                    password_hash=pw_hash,
+                )
+            )
+            db.commit()
 
-            response = asyncio.run(_call())
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    f"UPDATE {schema}.users SET trial_ends_at = :t, plan = COALESCE(plan, 'trial') "
+                    f"WHERE id = CAST(:uid AS uuid)"
+                ),
+                {"t": past, "uid": str(uid)},
+            )
+
+        async def _login_and_import():
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+                lr = await client.post(
+                    "/api/auth/login",
+                    json={"email": email, "password": password},
+                )
+                assert lr.status_code == 200, lr.text
+                token = lr.json()["access_token"]
+                return await client.post(
+                    "/api/import-xlsx",
+                    headers={"Authorization": f"Bearer {token}"},
+                    data={"reportType": "sales"},
+                    files={
+                        "file": (
+                            "sales.xlsx",
+                            io_bytes_xlsx_placeholder(),
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        )
+                    },
+                )
+
+        response = asyncio.run(_login_and_import())
         assert response.status_code == 403
         assert "Trial expired" in (response.json().get("detail") or "")
     finally:
-        app.dependency_overrides.pop(get_db, None)
+        with engine.begin() as conn:
+            try:
+                conn.execute(
+                    text(
+                        f"DELETE FROM {schema}.refresh_tokens WHERE user_id = CAST(:uid AS uuid)"
+                    ),
+                    {"uid": str(uid)},
+                )
+            except Exception:
+                pass
+            conn.execute(
+                text(
+                    f"DELETE FROM {schema}.auth_identities WHERE user_id = CAST(:uid AS uuid)"
+                ),
+                {"uid": str(uid)},
+            )
+            conn.execute(
+                text(f"DELETE FROM {schema}.users WHERE id = CAST(:uid AS uuid)"),
+                {"uid": str(uid)},
+            )
 
 
 def io_bytes_xlsx_placeholder() -> bytes:

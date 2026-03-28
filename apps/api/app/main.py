@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from app.routes import shops, products, charts, auth, debug, kpi, imports, extra_expenses, sales, filters, admin, track
-from app.settings import get_settings
+from app.settings import get_settings, get_cors_origins
 from app.db import engine
 import logging
 from urllib.parse import urlparse
@@ -125,17 +125,11 @@ app = FastAPI(
     **docs_config
 )
 
-# CORS configuration
+# CORS: allow_origins from env CORS_ORIGINS (comma-separated) or defaults — app.settings.get_cors_origins()
+# allow_credentials=True required for cross-origin cookies (refresh_token) + Authorization from SPA
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://localhost:8080",
-        "http://127.0.0.1:8080",
-        "https://profiboard.uz",
-        "https://www.profiboard.uz",
-    ],
+    allow_origins=get_cors_origins(),
     allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],

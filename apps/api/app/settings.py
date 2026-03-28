@@ -1,5 +1,5 @@
 import os
-from typing import Optional
+from typing import List, Optional
 from dotenv import load_dotenv
 
 # Load .env.example first (defaults), then .env (overrides). If .env is missing, only .env.example is used.
@@ -53,8 +53,34 @@ class Settings:
     # OTP for phone verification (sha256(OTP_SECRET + code))
     OTP_SECRET: str = os.getenv("OTP_SECRET", "change-me-otp-secret-min-16-chars")
 
+    # Cross-subdomain refresh cookie (e.g. .profiboard.uz for api.* + app.*). Only used when prod cookie mode.
+    COOKIE_DOMAIN: str = os.getenv("COOKIE_DOMAIN", "").strip()
+
 
 _settings_instance: Optional[Settings] = None
+
+
+def _default_cors_origins() -> List[str]:
+    return [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "https://profiboard.uz",
+        "https://www.profiboard.uz",
+        "https://app.profiboard.uz",
+    ]
+
+
+def get_cors_origins() -> List[str]:
+    """
+    Comma-separated CORS_ORIGINS; if unset, default list (localhost + profiboard).
+    Production: set e.g. CORS_ORIGINS=https://app.profiboard.uz,https://profiboard.uz
+    """
+    raw = (os.getenv("CORS_ORIGINS") or "").strip()
+    if not raw:
+        return _default_cors_origins()
+    return [x.strip() for x in raw.split(",") if x.strip()]
 
 
 def get_settings() -> Settings:

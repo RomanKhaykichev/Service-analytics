@@ -39,4 +39,13 @@ echo "Migrations completed successfully!"
 echo "=========================================="
 echo "Starting API server..."
 echo "=========================================="
-exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+# Behind nginx/Cloudflare: --proxy-headers + --forwarded-allow-ips so request.url/scheme see HTTPS.
+# FORWARDED_ALLOW_IPS: comma-separated; default loopback + RFC1918 (Docker bridge). Set to * only on isolated networks.
+UVICORN_PROXY_HEADERS="${UVICORN_PROXY_HEADERS:-1}"
+FORWARDED_ALLOW_IPS="${FORWARDED_ALLOW_IPS:-127.0.0.1,172.16.0.0/12,10.0.0.0/8}"
+if [ "$UVICORN_PROXY_HEADERS" = "1" ] || [ "$UVICORN_PROXY_HEADERS" = "true" ] || [ "$UVICORN_PROXY_HEADERS" = "yes" ]; then
+  echo "Uvicorn: --proxy-headers --forwarded-allow-ips=$FORWARDED_ALLOW_IPS"
+  exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips "$FORWARDED_ALLOW_IPS"
+else
+  exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+fi

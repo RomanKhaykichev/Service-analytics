@@ -54,6 +54,40 @@ from app.auth import (
 router = APIRouter()
 
 
+def _is_prod_cookie_mode(settings) -> bool:
+    """Same idea as deps._is_production_env: secure / SameSite=None for real deployments."""
+    if (getattr(settings, "ENV", "") or "").strip().lower() == "prod":
+        return True
+    return (settings.APP_ENV or "").lower() == "prod"
+
+
+def _set_refresh_token_cookie(response: Response, refresh_token: str, settings) -> None:
+    """HttpOnly refresh cookie; optional COOKIE_DOMAIN in prod (e.g. .profiboard.uz for Pages + API)."""
+    is_prod = _is_prod_cookie_mode(settings)
+    max_age = settings.REFRESH_TTL_DAYS * 24 * 60 * 60
+    kwargs = {
+        "key": "refresh_token",
+        "value": refresh_token,
+        "httponly": True,
+        "secure": is_prod,
+        "samesite": "none" if is_prod else "lax",
+        "max_age": max_age,
+        "path": "/api/auth",
+    }
+    domain = (getattr(settings, "COOKIE_DOMAIN", None) or "").strip()
+    if is_prod and domain:
+        kwargs["domain"] = domain
+    response.set_cookie(**kwargs)  # type: ignore[arg-type]
+
+
+def _delete_refresh_token_cookie(response: Response, settings) -> None:
+    kwargs = {"key": "refresh_token", "path": "/api/auth"}
+    domain = (getattr(settings, "COOKIE_DOMAIN", None) or "").strip()
+    if _is_prod_cookie_mode(settings) and domain:
+        kwargs["domain"] = domain
+    response.delete_cookie(**kwargs)
+
+
 def _enrich_user_trial_info(resp: UserResponse, user_id: UUID, db: Session) -> None:
   """
   Fill plan / trial_ends_at / trial_days_left for current user
@@ -229,17 +263,7 @@ def _issue_auth_response(user: User, db: Session, response: Response) -> AuthRes
     user_resp.is_admin = is_user_admin(user.id, db)
     _enrich_user_trial_info(user_resp, user.id, db)
     try:
-        cookie_secure = settings.APP_ENV == "prod"
-        cookie_samesite = "none" if settings.APP_ENV == "prod" else "lax"
-        response.set_cookie(
-            key="refresh_token",
-            value=refresh_token,
-            httponly=True,
-            secure=cookie_secure,
-            samesite=cookie_samesite,  # type: ignore[arg-type]
-            max_age=settings.REFRESH_TTL_DAYS * 24 * 60 * 60,
-            path="/api/auth",
-        )
+        _set_refresh_token_cookie(response, refresh_token, settings)
     except Exception as e:
         logger.warning("Failed to set refresh_token cookie: %s", e)
     return AuthResponse(
@@ -482,18 +506,7 @@ async def login(
     # Set refresh token as HttpOnly cookie for secure storage in browser
     try:
         settings = get_settings()
-        cookie_secure = settings.APP_ENV == "prod"
-        # Для Cloudflare / отдельного фронта используем SameSite=None; для dev можно Lax
-        cookie_samesite = "none" if settings.APP_ENV == "prod" else "lax"
-        response.set_cookie(
-            key="refresh_token",
-            value=refresh_token,
-            httponly=True,
-            secure=cookie_secure,
-            samesite=cookie_samesite,  # type: ignore[arg-type]
-            max_age=settings.REFRESH_TTL_DAYS * 24 * 60 * 60,
-            path="/api/auth",
-        )
+        _set_refresh_token_cookie(response, refresh_token, settings)
     except Exception as e:
         logger.warning("Failed to set refresh_token cookie: %s", e)
     return AuthResponse(
@@ -569,7 +582,7 @@ async def refresh(
                     db.commit()
             except Exception:
                 db.rollback()
-            response.delete_cookie(key="refresh_token", path="/api/auth")
+            _delete_refresh_token_cookie(response, get_settings())
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User is inactive"
@@ -633,17 +646,7 @@ async def refresh(
         # Обновляем HttpOnly cookie с новым refresh-токеном
         try:
             settings = get_settings()
-            cookie_secure = settings.APP_ENV == "prod"
-            cookie_samesite = "none" if settings.APP_ENV == "prod" else "lax"
-            response.set_cookie(
-                key="refresh_token",
-                value=new_refresh_token,
-                httponly=True,
-                secure=cookie_secure,
-                samesite=cookie_samesite,  # type: ignore[arg-type]
-                max_age=settings.REFRESH_TTL_DAYS * 24 * 60 * 60,
-                path="/api/auth",
-            )
+            _set_refresh_token_cookie(response, new_refresh_token, settings)
         except Exception as e:
             logger.warning("Failed to refresh refresh_token cookie: %s", e)
 
@@ -676,7 +679,7 @@ async def logout(
     raw_refresh_token: str | None = request.cookies.get("refresh_token") or request_data.refresh_token
     if not raw_refresh_token:
         # Даже если токена нет, всё равно чистим cookie и возвращаем успех
-        response.delete_cookie(key="refresh_token", path="/api/auth")
+        _delete_refresh_token_cookie(response, get_settings())
         return {"message": "Logged out successfully"}
 
     refresh_token_hash = hash_token(raw_refresh_token)
@@ -694,7 +697,7 @@ async def logout(
 
     # Удаляем refresh_token cookie в браузере
     try:
-        response.delete_cookie(key="refresh_token", path="/api/auth")
+        _delete_refresh_token_cookie(response, get_settings())
     except Exception as e:
         logger.warning("Failed to delete refresh_token cookie: %s", e)
 
