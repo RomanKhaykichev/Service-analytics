@@ -53,6 +53,10 @@ Frontend будет доступен по адресу: http://localhost:8080
 - `npm run lint` - проверка кода линтером
 - `npm run preview` - предпросмотр production сборки
 
+### Cloudflare Pages
+
+Сборка на Pages выполняется через **npm** (каталог проекта: `apps/web`). Команды: `npm ci` и `npm run build`. **Bun в CI не используется** — не коммитьте `bun.lockb` в `apps/web`, иначе инструменты вроде `bun install --frozen-lockfile` могут ломать деплой.
+
 ## Backend API (apps/api)
 
 Backend API на FastAPI размещен в `apps/api`.
