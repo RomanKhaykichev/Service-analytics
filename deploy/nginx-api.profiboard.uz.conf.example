@@ -1,0 +1,35 @@
+# Example: TLS терминация на Cloudflare или на этом хосте (certbot).
+# Прокси на uvicorn/Gunicorn на 127.0.0.1:8000.
+# Скопируйте в sites-enabled и подставьте пути к сертификатам при локальном TLS.
+
+upstream service_analytics_api {
+    server 127.0.0.1:8000;
+    keepalive 32;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name api.profiboard.uz;
+
+    # ssl_certificate /etc/letsencrypt/live/api.profiboard.uz/fullchain.pem;
+    # ssl_certificate_key /etc/letsencrypt/live/api.profiboard.uz/privkey.pem;
+
+    client_max_body_size 50m;
+
+    location / {
+        proxy_pass http://service_analytics_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+}
+
+# WebSocket: FastAPI/Starlette обычно не требуют отдельного upgrade для REST;
+# если появятся WS-роуты, добавьте:
+# proxy_set_header Upgrade $http_upgrade;
+# proxy_set_header Connection "upgrade";

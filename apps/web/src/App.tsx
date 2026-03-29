@@ -15,6 +15,7 @@ import Competitors from "./pages/Competitors";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Support from "./pages/Support";
+import Training from "./pages/Training";
 import Admin from "./pages/Admin";
 import Landing from "./pages/Landing";
 import NotFound from "./pages/NotFound";
@@ -70,6 +71,11 @@ const App = () => (
             <Route path="/support" element={
               <ProtectedRoute>
                 <Support />
+              </ProtectedRoute>
+            } />
+            <Route path="/training" element={
+              <ProtectedRoute>
+                <Training />
               </ProtectedRoute>
             } />
             <Route path="/admin" element={

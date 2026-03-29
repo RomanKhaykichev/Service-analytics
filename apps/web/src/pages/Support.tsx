@@ -1,11 +1,10 @@
-import { Search, HelpCircle, FileText, MessageCircle, CheckCircle, Clock, AlertCircle, ExternalLink } from "lucide-react";
+import { HelpCircle, MessageCircle, ArrowLeft } from "lucide-react";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { Breadcrumb } from "@/components/shared/Breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -20,257 +19,202 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useLanguage } from "@/contexts/LanguageContext";
 
-const faqItems = [
+const faqItemsRu = [
   {
-    question: "Как подключить UZUM API?",
+    question: "Как загрузить отчёты в PROFiboard?",
     answer:
-      "Перейдите в Настройки → Интеграции и введите ваш API ключ от UZUM Marketplace. После подключения данные начнут синхронизироваться автоматически.",
+      "Нажмите кнопку загрузки отчётов в шапке панели. Доступны типы: продажи (sells-report), склад (seller-storage-report), затраты (expenses-report), left-out и другие шаблоны. Нужны файлы XLSX в ожидаемом формате — после успешной загрузки данные появятся на сводке и в разделах аналитики.",
   },
   {
-    question: "Как часто обновляются данные?",
+    question: "Чем пробный тариф отличается от платного?",
     answer:
-      "Данные о продажах и заказах обновляются каждые 15 минут. Данные о ценах конкурентов — каждый час. Отзывы — раз в сутки.",
+      "На пробном тарифе число магазинов ограничено тарифом, а в расчётах учитываются данные не глубже последних 60 дней из загруженных отчётов. Чтобы снять ограничения, оформите платный план в меню аккаунта («Продлить тариф»).",
   },
   {
-    question: "Можно ли экспортировать данные в Excel?",
+    question: "Где посмотреть видеоинструкции?",
     answer:
-      "Да, вы можете экспортировать любые таблицы и отчёты в форматах CSV и XLSX. Нажмите кнопку 'Экспорт' в правом верхнем углу любой таблицы.",
+      "В меню «Помощь» выберите «Видео-уроки» или откройте раздел «Обучение»: ролики по импорту отчётов и по вкладке «Сводка».",
   },
   {
-    question: "Как настроить уведомления о ценах?",
+    question: "Как сменить язык интерфейса?",
     answer:
-      "Перейдите в Настройки → Уведомления и установите пороговые значения для изменения цен. Вы получите уведомление при превышении порога.",
+      "Нажмите на своё имя в шапке → пункт «Язык» и выберите русский или узбекский.",
   },
   {
-    question: "Поддерживается ли мобильная версия?",
+    question: "После загрузки файла данные не обновились — что проверить?",
     answer:
-      "Да, платформа полностью адаптирована для мобильных устройств. Вы можете использовать все функции с телефона или планшета.",
+      "Обновите страницу. Убедитесь, что файл соответствует типу отчёта и шаблону. Текст ошибки, если загрузка не прошла, показывается в окне загрузки отчётов.",
   },
 ];
 
-const guides = [
-  { title: "Начало работы", description: "Базовое руководство по платформе", icon: "🚀" },
-  { title: "Анализ продаж", description: "Как читать графики и метрики", icon: "📊" },
-  { title: "Работа с отчётами", description: "Создание и экспорт отчётов", icon: "📄" },
-  { title: "Мониторинг конкурентов", description: "Настройка отслеживания", icon: "🎯" },
+const faqItemsUz = [
+  {
+    question: "PROFiboardga hisobotlarni qanday yuklash mumkin?",
+    answer:
+      "Panel sarlavhasidagi hisobot yuklash tugmasini bosing. Mavjud turlar: sotuvlar (sells-report), ombor (seller-storage-report), xarajatlar (expenses-report), left-out va boshqa shablonlar. Kutilgan formatdagi XLSX fayllar kerak — muvaffaqiyatli yuklangandan keyin maʼlumotlar svodka va tahlil bo‘limlarida paydo bo‘ladi.",
+  },
+  {
+    question: "Sinov tarifi to‘lovli tarifdan qanday farq qiladi?",
+    answer:
+      "Sinovda do‘konlar soni tarifga qarab cheklangan, hisoblarda esa yuklangan hisobotlardan oxirgi 60 kun maʼlumoti hisobga olinadi. Cheklovlarni yechish uchun akkaunt menyusida «Tarif rejani yangilash» orqali pullik rejani rasmiylashtiring.",
+  },
+  {
+    question: "Video qo‘llanmalarni qayerdan ko‘rish mumkin?",
+    answer:
+      "«Yordam» menyusida «Video-darsliklar»ni tanlang yoki «O‘qitish» bo‘limini oching: hisobot importi va «Svodka» varag‘i bo‘yicha rolliklar.",
+  },
+  {
+    question: "Interfeys tilini qanday almashtirish mumkin?",
+    answer:
+      "Sarlavhadagi ismingizni bosing → «Til» bandi, keyin rus yoki o‘zbek tilini tanlang.",
+  },
+  {
+    question: "Fayl yuklangandan keyin maʼlumotlar yangilanmadi — nima tekshirish kerak?",
+    answer:
+      "Sahifani yangilang. Fayl hisobot turi va shablonga mos kelishini tekshiring. Yuklash muvaffaqiyatsiz bo‘lsa, xato matni hisobot yuklash oynasida ko‘rsatiladi.",
+  },
 ];
-
-const systemStatus = {
-  overall: "operational",
-  uptime: "99.98%",
-  lastIncident: "15 дней назад",
-  services: [
-    { name: "API", status: "operational" },
-    { name: "Дашборд", status: "operational" },
-    { name: "Синхронизация данных", status: "operational" },
-    { name: "Отчёты", status: "operational" },
-  ],
-};
 
 const Support = () => {
+  const { t, language } = useLanguage();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get("tab") === "contact" ? "contact" : "help";
+  const faqItems = language === "uz" ? faqItemsUz : faqItemsRu;
+
+  const setTab = (value: string) => {
+    if (value === "contact") {
+      setSearchParams({ tab: "contact" });
+    } else {
+      setSearchParams({});
+    }
+  };
+
   return (
     <MainLayout>
-      <Breadcrumb items={[{ label: "Поддержка" }]} />
-
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-foreground">Центр поддержки</h1>
-        <p className="text-muted-foreground">
-          Ответы на вопросы и помощь по работе с платформой
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-foreground">{t("support.title")}</h1>
+          <p className="text-muted-foreground mt-1 max-w-3xl">{t("support.subtitle")}</p>
+        </div>
+        <Button
+          type="button"
+          variant="default"
+          size="sm"
+          className="shrink-0 self-end sm:self-start gap-2"
+          onClick={() => navigate("/")}
+        >
+          <ArrowLeft className="w-4 h-4" />
+          {t("learning.back")}
+        </Button>
       </div>
 
-      {/* Search */}
-      <div className="relative mb-8 max-w-xl">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-        <Input
-          placeholder="Поиск в справке..."
-          className="pl-12 h-12 text-base bg-card"
-        />
-      </div>
-
-      <Tabs defaultValue="help" className="space-y-6">
+      <Tabs value={tab} onValueChange={setTab} className="space-y-6">
         <TabsList className="bg-muted/50">
           <TabsTrigger value="help" className="gap-2">
             <HelpCircle className="w-4 h-4" />
-            Справка
+            {t("support.tabHelp")}
           </TabsTrigger>
           <TabsTrigger value="contact" className="gap-2">
             <MessageCircle className="w-4 h-4" />
-            Связаться
-          </TabsTrigger>
-          <TabsTrigger value="status" className="gap-2">
-            <CheckCircle className="w-4 h-4" />
-            Статус
+            {t("support.tabContact")}
           </TabsTrigger>
         </TabsList>
 
-        {/* Help Tab */}
         <TabsContent value="help">
-          <div className="grid lg:grid-cols-3 gap-6">
-            {/* FAQ */}
-            <div className="lg:col-span-2 chart-container">
-              <h3 className="font-semibold text-foreground mb-4">
-                Частые вопросы
-              </h3>
-              <Accordion type="single" collapsible className="space-y-2">
-                {faqItems.map((item, index) => (
-                  <AccordionItem
-                    key={index}
-                    value={`item-${index}`}
-                    className="border border-border rounded-lg px-4"
-                  >
-                    <AccordionTrigger className="text-left hover:no-underline py-4">
-                      {item.question}
-                    </AccordionTrigger>
-                    <AccordionContent className="text-muted-foreground pb-4">
-                      {item.answer}
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
-            </div>
-
-            {/* Guides */}
-            <div className="chart-container">
-              <h3 className="font-semibold text-foreground mb-4">Руководства</h3>
-              <div className="space-y-3">
-                {guides.map((guide, index) => (
-                  <button
-                    key={index}
-                    className="w-full p-3 rounded-lg border border-border bg-muted/30 hover:bg-muted/50 transition-colors text-left flex items-start gap-3"
-                  >
-                    <span className="text-2xl">{guide.icon}</span>
-                    <div>
-                      <p className="font-medium text-foreground">{guide.title}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {guide.description}
-                      </p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-              <Button variant="outline" className="w-full mt-4">
-                Все руководства
-                <ExternalLink className="w-4 h-4 ml-2" />
-              </Button>
-            </div>
+          <div className="chart-container max-w-3xl">
+            <h3 className="font-semibold text-foreground mb-4">{t("support.faqHeading")}</h3>
+            <Accordion type="single" collapsible className="space-y-2">
+              {faqItems.map((item, index) => (
+                <AccordionItem
+                  key={index}
+                  value={`item-${index}`}
+                  className="border border-border rounded-lg px-4"
+                >
+                  <AccordionTrigger className="text-left hover:no-underline py-4">
+                    {item.question}
+                  </AccordionTrigger>
+                  <AccordionContent className="text-muted-foreground pb-4">
+                    {item.answer}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
           </div>
         </TabsContent>
 
-        {/* Contact Tab */}
         <TabsContent value="contact">
           <div className="max-w-2xl chart-container">
-            <h3 className="font-semibold text-foreground mb-4">
-              Создать тикет
-            </h3>
+            <h3 className="font-semibold text-foreground mb-4">{t("support.contactFormTitle")}</h3>
             <form className="space-y-4">
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="subject">Тема</Label>
-                  <Input id="subject" placeholder="Опишите проблему кратко" />
+                  <Label htmlFor="subject">{t("support.fieldSubject")}</Label>
+                  <Input id="subject" placeholder={t("support.fieldSubjectPh")} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="priority">Приоритет</Label>
+                  <Label htmlFor="priority">{t("support.fieldPriority")}</Label>
                   <Select defaultValue="medium">
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="low">Низкий</SelectItem>
-                      <SelectItem value="medium">Средний</SelectItem>
-                      <SelectItem value="high">Высокий</SelectItem>
-                      <SelectItem value="critical">Критический</SelectItem>
+                      <SelectItem value="low">{t("support.priorityLow")}</SelectItem>
+                      <SelectItem value="medium">{t("support.priorityMedium")}</SelectItem>
+                      <SelectItem value="high">{t("support.priorityHigh")}</SelectItem>
+                      <SelectItem value="critical">{t("support.priorityCritical")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="category">Категория</Label>
+                <Label htmlFor="category">{t("support.fieldCategory")}</Label>
                 <Select defaultValue="technical">
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="technical">Техническая проблема</SelectItem>
-                    <SelectItem value="billing">Оплата и подписка</SelectItem>
-                    <SelectItem value="feature">Запрос функции</SelectItem>
-                    <SelectItem value="data">Данные и отчёты</SelectItem>
-                    <SelectItem value="other">Другое</SelectItem>
+                    <SelectItem value="technical">{t("support.catTechnical")}</SelectItem>
+                    <SelectItem value="billing">{t("support.catBilling")}</SelectItem>
+                    <SelectItem value="feature">{t("support.catFeature")}</SelectItem>
+                    <SelectItem value="data">{t("support.catData")}</SelectItem>
+                    <SelectItem value="other">{t("support.catOther")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description">Описание</Label>
+                <Label htmlFor="description">{t("support.fieldDescription")}</Label>
                 <Textarea
                   id="description"
-                  placeholder="Подробно опишите вашу проблему или вопрос..."
+                  placeholder={t("support.fieldDescriptionPh")}
                   rows={5}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label>Вложения</Label>
+                <Label>{t("support.fieldAttachments")}</Label>
                 <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
                   <p className="text-muted-foreground">
-                    Перетащите файлы сюда или{" "}
-                    <button className="text-primary underline">выберите</button>
+                    {t("support.attachmentsHint")}{" "}
+                    <button type="button" className="text-primary underline">
+                      {t("support.attachmentsChoose")}
+                    </button>
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    PNG, JPG, PDF до 10MB
-                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">{t("support.attachmentsLimit")}</p>
                 </div>
               </div>
 
               <div className="flex justify-end gap-3">
-                <Button variant="outline">Отмена</Button>
-                <Button>Отправить тикет</Button>
+                <Button type="button" variant="outline">
+                  {t("support.cancel")}
+                </Button>
+                <Button type="button">{t("support.submitTicket")}</Button>
               </div>
             </form>
-          </div>
-        </TabsContent>
-
-        {/* Status Tab */}
-        <TabsContent value="status">
-          <div className="chart-container max-w-2xl">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full bg-success animate-pulse" />
-                <h3 className="font-semibold text-foreground">
-                  Все системы работают нормально
-                </h3>
-              </div>
-              <Badge className="bg-success/10 text-success">Uptime {systemStatus.uptime}</Badge>
-            </div>
-
-            <div className="space-y-3 mb-6">
-              {systemStatus.services.map((service, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between p-3 rounded-lg border border-border"
-                >
-                  <span className="font-medium text-foreground">{service.name}</span>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-success" />
-                    <span className="text-sm text-success">Работает</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="p-4 rounded-lg bg-muted/30 border border-border">
-              <div className="flex items-center gap-2 mb-2">
-                <Clock className="w-4 h-4 text-muted-foreground" />
-                <span className="text-sm font-medium text-foreground">
-                  Последний инцидент
-                </span>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                {systemStatus.lastIncident} — Плановое обслуживание (30 минут)
-              </p>
-            </div>
           </div>
         </TabsContent>
       </Tabs>

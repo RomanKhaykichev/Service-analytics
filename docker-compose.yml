@@ -42,23 +42,32 @@ services:
       DEFAULT_DEV_USER_ID: ${DEFAULT_DEV_USER_ID:-00000000-0000-0000-0000-000000000001}
       # JWT (use strong secrets in production!)
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production-secret-key-min-32-chars}
+      # Uvicorn: trust X-Forwarded-Proto/For from nginx on host (127.0.0.1) + Docker networks
+      UVICORN_PROXY_HEADERS: ${UVICORN_PROXY_HEADERS:-1}
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1,172.16.0.0/12,10.0.0.0/8}
     ports:
-      - "8000:8000"
+      # Only localhost on the host — nginx on the same machine proxies to 127.0.0.1:8000
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 30s
       timeout: 10s
       start_period: 40s
       retries: 3
     restart: unless-stopped
+    volumes:
+      # Excel uploads from imports.py resolve to /apps/api/uploads in the container (see runbook)
+      - api_uploads:/apps/api/uploads
     networks:
       - service-analytics-network
 
 volumes:
   pgdata:
+    driver: local
+  api_uploads:
     driver: local
 
 networks:

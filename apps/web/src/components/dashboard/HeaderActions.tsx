@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { HelpCircle, User, ChevronDown, LogOut, CreditCard, Globe, PlayCircle, MessageCircle, HelpCircle as FAQ, ShieldCheck } from "lucide-react";
+import { HelpCircle, User, ChevronDown, LogOut, CreditCard, Globe, PlayCircle, MessageCircle, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -98,13 +98,17 @@ export function HeaderActions() {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56 bg-card border-border">
           <DropdownMenuLabel>{t('header.help')}</DropdownMenuLabel>
-          <DropdownMenuItem className="cursor-pointer">
-            <PlayCircle className="w-4 h-4 mr-2" />
-            {t('header.videoTutorials')}
+          <DropdownMenuItem className="cursor-pointer" asChild>
+            <Link to="/training">
+              <PlayCircle className="w-4 h-4 mr-2" />
+              {t("header.videoTutorials")}
+            </Link>
           </DropdownMenuItem>
-          <DropdownMenuItem className="cursor-pointer">
-            <MessageCircle className="w-4 h-4 mr-2" />
-            {t('header.support')}
+          <DropdownMenuItem className="cursor-pointer" asChild>
+            <Link to="/support?tab=contact">
+              <MessageCircle className="w-4 h-4 mr-2" />
+              {t("header.support")}
+            </Link>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

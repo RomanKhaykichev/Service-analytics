@@ -7,6 +7,7 @@ import {
   Users,
   FileText,
   Settings,
+  GraduationCap,
   HelpCircle,
   ChevronLeft,
   ChevronRight,
@@ -23,6 +24,7 @@ const navItemsData = [
   { icon: Users, labelKey: "nav.competitors", path: "/competitors" },
   { icon: FileText, labelKey: "nav.reports", path: "/reports" },
   { icon: Settings, labelKey: "nav.dashboard", path: "/settings" },
+  { icon: GraduationCap, labelKey: "nav.training", path: "/training" },
   { icon: HelpCircle, labelKey: "nav.support", path: "/support" },
 ];
 
