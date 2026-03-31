@@ -22,19 +22,34 @@ SCHEMA = "app"
 
 def upgrade() -> None:
     op.execute(text(f"""
-        CREATE TABLE IF NOT EXISTS {SCHEMA}.import_file_attempts (
-            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-            upload_batch_id uuid NOT NULL REFERENCES {SCHEMA}.upload_batch(upload_batch_id) ON DELETE CASCADE,
-            file_type varchar(50) NOT NULL,
-            status varchar(20) NOT NULL,
-            created_at timestamptz NOT NULL DEFAULT now()
-        )
+        DO $$
+        BEGIN
+            IF to_regclass('{SCHEMA}.upload_batch') IS NOT NULL THEN
+                CREATE TABLE IF NOT EXISTS {SCHEMA}.import_file_attempts (
+                    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                    upload_batch_id uuid NOT NULL REFERENCES {SCHEMA}.upload_batch(upload_batch_id) ON DELETE CASCADE,
+                    file_type varchar(50) NOT NULL,
+                    status varchar(20) NOT NULL,
+                    created_at timestamptz NOT NULL DEFAULT now()
+                );
+            END IF;
+        END $$;
     """))
     op.execute(text(f"""
-        CREATE INDEX IF NOT EXISTS ix_import_file_attempts_created_at ON {SCHEMA}.import_file_attempts (created_at)
+        DO $$
+        BEGIN
+            IF to_regclass('{SCHEMA}.import_file_attempts') IS NOT NULL THEN
+                CREATE INDEX IF NOT EXISTS ix_import_file_attempts_created_at ON {SCHEMA}.import_file_attempts (created_at);
+            END IF;
+        END $$;
     """))
     op.execute(text(f"""
-        CREATE INDEX IF NOT EXISTS ix_import_file_attempts_upload_batch_id ON {SCHEMA}.import_file_attempts (upload_batch_id)
+        DO $$
+        BEGIN
+            IF to_regclass('{SCHEMA}.import_file_attempts') IS NOT NULL THEN
+                CREATE INDEX IF NOT EXISTS ix_import_file_attempts_upload_batch_id ON {SCHEMA}.import_file_attempts (upload_batch_id);
+            END IF;
+        END $$;
     """))
 
 

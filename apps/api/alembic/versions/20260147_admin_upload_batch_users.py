@@ -23,15 +23,30 @@ SCHEMA = "app"
 
 def upgrade() -> None:
     op.execute(text(f"""
-        ALTER TABLE {SCHEMA}.upload_batch
-        ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now()
+        DO $$
+        BEGIN
+            IF to_regclass('{SCHEMA}.upload_batch') IS NOT NULL THEN
+                ALTER TABLE {SCHEMA}.upload_batch
+                ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+            END IF;
+        END $$;
     """))
     op.execute(text(f"""
-        ALTER TABLE {SCHEMA}.upload_batch
-        ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()
+        DO $$
+        BEGIN
+            IF to_regclass('{SCHEMA}.upload_batch') IS NOT NULL THEN
+                ALTER TABLE {SCHEMA}.upload_batch
+                ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+            END IF;
+        END $$;
     """))
     op.execute(text(f"""
-        CREATE INDEX IF NOT EXISTS ix_upload_batch_created_at ON {SCHEMA}.upload_batch (created_at)
+        DO $$
+        BEGIN
+            IF to_regclass('{SCHEMA}.upload_batch') IS NOT NULL THEN
+                CREATE INDEX IF NOT EXISTS ix_upload_batch_created_at ON {SCHEMA}.upload_batch (created_at);
+            END IF;
+        END $$;
     """))
     op.execute(text(f"""
         ALTER TABLE {SCHEMA}.users
@@ -48,9 +63,16 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(text(f"ALTER TABLE {SCHEMA}.upload_batch DROP COLUMN IF EXISTS updated_at"))
-    op.execute(text(f"ALTER TABLE {SCHEMA}.upload_batch DROP COLUMN IF EXISTS created_at"))
-    op.execute(text(f"DROP INDEX IF EXISTS {SCHEMA}.ix_upload_batch_created_at"))
+    op.execute(text(f"""
+        DO $$
+        BEGIN
+            IF to_regclass('{SCHEMA}.upload_batch') IS NOT NULL THEN
+                ALTER TABLE {SCHEMA}.upload_batch DROP COLUMN IF EXISTS updated_at;
+                ALTER TABLE {SCHEMA}.upload_batch DROP COLUMN IF EXISTS created_at;
+                DROP INDEX IF EXISTS {SCHEMA}.ix_upload_batch_created_at;
+            END IF;
+        END $$;
+    """))
     op.execute(text(f"ALTER TABLE {SCHEMA}.users DROP COLUMN IF EXISTS admin_notes"))
     op.execute(text(f"ALTER TABLE {SCHEMA}.users DROP COLUMN IF EXISTS trial_ends_at"))
     op.execute(text(f"ALTER TABLE {SCHEMA}.users DROP COLUMN IF EXISTS plan"))

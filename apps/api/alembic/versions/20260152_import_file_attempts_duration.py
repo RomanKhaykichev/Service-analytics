@@ -20,13 +20,23 @@ SCHEMA = "app"
 
 def upgrade() -> None:
     op.execute(text(f"""
-        ALTER TABLE {SCHEMA}.import_file_attempts
-        ADD COLUMN IF NOT EXISTS duration_seconds numeric NULL
+        DO $$
+        BEGIN
+            IF to_regclass('{SCHEMA}.import_file_attempts') IS NOT NULL THEN
+                ALTER TABLE {SCHEMA}.import_file_attempts
+                ADD COLUMN IF NOT EXISTS duration_seconds numeric NULL;
+            END IF;
+        END $$;
     """))
 
 
 def downgrade() -> None:
     op.execute(text(f"""
-        ALTER TABLE {SCHEMA}.import_file_attempts
-        DROP COLUMN IF EXISTS duration_seconds
+        DO $$
+        BEGIN
+            IF to_regclass('{SCHEMA}.import_file_attempts') IS NOT NULL THEN
+                ALTER TABLE {SCHEMA}.import_file_attempts
+                DROP COLUMN IF EXISTS duration_seconds;
+            END IF;
+        END $$;
     """))
