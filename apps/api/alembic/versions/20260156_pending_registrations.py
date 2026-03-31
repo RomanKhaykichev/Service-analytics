@@ -51,6 +51,23 @@ def upgrade() -> None:
             """
         )
     )
+    # Backward-compatible cleanup: if verification_codes already contains
+    # pending_id values that do not exist in pending_registrations,
+    # null them before adding FK to avoid upgrade failure on existing DBs.
+    op.execute(
+        text(
+            f"""
+            UPDATE {SCHEMA}.verification_codes vc
+            SET pending_id = NULL
+            WHERE pending_id IS NOT NULL
+              AND NOT EXISTS (
+                SELECT 1
+                FROM {SCHEMA}.pending_registrations pr
+                WHERE pr.id = vc.pending_id
+              )
+            """
+        )
+    )
     op.execute(
         text(
             f"""
