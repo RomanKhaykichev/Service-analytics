@@ -99,6 +99,28 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # Ensure Alembic version table can store long revision IDs.
+        # Default Alembic bootstrap may create varchar(32), which is too short
+        # for IDs like "20260127_ensure_manual_expenses_schema".
+        connection.execute(sa_text(f"CREATE SCHEMA IF NOT EXISTS {settings.DB_SCHEMA}"))
+        connection.execute(
+            sa_text(
+                f"""
+                CREATE TABLE IF NOT EXISTS {settings.DB_SCHEMA}.alembic_version (
+                    version_num varchar(255) NOT NULL,
+                    CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)
+                )
+                """
+            )
+        )
+        connection.execute(
+            sa_text(
+                f"""
+                ALTER TABLE {settings.DB_SCHEMA}.alembic_version
+                ALTER COLUMN version_num TYPE varchar(255)
+                """
+            )
+        )
         # Set schema for operations
         connection.execute(sa_text(f"SET search_path TO {settings.DB_SCHEMA}, public"))
         context.configure(
