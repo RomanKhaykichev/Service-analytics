@@ -30,29 +30,51 @@ def upgrade() -> None:
     op.execute(
         text(
             f"""
-            ALTER TABLE {SCHEMA}.{TABLE} ADD COLUMN IF NOT EXISTS barcode_norm text;
+            DO $$
+            BEGIN
+                IF to_regclass('{SCHEMA}.{TABLE}') IS NOT NULL THEN
+                    ALTER TABLE {SCHEMA}.{TABLE} ADD COLUMN IF NOT EXISTS barcode_norm text;
+                END IF;
+            END $$;
             """
         )
     )
     op.execute(
         text(
             f"""
-            UPDATE {SCHEMA}.{TABLE}
-            SET barcode_norm = {BARCODE_NORM_EXPR}
-            WHERE barcode_norm IS NULL AND barcode IS NOT NULL;
+            DO $$
+            BEGIN
+                IF to_regclass('{SCHEMA}.{TABLE}') IS NOT NULL THEN
+                    UPDATE {SCHEMA}.{TABLE}
+                    SET barcode_norm = {BARCODE_NORM_EXPR}
+                    WHERE barcode_norm IS NULL AND barcode IS NOT NULL;
+                END IF;
+            END $$;
             """
         )
     )
     op.execute(
         text(
             f"""
-            CREATE INDEX IF NOT EXISTS {INDEX_NAME}
-            ON {SCHEMA}.{TABLE} (user_id, barcode_norm);
+            DO $$
+            BEGIN
+                IF to_regclass('{SCHEMA}.{TABLE}') IS NOT NULL THEN
+                    CREATE INDEX IF NOT EXISTS {INDEX_NAME}
+                    ON {SCHEMA}.{TABLE} (user_id, barcode_norm);
+                END IF;
+            END $$;
             """
         )
     )
 
 
 def downgrade() -> None:
-    op.execute(text(f"DROP INDEX IF EXISTS {SCHEMA}.{INDEX_NAME};"))
-    op.execute(text(f"ALTER TABLE {SCHEMA}.{TABLE} DROP COLUMN IF EXISTS barcode_norm;"))
+    op.execute(text(f"""
+        DO $$
+        BEGIN
+            IF to_regclass('{SCHEMA}.{TABLE}') IS NOT NULL THEN
+                DROP INDEX IF EXISTS {SCHEMA}.{INDEX_NAME};
+                ALTER TABLE {SCHEMA}.{TABLE} DROP COLUMN IF EXISTS barcode_norm;
+            END IF;
+        END $$;
+    """))

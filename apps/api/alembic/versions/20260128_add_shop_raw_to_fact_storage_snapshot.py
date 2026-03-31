@@ -26,8 +26,13 @@ def upgrade() -> None:
     op.execute(
         text(
             f"""
-            ALTER TABLE {TABLE_SCHEMA}.{TABLE_NAME}
-            ADD COLUMN IF NOT EXISTS shop_raw text;
+            DO $$
+            BEGIN
+                IF to_regclass('{TABLE_SCHEMA}.{TABLE_NAME}') IS NOT NULL THEN
+                    ALTER TABLE {TABLE_SCHEMA}.{TABLE_NAME}
+                    ADD COLUMN IF NOT EXISTS shop_raw text;
+                END IF;
+            END $$;
             """
         )
     )
@@ -37,7 +42,12 @@ def downgrade() -> None:
     op.execute(
         text(
             f"""
-            ALTER TABLE {TABLE_SCHEMA}.{TABLE_NAME} DROP COLUMN IF EXISTS shop_raw;
+            DO $$
+            BEGIN
+                IF to_regclass('{TABLE_SCHEMA}.{TABLE_NAME}') IS NOT NULL THEN
+                    ALTER TABLE {TABLE_SCHEMA}.{TABLE_NAME} DROP COLUMN IF EXISTS shop_raw;
+                END IF;
+            END $$;
             """
         )
     )

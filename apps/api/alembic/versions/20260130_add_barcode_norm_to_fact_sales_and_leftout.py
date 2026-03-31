@@ -23,61 +23,59 @@ BARCODE_NORM_EXPR = "NULLIF(TRIM(regexp_replace(CAST(barcode AS text), '\\s+', '
 
 
 def upgrade() -> None:
-    # fact_sales
     op.execute(
         text(
             f"""
-            ALTER TABLE {SCHEMA}.fact_sales ADD COLUMN IF NOT EXISTS barcode_norm text;
-            """
-        )
-    )
-    op.execute(
-        text(
-            f"""
-            UPDATE {SCHEMA}.fact_sales
-            SET barcode_norm = {BARCODE_NORM_EXPR}
-            WHERE barcode_norm IS NULL AND barcode IS NOT NULL;
-            """
-        )
-    )
-    op.execute(
-        text(
-            f"""
-            CREATE INDEX IF NOT EXISTS ix_fact_sales_user_barcode_norm
-            ON {SCHEMA}.fact_sales (user_id, barcode_norm);
+            DO $$
+            BEGIN
+                IF to_regclass('{SCHEMA}.fact_sales') IS NOT NULL THEN
+                    ALTER TABLE {SCHEMA}.fact_sales ADD COLUMN IF NOT EXISTS barcode_norm text;
+                    UPDATE {SCHEMA}.fact_sales
+                    SET barcode_norm = {BARCODE_NORM_EXPR}
+                    WHERE barcode_norm IS NULL AND barcode IS NOT NULL;
+                    CREATE INDEX IF NOT EXISTS ix_fact_sales_user_barcode_norm
+                    ON {SCHEMA}.fact_sales (user_id, barcode_norm);
+                END IF;
+            END $$;
             """
         )
     )
 
-    # fact_leftout_snapshot
     op.execute(
         text(
             f"""
-            ALTER TABLE {SCHEMA}.fact_leftout_snapshot ADD COLUMN IF NOT EXISTS barcode_norm text;
-            """
-        )
-    )
-    op.execute(
-        text(
-            f"""
-            UPDATE {SCHEMA}.fact_leftout_snapshot
-            SET barcode_norm = {BARCODE_NORM_EXPR}
-            WHERE barcode_norm IS NULL AND barcode IS NOT NULL;
-            """
-        )
-    )
-    op.execute(
-        text(
-            f"""
-            CREATE INDEX IF NOT EXISTS ix_fact_leftout_snapshot_user_barcode_norm
-            ON {SCHEMA}.fact_leftout_snapshot (user_id, barcode_norm);
+            DO $$
+            BEGIN
+                IF to_regclass('{SCHEMA}.fact_leftout_snapshot') IS NOT NULL THEN
+                    ALTER TABLE {SCHEMA}.fact_leftout_snapshot ADD COLUMN IF NOT EXISTS barcode_norm text;
+                    UPDATE {SCHEMA}.fact_leftout_snapshot
+                    SET barcode_norm = {BARCODE_NORM_EXPR}
+                    WHERE barcode_norm IS NULL AND barcode IS NOT NULL;
+                    CREATE INDEX IF NOT EXISTS ix_fact_leftout_snapshot_user_barcode_norm
+                    ON {SCHEMA}.fact_leftout_snapshot (user_id, barcode_norm);
+                END IF;
+            END $$;
             """
         )
     )
 
 
 def downgrade() -> None:
-    op.execute(text("DROP INDEX IF EXISTS app.ix_fact_leftout_snapshot_user_barcode_norm;"))
-    op.execute(text("DROP INDEX IF EXISTS app.ix_fact_sales_user_barcode_norm;"))
-    op.execute(text("ALTER TABLE app.fact_leftout_snapshot DROP COLUMN IF EXISTS barcode_norm;"))
-    op.execute(text("ALTER TABLE app.fact_sales DROP COLUMN IF EXISTS barcode_norm;"))
+    op.execute(text("""
+        DO $$
+        BEGIN
+            IF to_regclass('app.fact_leftout_snapshot') IS NOT NULL THEN
+                DROP INDEX IF EXISTS app.ix_fact_leftout_snapshot_user_barcode_norm;
+                ALTER TABLE app.fact_leftout_snapshot DROP COLUMN IF EXISTS barcode_norm;
+            END IF;
+        END $$;
+    """))
+    op.execute(text("""
+        DO $$
+        BEGIN
+            IF to_regclass('app.fact_sales') IS NOT NULL THEN
+                DROP INDEX IF EXISTS app.ix_fact_sales_user_barcode_norm;
+                ALTER TABLE app.fact_sales DROP COLUMN IF EXISTS barcode_norm;
+            END IF;
+        END $$;
+    """))

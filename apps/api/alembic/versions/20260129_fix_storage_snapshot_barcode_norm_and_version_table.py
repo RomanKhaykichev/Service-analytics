@@ -36,48 +36,70 @@ def upgrade() -> None:
         )
     )
 
-    # 2) Ensure columns exist in fact_storage_snapshot
+    # 2) Ensure columns exist in fact_storage_snapshot (only if table exists)
     op.execute(
         text(
             f"""
-            ALTER TABLE {SCHEMA}.{FSS} ADD COLUMN IF NOT EXISTS barcode_norm text;
-            ALTER TABLE {SCHEMA}.{FSS} ADD COLUMN IF NOT EXISTS shop_raw text;
+            DO $$
+            BEGIN
+                IF to_regclass('{SCHEMA}.{FSS}') IS NOT NULL THEN
+                    ALTER TABLE {SCHEMA}.{FSS} ADD COLUMN IF NOT EXISTS barcode_norm text;
+                    ALTER TABLE {SCHEMA}.{FSS} ADD COLUMN IF NOT EXISTS shop_raw text;
+                END IF;
+            END $$;
             """
         )
     )
 
-    # 3) Index for KPI joins
+    # 3) Index for KPI joins (only if table exists)
     op.execute(
         text(
             f"""
-            CREATE INDEX IF NOT EXISTS {INDEX_NAME}
-            ON {SCHEMA}.{FSS} (user_id, barcode_norm);
+            DO $$
+            BEGIN
+                IF to_regclass('{SCHEMA}.{FSS}') IS NOT NULL THEN
+                    CREATE INDEX IF NOT EXISTS {INDEX_NAME}
+                    ON {SCHEMA}.{FSS} (user_id, barcode_norm);
+                END IF;
+            END $$;
             """
         )
     )
 
-    # 4) Backfill barcode_norm from barcode (only where NULL)
+    # 4) Backfill barcode_norm from barcode (only where NULL, if table exists)
     op.execute(
         text(
             f"""
-            UPDATE {SCHEMA}.{FSS}
-            SET barcode_norm = {BARCODE_NORM_EXPR}
-            WHERE barcode_norm IS NULL AND barcode IS NOT NULL;
+            DO $$
+            BEGIN
+                IF to_regclass('{SCHEMA}.{FSS}') IS NOT NULL THEN
+                    UPDATE {SCHEMA}.{FSS}
+                    SET barcode_norm = {BARCODE_NORM_EXPR}
+                    WHERE barcode_norm IS NULL AND barcode IS NOT NULL;
+                END IF;
+            END $$;
             """
         )
     )
 
     # 5) Backfill shop_raw from dim_shop where fact has shop_id but shop_raw is NULL
+    # (only when both tables exist)
     op.execute(
         text(
             f"""
-            UPDATE {SCHEMA}.{FSS} fss
-            SET shop_raw = ds.shop_name
-            FROM {SCHEMA}.dim_shop ds
-            WHERE ds.user_id = fss.user_id
-              AND ds.shop_id = fss.shop_id
-              AND fss.shop_raw IS NULL
-              AND ds.shop_name IS NOT NULL;
+            DO $$
+            BEGIN
+                IF to_regclass('{SCHEMA}.{FSS}') IS NOT NULL
+                   AND to_regclass('{SCHEMA}.dim_shop') IS NOT NULL THEN
+                    UPDATE {SCHEMA}.{FSS} fss
+                    SET shop_raw = ds.shop_name
+                    FROM {SCHEMA}.dim_shop ds
+                    WHERE ds.user_id = fss.user_id
+                      AND ds.shop_id = fss.shop_id
+                      AND fss.shop_raw IS NULL
+                      AND ds.shop_name IS NOT NULL;
+                END IF;
+            END $$;
             """
         )
     )

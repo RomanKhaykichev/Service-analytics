@@ -27,34 +27,25 @@ TABLE_NAME = "fact_storage_snapshot"
 
 
 def upgrade() -> None:
-    # Add barcode_norm column (IF NOT EXISTS so migration is idempotent)
+    # Legacy table may be absent on clean DB; apply only if table exists.
     op.execute(
         text(
             f"""
-            ALTER TABLE {TABLE_SCHEMA}.{TABLE_NAME}
-            ADD COLUMN IF NOT EXISTS barcode_norm text;
-            """
-        )
-    )
+            DO $$
+            BEGIN
+                IF to_regclass('{TABLE_SCHEMA}.{TABLE_NAME}') IS NOT NULL THEN
+                    ALTER TABLE {TABLE_SCHEMA}.{TABLE_NAME}
+                    ADD COLUMN IF NOT EXISTS barcode_norm text;
 
-    # Backfill for existing rows (same normalization as leftout)
-    op.execute(
-        text(
-            f"""
-            UPDATE {TABLE_SCHEMA}.{TABLE_NAME}
-            SET barcode_norm = {BARCODE_NORM_SQL}
-            WHERE barcode IS NOT NULL
-              AND (barcode_norm IS NULL OR barcode_norm = '');
-            """
-        )
-    )
+                    UPDATE {TABLE_SCHEMA}.{TABLE_NAME}
+                    SET barcode_norm = {BARCODE_NORM_SQL}
+                    WHERE barcode IS NOT NULL
+                      AND (barcode_norm IS NULL OR barcode_norm = '');
 
-    # Index for fast joins in KPI
-    op.execute(
-        text(
-            f"""
-            CREATE INDEX IF NOT EXISTS {INDEX_NAME}
-            ON {TABLE_SCHEMA}.{TABLE_NAME} (user_id, barcode_norm);
+                    CREATE INDEX IF NOT EXISTS {INDEX_NAME}
+                    ON {TABLE_SCHEMA}.{TABLE_NAME} (user_id, barcode_norm);
+                END IF;
+            END $$;
             """
         )
     )
@@ -64,8 +55,13 @@ def downgrade() -> None:
     op.execute(
         text(
             f"""
-            DROP INDEX IF EXISTS {TABLE_SCHEMA}.{INDEX_NAME};
-            ALTER TABLE {TABLE_SCHEMA}.{TABLE_NAME} DROP COLUMN IF EXISTS barcode_norm;
+            DO $$
+            BEGIN
+                IF to_regclass('{TABLE_SCHEMA}.{TABLE_NAME}') IS NOT NULL THEN
+                    DROP INDEX IF EXISTS {TABLE_SCHEMA}.{INDEX_NAME};
+                    ALTER TABLE {TABLE_SCHEMA}.{TABLE_NAME} DROP COLUMN IF EXISTS barcode_norm;
+                END IF;
+            END $$;
             """
         )
     )
