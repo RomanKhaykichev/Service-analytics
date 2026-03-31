@@ -94,6 +94,7 @@ export default function Training() {
               ref={videoRef}
               className="w-full h-auto max-h-[min(72vh,800px)] block bg-black"
               controls
+              controlsList="nodownload"
               playsInline
               preload="metadata"
               src={active.src}
