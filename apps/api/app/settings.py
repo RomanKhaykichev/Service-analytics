@@ -2,11 +2,11 @@ import os
 from typing import List, Optional
 from dotenv import load_dotenv
 
-# Load .env.example first (defaults), then .env (overrides). If .env is missing, only .env.example is used.
+# .env.example first, then .env; override=True so real .env wins (dotenv default would not override keys already set).
 env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
 env_example_path = os.path.join(os.path.dirname(__file__), "..", ".env.example")
 load_dotenv(env_example_path)
-load_dotenv(env_path)
+load_dotenv(env_path, override=True)
 
 
 class Settings:

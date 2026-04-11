@@ -1,0 +1,59 @@
+[1mdiff --git a/apps/api/alembic/versions/20260123_223716_add_shop_id_to_manual_expenses.py b/apps/api/alembic/versions/20260123_223716_add_shop_id_to_manual_expenses.py[m
+[1mindex 4724ec8..4443236 100644[m
+[1m--- a/apps/api/alembic/versions/20260123_223716_add_shop_id_to_manual_expenses.py[m
+[1m+++ b/apps/api/alembic/versions/20260123_223716_add_shop_id_to_manual_expenses.py[m
+[36m@@ -1,4 +1,4 @@[m
+[31m-"""add shop_id to manual_expenses[m
+[32m+[m[32m"""legacy step for manual_expenses (now no-op)[m
+ [m
+ Revision ID: 20260123_223716[m
+ Revises: [m
+[36m@@ -7,10 +7,6 @@[m [mCreate Date: 2026-01-23 22:37:16.000000[m
+ """[m
+ from typing import Sequence, Union[m
+ [m
+[31m-from alembic import op[m
+[31m-import sqlalchemy as sa[m
+[31m-from sqlalchemy.dialects import postgresql[m
+[31m-[m
+ # revision identifiers, used by Alembic.[m
+ revision: str = '20260123_223716'[m
+ down_revision: Union[str, None] = None[m
+[36m@@ -19,30 +15,13 @@[m [mdepends_on: Union[str, Sequence[str], None] = None[m
+ [m
+ [m
+ def upgrade() -> None:[m
+[31m-    # Add shop_id column to manual_expenses table[m
+[31m-    op.add_column([m
+[31m-        'manual_expenses',[m
+[31m-        sa.Column('shop_id', postgresql.UUID(as_uuid=True), nullable=True),[m
+[31m-        schema='app'[m
+[31m-    )[m
+[31m-    [m
+[31m-    # Create index for date range queries with shop filter[m
+[31m-    op.create_index([m
+[31m-        'ix_manual_expenses_user_shop_date',[m
+[31m-        'manual_expenses',[m
+[31m-        ['user_id', 'shop_id', 'expense_date'],[m
+[31m-        unique=False,[m
+[31m-        schema='app'[m
+[31m-    )[m
+[32m+[m[32m    # Kept for revision-chain compatibility.[m
+[32m+[m[32m    # The real baseline for app.manual_expenses is created later in[m
+[32m+[m[32m    # 20260127_ensure_manual_expenses_schema, which is idempotent and[m
+[32m+[m[32m    # safe on an empty database.[m
+[32m+[m[32m    pass[m
+ [m
+ [m
+ def downgrade() -> None:[m
+[31m-    # Drop index first[m
+[31m-    op.drop_index([m
+[31m-        'ix_manual_expenses_user_shop_date',[m
+[31m-        table_name='manual_expenses',[m
+[31m-        schema='app'[m
+[31m-    )[m
+[31m-    [m
+[31m-    # Drop shop_id column[m
+[31m-    op.drop_column('manual_expenses', 'shop_id', schema='app')[m
+[32m+[m[32m    # No-op, see upgrade().[m
+[32m+[m[32m    pass[m
