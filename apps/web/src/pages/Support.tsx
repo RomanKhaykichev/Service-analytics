@@ -1,5 +1,7 @@
+import { useState, type FormEvent } from "react";
 import { HelpCircle, MessageCircle, ArrowLeft } from "lucide-react";
 import { useSearchParams, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +21,9 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { apiPost } from "@/lib/api";
 
 const faqItemsRu = [
   {
@@ -84,6 +88,49 @@ const Support = () => {
   const tab = searchParams.get("tab") === "contact" ? "contact" : "help";
   const faqItems = language === "uz" ? faqItemsUz : faqItemsRu;
 
+  const [subject, setSubject] = useState("");
+  const [priority, setPriority] = useState("medium");
+  const [category, setCategory] = useState("technical");
+  const [description, setDescription] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const resetForm = () => {
+    setSubject("");
+    setPriority("medium");
+    setCategory("technical");
+    setDescription("");
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    const sub = subject.trim();
+    const desc = description.trim();
+    if (!sub) {
+      toast.error(t("support.subjectRequired"));
+      return;
+    }
+    if (!desc) {
+      toast.error(t("support.descriptionRequired"));
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await apiPost<{ id: string; created_at: string }>("/api/support/tickets", {
+        subject: sub,
+        priority,
+        category,
+        description: desc,
+      });
+      toast.success(t("support.ticketSent"), { description: t("support.ticketSentDesc") });
+      resetForm();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg || t("support.ticketError"));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const setTab = (value: string) => {
     if (value === "contact") {
       setSearchParams({ tab: "contact" });
@@ -146,18 +193,28 @@ const Support = () => {
         </TabsContent>
 
         <TabsContent value="contact">
-          <div className="max-w-2xl chart-container">
-            <h3 className="font-semibold text-foreground mb-4">{t("support.contactFormTitle")}</h3>
-            <form className="space-y-4">
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,36rem)_minmax(220px,300px)] lg:items-stretch xl:gap-10">
+            <Card className="min-w-0 max-w-2xl h-full flex flex-col border-border shadow-sm min-h-0">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-base font-semibold">{t("support.contactFormTitle")}</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-1 flex-col pt-0 min-h-0">
+            <form className="flex flex-1 flex-col gap-4 min-h-0" onSubmit={handleSubmit}>
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="subject">{t("support.fieldSubject")}</Label>
-                  <Input id="subject" placeholder={t("support.fieldSubjectPh")} />
+                  <Input
+                    id="subject"
+                    placeholder={t("support.fieldSubjectPh")}
+                    value={subject}
+                    onChange={(e) => setSubject(e.target.value)}
+                    disabled={submitting}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="priority">{t("support.fieldPriority")}</Label>
-                  <Select defaultValue="medium">
-                    <SelectTrigger>
+                  <Select value={priority} onValueChange={setPriority} disabled={submitting}>
+                    <SelectTrigger id="priority">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -172,8 +229,8 @@ const Support = () => {
 
               <div className="space-y-2">
                 <Label htmlFor="category">{t("support.fieldCategory")}</Label>
-                <Select defaultValue="technical">
-                  <SelectTrigger>
+                <Select value={category} onValueChange={setCategory} disabled={submitting}>
+                  <SelectTrigger id="category">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -192,29 +249,51 @@ const Support = () => {
                   id="description"
                   placeholder={t("support.fieldDescriptionPh")}
                   rows={5}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  disabled={submitting}
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>{t("support.fieldAttachments")}</Label>
-                <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
-                  <p className="text-muted-foreground">
-                    {t("support.attachmentsHint")}{" "}
-                    <button type="button" className="text-primary underline">
-                      {t("support.attachmentsChoose")}
-                    </button>
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">{t("support.attachmentsLimit")}</p>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3">
-                <Button type="button" variant="outline">
+              <div className="mt-auto flex justify-end gap-3 pt-2">
+                <Button type="button" variant="outline" onClick={resetForm} disabled={submitting}>
                   {t("support.cancel")}
                 </Button>
-                <Button type="button">{t("support.submitTicket")}</Button>
+                <Button type="submit" disabled={submitting}>
+                  {submitting ? t("support.sending") : t("support.submitTicket")}
+                </Button>
               </div>
             </form>
+              </CardContent>
+            </Card>
+
+            <aside className="min-w-0 h-full flex flex-col min-h-0">
+              <Card className="h-full min-h-0 flex flex-col overflow-hidden border-border shadow-sm">
+                <CardHeader className="pb-2 shrink-0">
+                  <CardTitle className="text-base font-semibold">{t("support.viaTelegramHeading")}</CardTitle>
+                  <p className="text-sm text-muted-foreground font-normal leading-snug">
+                    {t("support.viaTelegramHint")}
+                  </p>
+                </CardHeader>
+                <CardContent className="flex flex-1 flex-col items-center justify-center gap-3 pt-0 pb-6 min-h-0">
+                  <a
+                    href="https://t.me/PROFI_BOARD"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full max-w-[280px] rounded-xl overflow-hidden ring-1 ring-border/70 bg-card transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <img
+                      src="/images/telegram-qr-profiboard.png"
+                      alt={t("support.telegramQrAlt")}
+                      className="w-full h-auto object-contain"
+                      width={280}
+                      height={280}
+                      loading="lazy"
+                    />
+                  </a>
+                </CardContent>
+              </Card>
+            </aside>
           </div>
         </TabsContent>
       </Tabs>

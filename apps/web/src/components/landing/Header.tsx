@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Menu, X, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,12 +20,14 @@ const navItemsByLanguage: Record<
     { label: "Как это работает", href: "#how-it-works" },
     { label: "Отзывы", href: "#testimonials" },
     { label: "Вопросы", href: "#faq" },
+    { label: "Контакты", href: "#contacts" },
   ],
   uz: [
     { label: "Imkoniyatlar", href: "#features" },
     { label: "Qanday ishlaydi", href: "#how-it-works" },
     { label: "Sharhlar", href: "#testimonials" },
     { label: "Savollar", href: "#faq" },
+    { label: "Aloqa", href: "#contacts" },
   ],
 };
 
@@ -43,6 +45,7 @@ interface HeaderProps {
 export function Header({ onOpenAuth, onOpenPromo }: HeaderProps) {
   const [open, setOpen] = useState(false);
   const { language, setLanguage } = useLanguage();
+  const location = useLocation();
 
   const navItems = navItemsByLanguage[language];
   const signInLabel = language === "uz" ? "Kirish" : "Войти";
@@ -56,7 +59,16 @@ export function Header({ onOpenAuth, onOpenPromo }: HeaderProps) {
         <Link
           to="/landing"
           className="flex items-center gap-2 text-foreground"
-          onClick={() => setOpen(false)}
+          onClick={(e) => {
+            setOpen(false);
+            if (location.pathname === "/landing") {
+              e.preventDefault();
+              window.scrollTo({ top: 0, behavior: "smooth" });
+              if (window.location.hash) {
+                window.history.replaceState(null, "", "/landing");
+              }
+            }
+          }}
         >
           <img
             src="/favicon.png"
