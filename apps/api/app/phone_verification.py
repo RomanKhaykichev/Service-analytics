@@ -150,7 +150,10 @@ def pending_expires_at(hours: int = 24) -> datetime:
 
 def send_registration_otp_sms(destination_norm: str, code_plain: str) -> None:
     settings = get_settings()
-    text_msg = f"PROFiboard: kod podtverzhdeniya {code_plain}"
+    tpl = (settings.SMS_OTP_TEMPLATE or "").strip()
+    if "{code}" not in tpl:
+        tpl = "PROFiboard (profiboard.uz): kod dlya registratsii i podtverzhdeniya nomera: {code}"
+    text_msg = tpl.replace("{code}", code_plain)
     if settings.SMS_DEBUG_LOG_CODE:
         logger.warning("SMS OTP (debug log): phone=%s code=%s", destination_norm, code_plain)
     provider = get_sms_provider()

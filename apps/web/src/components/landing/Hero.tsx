@@ -15,7 +15,7 @@ export function Hero({ onOpenAuth, onOpenPromo }: HeroProps) {
 
   const title =
     language === "uz"
-      ? "Siz UZUM Market’da sotuvisizmi? Haqiqiy foydangizni aniq bilasizmi?"
+      ? "Siz UZUM Market’da sotuvchisizmi? Haqiqiy foydangizni aniq bilasizmi?"
       : "Вы продавец на UZUM Market? Уверены что знаете свою реальную прибыль?";
   const description =
     language === "uz"

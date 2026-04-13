@@ -49,6 +49,11 @@ class Settings:
     ESKIZ_PASSWORD: str = os.getenv("ESKIZ_PASSWORD", "")
     ESKIZ_FROM: str = os.getenv("ESKIZ_FROM", "")
     SMS_DEBUG_LOG_CODE: bool = os.getenv("SMS_DEBUG_LOG_CODE", "false").lower() in ("1", "true", "yes")
+    # Текст SMS с OTP: должен совпадать с шаблоном, согласованным в Eskiz (название ресурса + цель + {code}).
+    SMS_OTP_TEMPLATE: str = os.getenv(
+        "SMS_OTP_TEMPLATE",
+        "PROFiboard (profiboard.uz): kod dlya registratsii i podtverzhdeniya nomera: {code}",
+    )
 
     # OTP for phone verification (sha256(OTP_SECRET + code))
     OTP_SECRET: str = os.getenv("OTP_SECRET", "change-me-otp-secret-min-16-chars")
