@@ -10,7 +10,6 @@ import time
 from typing import Any, Optional
 
 import requests
-from requests import HTTPError
 
 from app.settings import Settings
 from app.sms.provider import SmsProvider
@@ -32,27 +31,43 @@ def _invalidate_token_cache() -> None:
     _cached_expires_at_monotonic = 0.0
 
 
+def _authorization_value(token_type: str, token: str) -> str:
+    """Eskiz expects standard Bearer scheme; some responses use lowercase 'bearer'."""
+    scheme = (token_type or "Bearer").strip()
+    if scheme.lower() == "bearer":
+        scheme = "Bearer"
+    return f"{scheme} {token}"
+
+
 def _login(settings: Settings) -> tuple[str, str]:
     url = f"{settings.ESKIZ_BASE_URL}/auth/login"
+    payload = {"email": settings.ESKIZ_EMAIL, "password": settings.ESKIZ_PASSWORD}
     r = requests.post(
         url,
-        json={"email": settings.ESKIZ_EMAIL, "password": settings.ESKIZ_PASSWORD},
+        json=payload,
         timeout=30,
         headers={"Content-Type": "application/json"},
     )
+    if r.status_code >= 400:
+        logger.error("Eskiz login failed: status=%s", r.status_code)
+        # Fallback for gateways expecting form payload instead of JSON.
+        r = requests.post(url, data=payload, timeout=30)
     r.raise_for_status()
     data = r.json()
     inner = data.get("data") or {}
     token = inner.get("token")
     if not token:
         raise RuntimeError(f"Eskiz login: no token in response: {data}")
-    token_type = (data.get("token_type") or "Bearer").strip()
+    token_type = (
+        inner.get("token_type") or data.get("token_type") or "Bearer"
+    )
+    token_type = str(token_type).strip() or "Bearer"
     return str(token), token_type
 
 
 def _refresh_token(settings: Settings, current_token: str, token_type: str) -> tuple[str, str]:
     url = f"{settings.ESKIZ_BASE_URL}/auth/refresh"
-    auth = f"{token_type} {current_token}"
+    auth = _authorization_value(token_type, current_token)
     r = requests.patch(
         url,
         timeout=30,
@@ -87,14 +102,26 @@ def _send_payload(settings: Settings, token: str, token_type: str, phone_digits:
         "message": text,
         "from": settings.ESKIZ_FROM,
     }
-    auth = f"{token_type} {token}"
+    auth = _authorization_value(token_type, token)
     r = requests.post(
         url,
         json=body,
         timeout=30,
         headers={"Authorization": auth, "Content-Type": "application/json"},
     )
+    if r.status_code >= 400 and r.status_code != 401:
+        logger.warning(
+            "Eskiz send via JSON failed, retrying as form-data: status=%s",
+            r.status_code,
+        )
+        r = requests.post(
+            url,
+            data=body,
+            timeout=30,
+            headers={"Authorization": auth},
+        )
     if r.status_code == 401:
+        logger.warning("Eskiz send unauthorized (401): phone=%s", phone_digits)
         raise _Unauthorized()
     r.raise_for_status()
     data = r.json()
@@ -102,6 +129,12 @@ def _send_payload(settings: Settings, token: str, token_type: str, phone_digits:
         # some APIs return status/message
         if str(data.get("status", "")).lower() in ("error", "failed"):
             raise RuntimeError(f"Eskiz send error: {data}")
+    logger.info(
+        "Eskiz send accepted: phone=%s status=%s id=%s",
+        phone_digits,
+        data.get("status") if isinstance(data, dict) else None,
+        data.get("id") if isinstance(data, dict) else None,
+    )
     return data if isinstance(data, dict) else {}
 
 

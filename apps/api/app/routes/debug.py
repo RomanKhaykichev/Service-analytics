@@ -258,3 +258,5 @@ async def debug_stock(
             status_code=500,
             detail=f"Stock debug error: {str(e)}"
         )
+
+

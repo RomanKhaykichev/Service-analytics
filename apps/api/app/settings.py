@@ -52,7 +52,7 @@ class Settings:
     # Текст SMS с OTP: должен совпадать с шаблоном, согласованным в Eskiz (название ресурса + цель + {code}).
     SMS_OTP_TEMPLATE: str = os.getenv(
         "SMS_OTP_TEMPLATE",
-        "PROFiboard (profiboard.uz): kod dlya registratsii i podtverzhdeniya nomera: {code}",
+        "Kod dlya registratsii i podtverzhdeniya nomera na sayte profiboard.uz (PROFiboard): {code}",
     )
 
     # OTP for phone verification (sha256(OTP_SECRET + code))
