@@ -61,6 +61,34 @@ class Settings:
     # Cross-subdomain refresh cookie (e.g. .profiboard.uz for api.* + app.*). Only used when prod cookie mode.
     COOKIE_DOMAIN: str = os.getenv("COOKIE_DOMAIN", "").strip()
 
+    def is_prod(self) -> bool:
+        v = (self.ENV or self.APP_ENV or "").strip().lower()
+        return v == "prod"
+
+    def validate_for_environment(self) -> None:
+        """
+        Fail-fast validation for production.
+        Prevents starting the service with placeholder secrets.
+        """
+        if not self.is_prod():
+            return
+
+        placeholder_markers = ("change-me", "i_like_to_play_computer")
+        jwt = (self.JWT_SECRET or "").strip()
+        otp = (self.OTP_SECRET or "").strip()
+
+        if not jwt or len(jwt) < 32 or any(m in jwt.lower() for m in placeholder_markers):
+            raise RuntimeError(
+                "Invalid JWT_SECRET for production. "
+                "Set a strong random secret (min 32 chars) via environment variables."
+            )
+
+        if not otp or len(otp) < 16 or any(m in otp.lower() for m in placeholder_markers):
+            raise RuntimeError(
+                "Invalid OTP_SECRET for production. "
+                "Set a strong random secret (min 16 chars) via environment variables."
+            )
+
 
 _settings_instance: Optional[Settings] = None
 
@@ -93,6 +121,7 @@ def get_settings() -> Settings:
     global _settings_instance
     if _settings_instance is None:
         _settings_instance = Settings()
+        _settings_instance.validate_for_environment()
     return _settings_instance
 
 
