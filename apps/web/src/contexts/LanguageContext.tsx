@@ -224,7 +224,7 @@ const translations: Record<Language, Record<string, string>> = {
     'pricing.importantTitle': 'Важно:',
     'pricing.importantText': 'Доступ к выбранному тарифу будет открыт после подтверждения оплаты. Это может занять некоторое время.',
     'pricing.goToTelegram': 'Перейти в Telegram',
-    'pricing.telegramTitle': 'Telegram',
+    'pricing.telegramTitle': 'Канал для отправки чека',
 
     // Report upload
     'report.uploadReports': 'Загрузить отчёты',
@@ -759,7 +759,7 @@ const translations: Record<Language, Record<string, string>> = {
     'pricing.importantTitle': 'Muhim:',
     'pricing.importantText': "Tanlangan tarifga kirish to'lov tasdiqlangandan keyin ochiladi. Bu biroz vaqt olishi mumkin.",
     'pricing.goToTelegram': "Telegramga o'tish",
-    'pricing.telegramTitle': 'Telegram',
+    'pricing.telegramTitle': 'Chek yuborish kanali',
 
     // Report upload
     'report.uploadReports': 'Hisobotlarni yuklash',

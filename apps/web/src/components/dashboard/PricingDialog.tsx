@@ -108,10 +108,14 @@ export function PricingDialog({ open, onOpenChange, variant = "tariff" }: Pricin
             </DialogHeader>
             <div className="mt-4 grid gap-6 md:grid-cols-[300px_minmax(0,1fr)]">
               <div className="rounded-xl border-2 border-dashed border-border bg-muted/20 p-4 flex items-center justify-center min-h-[300px]">
-                <div className="text-center text-sm text-foreground/90">
-                  <p className="font-medium text-foreground">{t("pricing.qrPlaceholderTitle")}</p>
-                  <p className="mt-2">{t("pricing.qrPlaceholderHint")}</p>
-                </div>
+                <img
+                  src="/images/payment-qr.png"
+                  alt={t("pricing.paymentTitle")}
+                  className="w-full max-w-[260px] h-auto object-contain"
+                  width={260}
+                  height={260}
+                  loading="lazy"
+                />
               </div>
               <div className="space-y-4 text-sm text-foreground">
                 <p className="text-foreground/90">
@@ -190,7 +194,7 @@ export function PricingDialog({ open, onOpenChange, variant = "tariff" }: Pricin
                 className="block w-full max-w-[280px] rounded-xl overflow-hidden ring-1 ring-border/70 bg-card transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <img
-                  src="/images/telegram-qr-profiboard.png"
+                  src="/images/telegram-qr-receipt.png"
                   alt={t("support.telegramQrAlt")}
                   className="w-full h-auto object-contain"
                   width={280}
