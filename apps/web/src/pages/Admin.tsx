@@ -58,6 +58,10 @@ function adminNormShopKey(s: string): string {
   return s.trim().replace(/\s+/g, " ").toUpperCase();
 }
 
+function adminNormPhone(s: string): string {
+  return (s || "").replace(/\D+/g, "");
+}
+
 interface TenantRow {
   tenant_id: string;
   company_name?: string | null;
@@ -159,6 +163,7 @@ export default function Admin() {
   const [loadingMetrics, setLoadingMetrics] = useState(true);
   const [funnelMonth, setFunnelMonth] = useState<string>("all");
   const [supportTicketsTotal, setSupportTicketsTotal] = useState<number | null>(null);
+  const [exportingUsers, setExportingUsers] = useState(false);
 
   const fetchSupportTicketsCount = useCallback(async () => {
     try {
@@ -209,7 +214,12 @@ export default function Admin() {
           page_size: API_PAGE_SIZE,
           sort,
         };
-        if (search.trim()) baseParams.search = search.trim();
+        const rawSearch = search.trim();
+        const phoneDigits = adminNormPhone(rawSearch);
+        const looksLikePhoneQuery = !!rawSearch && phoneDigits.length >= 4 && /^[\d\s()+-]+$/.test(rawSearch);
+        // If it's a phone-like query, don't send it to API (API search may not support phone)
+        // We'll fetch full list and filter client-side by phone digits.
+        if (rawSearch && !looksLikePhoneQuery) baseParams.search = rawSearch;
         if (planFilter !== "all") {
           baseParams.plan = planFilter;
         }
@@ -343,6 +353,70 @@ export default function Admin() {
       }
     });
   }, [tenants?.tenants, sortColumn, sortDirection]);
+
+  const filteredTenants = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const list = sortedTenants;
+    if (!q) return list;
+
+    const qDigits = adminNormPhone(q);
+
+    return list.filter((row) => {
+      const hay = [
+        row.company_name ?? "",
+        row.owner_email ?? "",
+        row.tenant_id ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      if (hay.includes(q)) return true;
+
+      if (qDigits) {
+        const phoneDigits = adminNormPhone(row.phone ?? "");
+        if (phoneDigits && phoneDigits.includes(qDigits)) return true;
+      }
+
+      return false;
+    });
+  }, [sortedTenants, search]);
+
+  const exportUsersToExcel = useCallback(async () => {
+    if (exportingUsers) return;
+    try {
+      setExportingUsers(true);
+      const XLSX = await import("xlsx");
+
+      const rows = (filteredTenants ?? []).map((r) => ({
+        "Tenant ID": r.tenant_id,
+        "Компания": r.company_name ?? "",
+        "Email": r.owner_email ?? "",
+        "Телефон": r.phone ?? "",
+        "Регистрация": r.created_at ?? "",
+        "Тариф": r.plan ?? "",
+        "Активен": r.is_active ? "Да" : "Нет",
+        "Остаток дней": r.trial_days_left ?? "",
+        "Оплачено": r.paid_amount ?? (r.paid ? "Да" : ""),
+        "Магазинов": r.shops_count ?? "",
+        "Импорты 30д": r.imports_30d ?? "",
+        "Дата входа": r.last_login_at ?? "",
+        "Notes": r.notes ?? "",
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Users");
+
+      const now = new Date();
+      const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      XLSX.writeFile(wb, `users_${stamp}.xlsx`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(msg || "Не удалось выгрузить Excel");
+    } finally {
+      setExportingUsers(false);
+    }
+  }, [exportingUsers, filteredTenants]);
 
   useEffect(() => {
     if (!accessDenied) {
@@ -750,8 +824,12 @@ export default function Admin() {
                   ) : dashboardMetrics ? (
                     <>
                       <p className="text-2xl font-bold">{dashboardMetrics.files.total}</p>
-                      <p className="text-sm text-muted-foreground">Из них ошибок: {dashboardMetrics.files.errors}</p>
-                      <p className="text-sm text-muted-foreground">Процент ошибки: {dashboardMetrics.files.error_pct}%</p>
+                      <p className="text-sm text-muted-foreground">
+                        Ошибки при загрузке: {dashboardMetrics.files.errors}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Процент ошибок: {dashboardMetrics.files.error_pct}%
+                      </p>
                     </>
                   ) : null}
                 </CardContent>
@@ -916,7 +994,7 @@ export default function Admin() {
           </CardTitle>
           <div className="flex flex-wrap gap-2 mt-2">
             <Input
-              placeholder="Поиск (email, имя, ID)..."
+              placeholder="Поиск (email, имя, ID, телефон)..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => {
@@ -947,6 +1025,16 @@ export default function Admin() {
                 ) : null}
               </Link>
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="shrink-0 ml-auto"
+              onClick={exportUsersToExcel}
+              disabled={exportingUsers || loadingTenants || !tenants}
+              title="Выгрузить список пользователей в Excel"
+            >
+              {exportingUsers ? "Выгрузка…" : "Выгрузить Excel"}
+            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -957,7 +1045,7 @@ export default function Admin() {
               <div
                 className={cn(
                   "-mx-1 w-full min-w-0 max-w-full",
-                  sortedTenants.length > 10
+                  filteredTenants.length > 10
                     ? "max-h-[min(70vh,34rem)] sm:max-h-[min(75vh,40rem)] lg:max-h-[min(78vh,46rem)] overflow-auto"
                     : "overflow-auto",
                   "overscroll-contain touch-pan-x touch-pan-y [scrollbar-gutter:stable]"
@@ -1065,14 +1153,14 @@ export default function Admin() {
                   </TableRow>
                 </TableHeader>
                 <TableBody className="[&_tr]:bg-card">
-                  {sortedTenants.length === 0 ? (
+                  {filteredTenants.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={12} className="text-center text-muted-foreground">
                         Нет тенантов
                       </TableCell>
                     </TableRow>
                   ) : (
-                    sortedTenants.map((row) => (
+                    filteredTenants.map((row) => (
                       <TableRow key={row.tenant_id}>
                         <TableCell className="sticky left-0 z-10 bg-card border-r border-border min-w-[200px] max-w-[260px]">
                           <div className="font-medium">{row.company_name || row.owner_email || row.tenant_id.slice(0, 8)}</div>

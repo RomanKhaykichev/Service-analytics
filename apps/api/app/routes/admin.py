@@ -134,9 +134,9 @@ class DashboardFunnel(BaseModel):
 
 
 class DashboardFiles(BaseModel):
-    total: int  # Загружено файлов за последние 30 дней (rolling)
-    errors: int  # Из них ошибок за тот же период
-    error_pct: float  # Процент ошибки за тот же период
+    total: int  # Попыток загрузки файлов за последние 30 дней (по строкам import_file_attempts)
+    errors: int  # Файлов с ошибкой при загрузке (status ≠ success в import_file_attempts)
+    error_pct: float  # Доля таких файлов от total, %
 
 
 class DashboardTotals(BaseModel):
@@ -266,7 +266,7 @@ async def admin_overview(
             # Import success rate 7d: по файлам (если есть import_file_attempts) или по батчам
             if has_import_file_attempts:
                 r = db.execute(text(f"""
-                    SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'success')
+                    SELECT COUNT(*), COUNT(*) FILTER (WHERE LOWER(TRIM(status)) = 'success')
                     FROM {qname('import_file_attempts')}
                     WHERE created_at >= :d7
                 """), {"d7": d7}).fetchone()
@@ -412,8 +412,8 @@ async def admin_overview(
         try:
             rows = db.execute(text(f"""
                 SELECT date_trunc('day', created_at)::date AS d,
-                       COUNT(*) FILTER (WHERE status = 'success') AS success,
-                       COUNT(*) FILTER (WHERE status = 'failed') AS failed
+                       COUNT(*) FILTER (WHERE LOWER(TRIM(status)) = 'success') AS success,
+                       COUNT(*) FILTER (WHERE LOWER(TRIM(status)) <> 'success') AS failed
                 FROM {qname('import_file_attempts')}
                 WHERE created_at::date >= :from_d AND created_at::date <= :to_d
                 GROUP BY 1 ORDER BY 1
@@ -697,7 +697,7 @@ async def admin_dashboard_metrics(
         logger.warning("Admin dashboard_metrics funnel: %s", e)
         db.rollback()
 
-    conversion_pct = (funnel_paid / funnel_registered * 100) if funnel_registered else 0.0
+    conversion_pct = (funnel_paid / funnel_visited * 100) if funnel_visited else 0.0
     funnel = DashboardFunnel(
         visited_site=funnel_visited,
         tried=funnel_tried,
@@ -716,7 +716,7 @@ async def admin_dashboard_metrics(
         """), {"s": schema}).fetchone()
         if r:
             row = db.execute(text(f"""
-                SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'failed')
+                SELECT COUNT(*), COUNT(*) FILTER (WHERE LOWER(TRIM(status)) <> 'success')
                 FROM {qname('import_file_attempts')}
                 WHERE created_at >= :files_since
             """), {"files_since": files_since}).fetchone()
@@ -737,7 +737,7 @@ async def admin_dashboard_metrics(
             else:
                 # Без created_at нельзя ограничить 30 днями — оставляем 0
                 files_total = 0
-            # Ошибки = батчи без данных в fact-таблицах (упрощённо не считаем по батчам — 0)
+            # Без import_file_attempts не знаем ошибки по файлам — 0
             files_errors = 0
     except Exception as e:
         logger.warning("Admin dashboard_metrics files: %s", e)
@@ -1042,7 +1042,7 @@ async def admin_tenants_list(
                 imports_30d = r30_count[0] or 0
             if has_import_file_attempts:
                 r30_failed = db.execute(text(f"""
-                    SELECT COUNT(*) FILTER (WHERE a.status = 'failed')
+                    SELECT COUNT(*) FILTER (WHERE LOWER(TRIM(a.status)) <> 'success')
                     FROM {qname('import_file_attempts')} a
                     JOIN {qname('upload_batch')} b ON b.upload_batch_id = a.upload_batch_id
                     WHERE b.user_id = :uid AND a.created_at >= :d30
@@ -1350,7 +1350,7 @@ async def admin_tenant_detail(
                 imports_30d = r30_count[0] or 0
             if has_import_file_attempts_detail:
                 r30_failed = db.execute(text(f"""
-                    SELECT COUNT(*) FILTER (WHERE a.status = 'failed')
+                    SELECT COUNT(*) FILTER (WHERE LOWER(TRIM(a.status)) <> 'success')
                     FROM {qname('import_file_attempts')} a
                     JOIN {qname('upload_batch')} b ON b.upload_batch_id = a.upload_batch_id
                     WHERE b.user_id = :uid AND a.created_at >= :d30
