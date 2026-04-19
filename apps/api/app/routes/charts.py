@@ -1069,7 +1069,8 @@ async def get_products_table(
                 }
 
         # Цена и Себестоимость для таблицы: по последней дате продаж для каждого штрихкода в выбранном периоде.
-        # Цена = revenue_sum / qty, Себестоимость = cogs_sum / qty на последнюю дату (статусы «Завершен» и «В обработке»).
+        # Цена = revenue_sum / qty на последнюю дату.
+        # Себестоимость = последнее значение cogs_sum за период (без деления на qty).
         last_price_cogs_by_barcode: dict[str, dict[str, float]] = {}
         
         # Формируем условие фильтрации по датам для запроса цены и себестоимости
@@ -1114,10 +1115,7 @@ async def get_products_table(
                      THEN SUM(COALESCE(revenue_sum, 0)) / NULLIF(SUM(qty), 0)
                      ELSE 0
                 END AS unit_price,
-                CASE WHEN COALESCE(SUM(qty), 0) > 0
-                     THEN SUM(COALESCE(cogs_sum, 0)) / NULLIF(SUM(qty), 0)
-                     ELSE 0
-                END AS unit_cogs
+                COALESCE(MAX(cogs_sum), 0) AS unit_cogs
             FROM last_rows
             GROUP BY barcode_norm
         """)
