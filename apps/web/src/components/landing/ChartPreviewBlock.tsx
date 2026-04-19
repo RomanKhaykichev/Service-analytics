@@ -1,3 +1,4 @@
+import analyticsChart from "@/assets/landing/analytics-chart.png";
 import { Container } from "./Container";
 
 /**
@@ -10,7 +11,7 @@ export function ChartPreviewBlock() {
       <Container>
         <div className="flex justify-center max-w-5xl w-full mx-auto overflow-hidden rounded-2xl border-2 border-[#7F7F7F]">
           <img
-            src="/analytics-chart.png"
+            src={analyticsChart}
             alt="График заказов и продаж, данные по дням"
             className="w-full rounded-2xl"
           />

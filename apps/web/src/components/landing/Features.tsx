@@ -1,4 +1,5 @@
 import { FileText, CircleDollarSign, Package } from "lucide-react";
+import dashboardPreview from "@/assets/landing/dashboard-preview.png";
 import { Container } from "./Container";
 import { SectionTitle } from "./SectionTitle";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -102,7 +103,7 @@ export function Features() {
         </p>
         <div className="mt-8 sm:mt-10 flex justify-center max-w-5xl w-full mx-auto overflow-hidden rounded-2xl border-2 border-[#7F7F7F]">
           <img
-            src="/dashboard-preview.png"
+            src={dashboardPreview}
             alt="Мои продажи на UZUM — сводка дашборда"
             className="w-full rounded-2xl"
           />
