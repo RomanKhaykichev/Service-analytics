@@ -34,11 +34,11 @@ export function Footer() {
               </span>
               <span className="flex items-center gap-1.5 ml-1">
                 <a
-                  href="https://t.me/PROFiboard"
+                  href="https://t.me/PROFI_BOARD"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-300 text-white hover:bg-zinc-400 transition-colors"
-                  aria-label="Telegram @PROFiboard"
+                  aria-label="Telegram @PROFI_BOARD"
                 >
                   <Send className="h-4 w-4" />
                 </a>

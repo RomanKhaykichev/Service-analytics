@@ -188,7 +188,7 @@ export function PricingDialog({ open, onOpenChange, variant = "tariff" }: Pricin
             </DialogHeader>
             <div className="mt-3 flex flex-col items-center gap-3">
               <a
-                href="https://t.me/PROFI_BOARD"
+                href="https://t.me/PROFiboard"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block w-full max-w-[280px] rounded-xl overflow-hidden ring-1 ring-border/70 bg-card transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
