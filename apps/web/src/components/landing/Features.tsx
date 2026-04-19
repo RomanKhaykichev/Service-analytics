@@ -45,19 +45,21 @@ const featuresUz = [
   },
 ];
 
-/** Секция «Возможности»: 3 карточки сверху, заголовок и подзаголовок снизу (как раньше). */
+/** Секция #features: карточки, два крупных двухстрочных заголовка (одинаковая типографика). */
+const headlineTitleClass = "text-3xl sm:text-4xl md:text-5xl";
+const headlineSubtitleClass =
+  "mt-1 text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-foreground tracking-tight max-w-2xl mx-auto";
+
 export function Features() {
   const { language } = useLanguage();
   const features = language === "uz" ? featuresUz : featuresRu;
-  const title = language === "uz" ? "Imkoniyatlar" : "Возможности";
-  const subtitle =
+  const headlineTop =
     language === "uz"
-      ? "Biznesingizni bitta servisda to‘liq nazorat qilish uchun kerak bo‘lgan hamma narsa"
-      : "Всё необходимое для контроля бизнеса в одном сервисе";
-  const innerTitle =
-    language === "uz" ? "Shaxsiy kabinetingizning ichki analitikasi" : "внутренняя аналитика";
-  const innerSubtitle =
-    language === "uz" ? "sizning shaxsiy kabinetingiz" : "вашего личного кабинета";
+      ? "Kerak bo‘lgan hamma narsa"
+      : "Всё необходимое для контроля бизнеса";
+  const headlineBottom = language === "uz" ? "bitta joyda" : "в одном месте";
+  const innerHeadline =
+    language === "uz" ? "Ichki analitika sizning LK" : "Внутренняя аналитика вашего ЛК";
   const topParagraph =
     language === "uz"
       ? "Biz marketpleyslardagi savdolaringizni tahlil qilish uchun moslashuvchan jadvallar va filtrlar bilan o‘nlab qulay hisobotlarni tayyorlab qo‘yganmiz."
@@ -71,8 +73,10 @@ export function Features() {
     <section id="features" className="pt-16 sm:pt-20 md:pt-24 pb-8 sm:pb-10 md:pb-12 bg-white">
       <Container>
         <SectionTitle
-          title={title}
-          subtitle={subtitle}
+          title={headlineTop}
+          subtitle={headlineBottom}
+          titleClassName={headlineTitleClass}
+          subtitleClassName={headlineSubtitleClass}
         />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
           {features.map((item, i) => (
@@ -90,10 +94,8 @@ export function Features() {
         </div>
         <SectionTitle
           className="mt-12 sm:mt-14 md:mt-16 mb-0"
-          title={innerTitle}
-          subtitle={innerSubtitle}
-          titleClassName="text-3xl sm:text-4xl md:text-5xl"
-          subtitleClassName="mt-1 text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-foreground tracking-tight max-w-2xl mx-auto"
+          title={innerHeadline}
+          titleClassName={headlineTitleClass}
         />
         <p className="mt-6 sm:mt-8 text-center text-muted-foreground max-w-5xl mx-auto text-base sm:text-lg">
           {topParagraph}

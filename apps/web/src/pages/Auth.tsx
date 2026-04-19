@@ -498,6 +498,17 @@ export function AuthFormContent({ defaultTab = 'signin', onSuccess, cardClassNam
                       ? 'maxfiylik siyosati'
                       : 'политикой конфиденциальности'}
                   </a>
+                  {', '}
+                  <a
+                    href="/user-agreement"
+                    className="text-primary underline underline-offset-2 hover:opacity-90"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {language === 'uz'
+                      ? 'foydalanuvchi shartnomasi'
+                      : 'пользовательским соглашением'}
+                  </a>
                   {' '}
                   {language === 'uz' ? 'va ' : 'и '}
                   <a

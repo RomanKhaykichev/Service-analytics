@@ -22,6 +22,7 @@ import AdminAppeals from "./pages/AdminAppeals";
 import Landing from "./pages/Landing";
 import Privacy from "./pages/Privacy";
 import Offer from "./pages/Offer";
+import UserAgreement from "./pages/UserAgreement";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -39,6 +40,7 @@ const App = () => (
             <Route path="/landing" element={<Landing />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/offer" element={<Offer />} />
+            <Route path="/user-agreement" element={<UserAgreement />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/" element={
               <ProtectedRoute>

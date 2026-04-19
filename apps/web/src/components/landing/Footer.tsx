@@ -6,11 +6,13 @@ import { useLanguage } from "@/contexts/LanguageContext";
 const legalLinksRu = [
   { label: "Политика конфиденциальности", href: "/privacy" },
   { label: "Публичная оферта", href: "/offer" },
+  { label: "Пользовательское соглашение", href: "/user-agreement" },
 ];
 
 const legalLinksUz = [
   { label: "Maxfiylik siyosati", href: "/privacy" },
   { label: "Ommaviy oferta", href: "/offer" },
+  { label: "Foydalanuvchi shartnomasi", href: "/user-agreement" },
 ];
 
 /** Подвал лендинга по макету: лого PROFiboard, соцсети, контакты слева; юридические ссылки справа. */
@@ -32,11 +34,11 @@ export function Footer() {
               </span>
               <span className="flex items-center gap-1.5 ml-1">
                 <a
-                  href="https://t.me/PROFI_BOARD"
+                  href="https://t.me/PROFiboard"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-300 text-white hover:bg-zinc-400 transition-colors"
-                  aria-label="Telegram @PROFI_BOARD"
+                  aria-label="Telegram @PROFiboard"
                 >
                   <Send className="h-4 w-4" />
                 </a>

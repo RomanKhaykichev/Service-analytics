@@ -22,7 +22,7 @@ const tabsRu = ["Сводка", "По дням", "Товары", "Доп. рас
 const tabsUz = ["Hisobot", "Kunlar bo‘yicha", "Tovarlar", "Qo‘shimcha xarajatlar", "Yuklab jo‘natish", "Oylik"];
 
 /**
- * Блок-превью дашборда после «Возможности»: текст, карточка с отчётами и подпись.
+ * Блок-превью дашборда после секции #features: текст, карточка с отчётами и подпись.
  */
 export function DashboardPreview() {
   const { language } = useLanguage();

@@ -77,7 +77,11 @@ export function Testimonials() {
       : "Что говорят о PROFiboard";
 
   return (
-    <section id="testimonials" className="py-16 sm:py-20 md:py-24 bg-muted/30">
+    <section
+      id="testimonials"
+      className="py-16 sm:py-20 md:py-24 bg-muted/30"
+      data-nosnippet
+    >
       <Container>
         <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-foreground tracking-tight text-center mb-10 md:mb-12 lg:mb-14">
           {heading}
