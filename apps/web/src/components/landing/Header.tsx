@@ -42,6 +42,15 @@ interface HeaderProps {
 }
 
 /** Шапка лендинга. TODO: сверить логотип, отступы и пункты меню с Figma. */
+function scrollToHashOnLanding(hash: string, pathname: string, search: string) {
+  const id = hash.replace(/^#/, "");
+  const el = document.getElementById(id);
+  if (!el) return false;
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+  window.history.replaceState(null, "", `${pathname}${search}${hash.startsWith("#") ? hash : `#${hash}`}`);
+  return true;
+}
+
 export function Header({ onOpenAuth, onOpenPromo }: HeaderProps) {
   const [open, setOpen] = useState(false);
   const { language, setLanguage } = useLanguage();
@@ -87,6 +96,11 @@ export function Header({ onOpenAuth, onOpenPromo }: HeaderProps) {
               key={item.href}
               href={item.href}
               className="text-base font-medium text-muted-foreground hover:text-foreground transition-colors"
+              onClick={(e) => {
+                if (!item.href.startsWith("#")) return;
+                e.preventDefault();
+                scrollToHashOnLanding(item.href, location.pathname, location.search);
+              }}
             >
               {item.label}
             </a>
@@ -170,7 +184,13 @@ export function Header({ onOpenAuth, onOpenPromo }: HeaderProps) {
                 key={item.href}
                 href={item.href}
                 className="text-base font-medium text-muted-foreground hover:text-foreground py-2"
-                onClick={() => setOpen(false)}
+                onClick={(e) => {
+                  if (item.href.startsWith("#")) {
+                    e.preventDefault();
+                    scrollToHashOnLanding(item.href, location.pathname, location.search);
+                  }
+                  setOpen(false);
+                }}
               >
                 {item.label}
               </a>

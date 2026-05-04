@@ -1,5 +1,5 @@
 import { FileText, CircleDollarSign, Package } from "lucide-react";
-import dashboardPreview from "@/assets/landing/dashboard-preview.png";
+import dashboardPreview from "@/assets/landing/dashboard-preview.jpg";
 import { Container } from "./Container";
 import { SectionTitle } from "./SectionTitle";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -63,15 +63,18 @@ export function Features() {
     language === "uz" ? "Ichki analitika sizning LK" : "Внутренняя аналитика вашего ЛК";
   const topParagraph =
     language === "uz"
-      ? "Biz marketpleyslardagi savdolaringizni tahlil qilish uchun moslashuvchan jadvallar va filtrlar bilan o‘nlab qulay hisobotlarni tayyorlab qo‘yganmiz."
-      : "Простые и удобные отчеты, позволяющие решить любые задачи по анализу ваших продаж на маркетплейсе UZUM с настраиваемыми таблицами и гибкими фильтрами.";
+      ? "Sodda va qulay hisobotlar UZUM marketpleysidagi savdolaringizni tahlil qilish bo‘yicha har qanday vazifani yechishga yordam beradi — sozlanadigan jadvallar va moslashuvchan filtrlar bilan. Mahsulotga izoh qoldirish hamda UZUM hisobotiga kirmaydigan tashqi xarajatlarni kiritish imkoniyati. Kerakli miqdordagi mahsulotlarni yetkazib berishni hisoblash mumkin."
+      : "Простые и удобные отчеты, позволяющие решить любые задачи по анализу ваших продаж на маркетплейсе UZUM с настраиваемыми таблицами и гибкими фильтрами. Возможность оставлять комментарии к товару, а также заносить внешние траты, которые не попадают в отчет UZUM. Можно просчитать отгрузку нужного количества товаров.";
   const bottomParagraph =
     language === "uz"
       ? "Savdolaringizni va foydangizni barcha xarajatlarni hisobga olgan holda kuzatib boring. Tovar yetkazib berishni savdo dinamikasi va qoldiqlarni inobatga olgan holda rejalashtiring."
       : "Отслеживайте свои продажи и прибыль с учетом всех издержек. Планируйте поставки товаров с учетом динамики продаж и остатков.";
 
   return (
-    <section id="features" className="pt-16 sm:pt-20 md:pt-24 pb-8 sm:pb-10 md:pb-12 bg-white">
+    <section
+      id="features"
+      className="pt-4 sm:pt-6 md:pt-8 pb-8 sm:pb-10 md:pb-12 bg-white scroll-mt-20 sm:scroll-mt-24"
+    >
       <Container>
         <SectionTitle
           title={headlineTop}
@@ -101,14 +104,14 @@ export function Features() {
         <p className="mt-6 sm:mt-8 text-center text-muted-foreground max-w-5xl mx-auto text-base sm:text-lg">
           {topParagraph}
         </p>
-        <div className="mt-8 sm:mt-10 flex justify-center max-w-5xl w-full mx-auto overflow-hidden rounded-2xl border-2 border-[#7F7F7F]">
+        <div className="mt-8 sm:mt-10 flex justify-center max-w-5xl w-full mx-auto overflow-hidden rounded-2xl">
           <img
             src={dashboardPreview}
             alt="Мои продажи на UZUM — сводка дашборда"
             className="w-full rounded-2xl"
           />
         </div>
-        <p className="mt-8 sm:mt-10 text-center font-bold text-foreground max-w-5xl mx-auto text-lg sm:text-xl md:text-2xl leading-relaxed">
+        <p className="mt-2 sm:mt-3 md:mt-4 text-center font-bold text-foreground max-w-5xl mx-auto text-lg sm:text-xl md:text-2xl leading-relaxed">
           {bottomParagraph}
         </p>
       </Container>

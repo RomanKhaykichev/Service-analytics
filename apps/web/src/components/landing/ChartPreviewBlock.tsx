@@ -1,4 +1,4 @@
-import analyticsChart from "@/assets/landing/analytics-chart.png";
+import analyticsChart from "@/assets/landing/analytics-chart.jpg";
 import { Container } from "./Container";
 
 /**
@@ -7,13 +7,13 @@ import { Container } from "./Container";
  */
 export function ChartPreviewBlock() {
   return (
-    <section className="pt-2 sm:pt-3 md:pt-4 pb-1 sm:pb-2 md:pb-3 bg-white">
+    <section className="pt-2 sm:pt-3 md:pt-4 pb-0 bg-white">
       <Container>
-        <div className="flex justify-center max-w-5xl w-full mx-auto overflow-hidden rounded-2xl border-2 border-[#7F7F7F]">
+        <div className="flex justify-center max-w-5xl w-full mx-auto">
           <img
             src={analyticsChart}
-            alt="График заказов и продаж, данные по дням"
-            className="w-full rounded-2xl"
+            alt="Ноутбук с дашбордом PROFIboard: график заказов и продаж и таблица данных по дням"
+            className="w-full h-auto"
           />
         </div>
       </Container>
