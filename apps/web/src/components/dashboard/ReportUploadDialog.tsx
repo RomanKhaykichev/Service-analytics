@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { forwardRef, useImperativeHandle, useState, useEffect, useRef } from "react";
 import { Upload, FileSpreadsheet, Info, X, Loader2, CheckCircle, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +23,7 @@ import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getAuthHeaders, getApiBaseUrl } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
+import { getUzumReportHowItWorksSteps, getStepVisualImageUrls, IMPORT_REPORTS_VIDEO_SRC } from "@/content/uzumReportHowItWorks";
 
 interface UploadedFile {
   name: string;
@@ -49,6 +50,11 @@ interface ReportUploadDialogProps {
   disabled?: boolean;
   /** Открыть окно «Продлить тариф» (при нажатии «Перейти на тариф Month 10» в диалоге лимита магазинов) */
   onOpenExtendTariff?: () => void;
+}
+
+export interface ReportUploadDialogHandle {
+  /** `guided` — из меню «Помощь» (инструкция + видео + Telegram). По умолчанию `compact` — кнопка в шапке. */
+  open: (variant?: "compact" | "guided") => void;
 }
 
 /** Диалог «Достигнут лимит магазинов» в стиле сервиса */
@@ -84,7 +90,7 @@ function StoreLimitDialog({
   const description =
     language === "uz"
       ? tariffLabel === "Trial 10"
-        ? "Sizning Trial 10 tarifingiz bo‘yicha 1 tagacha do‘kon ulash mumkin. Yangi do‘kon qo‘shish uchun tarifni yangilang."
+        ? "Sizning Trial 10 tarifingiz bo‘yicha 1 ta do‘kongacha ulash mumkin. Yangi do‘kon qo‘shish uchun tarifni yangilang."
         : tariffLabel === "Month 5"
           ? "Sizning Month 5 tarifingiz bo‘yicha 5 tagacha do‘kon ulash mumkin. Yangi do‘kon qo‘shish uchun tarifni yangilang."
           : tariffLabel === "Month 10"
@@ -147,10 +153,14 @@ function StoreLimitDialog({
   );
 }
 
-export function ReportUploadDialog({ disabled, onOpenExtendTariff }: ReportUploadDialogProps) {
-  const { t } = useLanguage();
+export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUploadDialogProps>(
+  function ReportUploadDialog({ disabled, onOpenExtendTariff }, ref) {
+  const { t, language } = useLanguage();
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
+  const [uploadVariant, setUploadVariant] = useState<"compact" | "guided">("compact");
+  const [videoOpen, setVideoOpen] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, UploadedFile>>({});
   const [adIds, setAdIds] = useState<Record<string, string>>({});
   const [products, setProducts] = useState<ProductMapping[]>([]);
@@ -160,6 +170,59 @@ export function ReportUploadDialog({ disabled, onOpenExtendTariff }: ReportUploa
   const [dragOverAll, setDragOverAll] = useState(false);
   const [storeLimitDialogOpen, setStoreLimitDialogOpen] = useState(false);
   const [storeLimitData, setStoreLimitData] = useState<{ maxShops: number; currentCount: number; tariffLabel: string } | null>(null);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      open: (variant: "compact" | "guided" = "compact") => {
+        if (disabled) return;
+        setUploadVariant(variant);
+        setOpen(true);
+      },
+    }),
+    [disabled],
+  );
+
+  const howItWorksSteps = getUzumReportHowItWorksSteps(language).filter((s) => s.step !== 3);
+
+  useEffect(() => {
+    if (!videoOpen) {
+      videoRef.current?.pause();
+      return;
+    }
+
+    let removeCanPlay: (() => void) | undefined;
+    let raf = 0;
+
+    const start = (v: HTMLVideoElement) => {
+      const tryPlay = () => {
+        void v.play().catch(() => {});
+      };
+      v.currentTime = 0;
+      if (v.readyState >= 3) {
+        requestAnimationFrame(tryPlay);
+        return;
+      }
+      const onCanPlay = () => tryPlay();
+      v.addEventListener("canplay", onCanPlay, { once: true });
+      removeCanPlay = () => v.removeEventListener("canplay", onCanPlay);
+    };
+
+    const v = videoRef.current;
+    if (v) {
+      start(v);
+    } else {
+      raf = requestAnimationFrame(() => {
+        const el = videoRef.current;
+        if (el) start(el);
+      });
+    }
+
+    return () => {
+      cancelAnimationFrame(raf);
+      removeCanPlay?.();
+    };
+  }, [videoOpen]);
 
   // If we need to show StoreLimitDialog after a reload (triggered by store_limit_exceeded),
   // we persist the payload in localStorage.
@@ -477,7 +540,10 @@ export function ReportUploadDialog({ disabled, onOpenExtendTariff }: ReportUploa
   const handleOpenChange = (value: boolean) => {
     if (disabled) return;
     setOpen(value);
+    if (!value) setUploadVariant("compact");
   };
+
+  const isGuided = uploadVariant === "guided";
 
   return (
     <>
@@ -485,8 +551,10 @@ export function ReportUploadDialog({ disabled, onOpenExtendTariff }: ReportUploa
       <DialogTrigger asChild>
         <div className="flex flex-col items-end">
           <Button
+            type="button"
             className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2 px-4"
             disabled={disabled}
+            onClick={() => setUploadVariant("compact")}
           >
             <Upload className="w-4 h-4" />
             <span className="hidden sm:inline">{t('report.uploadButton')}</span>
@@ -498,26 +566,135 @@ export function ReportUploadDialog({ disabled, onOpenExtendTariff }: ReportUploa
           )}
         </div>
       </DialogTrigger>
-      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col bg-card border-border">
+      <DialogContent
+        className={
+          isGuided
+            ? "max-w-4xl max-h-[92vh] flex flex-col bg-card border-border"
+            : "max-w-3xl max-h-[90vh] flex flex-col bg-card border-border"
+        }
+      >
         <DialogHeader className="flex-shrink-0">
-          <DialogTitle className="text-xl font-semibold">{t('report.uploadTitle')}</DialogTitle>
+          <DialogTitle
+            className={
+              isGuided
+                ? "text-base sm:text-lg font-semibold leading-snug pr-8"
+                : "text-xl font-semibold"
+            }
+          >
+            {isGuided ? t("report.uploadDialogMainTitle") : t("report.uploadTitle")}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto pr-2 -mr-2 min-h-0">
-          {/* Info Block */}
-          <div className="bg-primary/10 border border-primary/20 rounded-lg p-2.5 mt-3">
-          <div className="flex items-start gap-2">
-            <Info className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-            <div className="text-xs text-foreground">
-              <p className="font-semibold mb-1.5 text-sm">{t('report.howItWorks')}</p>
-              <ul className="text-muted-foreground leading-tight space-y-1 list-disc list-inside">
-                <li>{t('report.bullet1')}</li>
-                <li>{t('report.bullet2')}</li>
-                <li className="text-warning font-medium">{t('report.bullet3')}</li>
-              </ul>
+          {isGuided ? (
+            <>
+              <div className="space-y-4 mt-1">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
+                  <h3 className="text-sm font-semibold text-foreground leading-snug">
+                    {t("report.uploadStepsHeading")}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setVideoOpen(true)}
+                    className="text-sm font-medium text-primary underline underline-offset-4 hover:text-primary/90 shrink-0"
+                  >
+                    {t("report.watchImportVideo")}
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {howItWorksSteps.map((item) => (
+                    <div
+                      key={item.step}
+                      className="rounded-lg border border-border bg-muted/20 overflow-hidden flex flex-col"
+                    >
+                      <div className="flex items-center justify-center gap-2 py-2 px-2 bg-muted/40 border-b border-border/60">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
+                          {item.step}
+                        </span>
+                        <span className="text-xs font-semibold text-foreground text-left leading-tight">{item.title}</span>
+                      </div>
+                      {(() => {
+                        const urls = getStepVisualImageUrls(item);
+                        const multi = urls.length > 1;
+                        return (
+                          <div
+                            className={
+                              multi
+                                ? "flex flex-row flex-nowrap gap-2 overflow-x-auto bg-background/50 p-2 [scrollbar-width:thin]"
+                                : "flex flex-col bg-background/50 p-2"
+                            }
+                          >
+                            {urls.map((src, idx) => (
+                              <div
+                                key={`${item.step}-${idx}`}
+                                className={
+                                  multi
+                                    ? "flex min-h-[150px] w-[78%] max-w-[300px] shrink-0 items-center justify-center overflow-hidden rounded border border-border/50 bg-muted/20 sm:h-auto sm:min-h-[170px] sm:w-0 sm:max-w-none sm:flex-1 sm:shrink"
+                                    : "flex min-h-0 items-center justify-center overflow-hidden rounded border border-border/50 bg-muted/20"
+                                }
+                              >
+                                <img
+                                  src={src}
+                                  alt=""
+                                  className="max-h-[200px] w-full object-contain object-top sm:max-h-[220px]"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                      <p className="text-[11px] sm:text-xs text-muted-foreground leading-snug p-2 flex-1 whitespace-pre-line">{item.text}</p>
+                      {item.step === 2 ? (
+                        <div className="flex flex-col sm:flex-row gap-3 items-center sm:items-start p-2 border-t border-border/40 bg-muted/15">
+                          <a
+                            href="https://t.me/PROFiboard"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="shrink-0 rounded-md overflow-hidden ring-1 ring-border/60 bg-card hover:opacity-95 transition-opacity"
+                          >
+                            <img
+                              src="/images/telegram-first-upload-qr.png"
+                              alt={t("support.telegramQrAlt")}
+                              className="w-[120px] h-[120px] object-contain"
+                              width={120}
+                              height={120}
+                              loading="lazy"
+                            />
+                          </a>
+                          <p className="text-[11px] sm:text-xs text-muted-foreground leading-snug flex-1 text-center sm:text-left">
+                            {t("report.firstUploadHelp")}
+                          </p>
+                        </div>
+                      ) : null}
+                      {item.noticeUnderTitle ? (
+                        <p className="text-[11px] sm:text-xs text-foreground leading-snug px-2 py-2 text-center bg-amber-50/90 dark:bg-amber-950/25 border-t border-amber-200/70 dark:border-amber-800/40">
+                          {item.noticeUnderTitle}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="my-4 border-t border-border/60" />
+
+              <h3 className="text-sm font-semibold text-foreground mb-2">{t("report.uploadFilesSectionTitle")}</h3>
+            </>
+          ) : (
+            <div className="bg-primary/10 border border-primary/20 rounded-lg p-2.5 mt-3">
+              <div className="flex items-start gap-2">
+                <Info className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                <div className="text-xs text-foreground">
+                  <p className="font-semibold mb-1.5 text-sm">{t("report.howItWorks")}</p>
+                  <ul className="text-muted-foreground leading-tight space-y-1 list-disc list-inside">
+                    <li>{t("report.bullet1")}</li>
+                    <li>{t("report.bullet2")}</li>
+                    <li className="text-warning font-medium">{t("report.bullet3")}</li>
+                  </ul>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          )}
 
         {/* Upload Progress */}
         {uploading && (
@@ -676,6 +853,26 @@ export function ReportUploadDialog({ disabled, onOpenExtendTariff }: ReportUploa
       </DialogContent>
     </Dialog>
 
+    <Dialog open={videoOpen} onOpenChange={setVideoOpen}>
+      <DialogContent className="max-w-4xl w-[calc(100vw-2rem)] gap-0 p-0 sm:max-w-4xl overflow-hidden">
+        <DialogHeader className="px-4 pt-4 pb-3 text-left">
+          <DialogTitle>{t("report.importVideoModalTitle")}</DialogTitle>
+        </DialogHeader>
+        <div className="px-4 pb-4">
+          <video
+            ref={videoRef}
+            src={IMPORT_REPORTS_VIDEO_SRC}
+            controls
+            playsInline
+            className="w-full rounded-md bg-black"
+            preload="auto"
+          >
+            {language === "uz" ? "Brauzeringiz video qo‘llab-quvvatlamaydi." : "Ваш браузер не поддерживает видео."}
+          </video>
+        </div>
+      </DialogContent>
+    </Dialog>
+
     {storeLimitData && (
       <StoreLimitDialog
         open={storeLimitDialogOpen}
@@ -688,4 +885,4 @@ export function ReportUploadDialog({ disabled, onOpenExtendTariff }: ReportUploa
     )}
     </>
   );
-}
+});

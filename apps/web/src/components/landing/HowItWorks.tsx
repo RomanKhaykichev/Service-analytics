@@ -8,57 +8,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-
-const IMPORT_REPORTS_VIDEO_SRC = "/videos/01-import-reports.mp4";
-
-const stepsRu = [
-  {
-    step: 1,
-    title: "Сформируйте 4 отчета в ЛК продавца.",
-    text: "Отчет о продажах, отчет об услугах, отчет об остатках (старого формата), отчет о хранении.",
-    image: "/how-it-works-1.png",
-  },
-  {
-    step: 2,
-    title: "Загрузите 4 отчета в PROFiboard.",
-    text: "Важно! Отчеты должны быть все одного периода. Мы рекомендуем выгружать отчеты с начала года.",
-    image: "/how-it-works-2.png",
-  },
-  {
-    step: 3,
-    title: "Отслеживайте ваши успехи.",
-    text: "Используйте данные чтобы оптимизировать расходы. Следите как меняется ваша прибыль от месяца к месяцу.",
-    image: "/how-it-works-3.png",
-  },
-];
-
-const stepsUz = [
-  {
-    step: 1,
-    title: "Sotuvchi SK’sida 4 ta hisobotni shakllantiring.",
-    text: "Savdolar hisobotini, xizmatlar bo‘yicha hisobotni, qoldiqlar hisobotini (eski format), saqlash bo‘yicha hisobotni yuklab oling.",
-    image: "/how-it-works-1.png",
-  },
-  {
-    step: 2,
-    title: "Ushbu 4 ta hisobotni PROFiboard’ga yuklang.",
-    text: "Muhim! Hisobotlarning barchasi bir davr uchun bo‘lishi kerak. Biz hisobotlarni yil boshidan boshlab yuklashni tavsiya qilamiz.",
-    image: "/how-it-works-2.png",
-  },
-  {
-    step: 3,
-    title: "Natijalaringizni kuzatib boring.",
-    text: "Ma’lumotlardan xarajatlarni optimallashtirish uchun foydalaning. Foydangiz oyma‑oy qanday o‘zgarayotganini kuzating.",
-    image: "/how-it-works-3.png",
-  },
-];
+import { getUzumReportHowItWorksSteps, IMPORT_REPORTS_VIDEO_SRC } from "@/content/uzumReportHowItWorks";
 
 /** Секция «Как это работает» — формирование отчётов, загрузка в PROFiboard, дашборды. */
 export function HowItWorks() {
   const { language } = useLanguage();
   const [videoOpen, setVideoOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const steps = language === "uz" ? stepsUz : stepsRu;
+  const steps = getUzumReportHowItWorksSteps(language);
   const title = language === "uz" ? "Bu qanday ishlaydi" : "Как это работает";
   const subtitle =
     language === "uz"
@@ -166,7 +123,7 @@ export function HowItWorks() {
                 />
               </div>
               <h3 className="mt-4 font-semibold text-foreground">{item.title}</h3>
-              <p className="mt-2 text-sm text-muted-foreground">{item.text}</p>
+              <p className="mt-2 text-sm text-muted-foreground whitespace-pre-line">{item.text}</p>
             </div>
           ))}
         </div>

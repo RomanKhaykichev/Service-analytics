@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { HelpCircle, User, ChevronDown, LogOut, CreditCard, Globe, PlayCircle, MessageCircle, ShieldCheck } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { HelpCircle, User, ChevronDown, LogOut, CreditCard, Globe, PlayCircle, MessageCircle, ShieldCheck, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -9,7 +9,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ReportUploadDialog } from "./ReportUploadDialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ReportUploadDialog, type ReportUploadDialogHandle } from "./ReportUploadDialog";
 import { PricingDialog } from "./PricingDialog";
 import { ProfileDialog } from "./ProfileDialog";
 import { LanguageDialog } from "./LanguageDialog";
@@ -41,6 +42,7 @@ export function HeaderActions() {
   };
   const [profileOpen, setProfileOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
+  const reportUploadRef = useRef<ReportUploadDialogHandle>(null);
   const displayName = getUserDisplayName(user);
 
   const validUntilLabel = (() => {
@@ -82,6 +84,7 @@ export function HeaderActions() {
     <div className="flex items-center gap-6">
       {/* Report Upload */}
       <ReportUploadDialog
+        ref={reportUploadRef}
         disabled={isTrialExpired}
         onOpenExtendTariff={() => {
           setExtendVariant("extend");
@@ -89,15 +92,40 @@ export function HeaderActions() {
         }}
       />
 
-      {/* Help */}
+      {/* Help — заметная кнопка, подпись на sm+, подсказка при наведении */}
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon">
-            <HelpCircle className="w-5 h-5" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56 bg-card border-border">
-          <DropdownMenuLabel>{t('header.help')}</DropdownMenuLabel>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-label={t("header.help")}
+                  className="gap-2 border-primary/25 bg-primary/5 hover:bg-primary/10 text-foreground shrink-0 h-9 sm:h-10 px-2.5 sm:px-3"
+                >
+                  <HelpCircle className="w-4 h-4 sm:w-5 sm:h-5 text-primary shrink-0" aria-hidden />
+                  <span className="hidden sm:inline text-sm font-medium">{t("header.help")}</span>
+                </Button>
+              </DropdownMenuTrigger>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="end" className="max-w-xs text-center">
+            {t("header.helpTooltip")}
+          </TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="end" className="w-64 sm:w-72 bg-card border-border">
+          <DropdownMenuLabel className="text-base font-semibold">{t("header.help")}</DropdownMenuLabel>
+          <DropdownMenuItem
+            className="cursor-pointer"
+            disabled={isTrialExpired}
+            onSelect={() => {
+              reportUploadRef.current?.open("guided");
+            }}
+          >
+            <Upload className="w-4 h-4 mr-2" />
+            {t("header.helpUploadReports")}
+          </DropdownMenuItem>
           <DropdownMenuItem className="cursor-pointer" asChild>
             <Link to="/training">
               <PlayCircle className="w-4 h-4 mr-2" />
