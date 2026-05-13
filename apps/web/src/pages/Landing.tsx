@@ -8,7 +8,7 @@ import { Features } from "@/components/landing/Features";
 import { HowItWorks } from "@/components/landing/HowItWorks";
 import { Testimonials } from "@/components/landing/Testimonials";
 import { FAQ } from "@/components/landing/FAQ";
-import { CtaGreenBlock } from "@/components/landing/CtaGreenBlock";
+import { LandingClosingTagline } from "@/components/landing/LandingClosingTagline";
 import { Footer } from "@/components/landing/Footer";
 import { PromoTrialDialog } from "@/components/landing/PromoTrialDialog";
 import { AuthDialog } from "./Auth";
@@ -60,7 +60,7 @@ export default function Landing() {
         <HowItWorks />
         <Testimonials />
         <FAQ />
-        <CtaGreenBlock onOpenAuth={openAuth} onOpenPromo={openPromo} />
+        <LandingClosingTagline onOpenAuth={openAuth} onOpenPromo={openPromo} />
       </main>
       <Footer />
       <PromoTrialDialog open={promoOpen} onOpenChange={setPromoOpen} onTryFree={handlePromoTryFree} />

@@ -6,5 +6,6 @@ export { Features } from "./Features";
 export { HowItWorks } from "./HowItWorks";
 export { Testimonials } from "./Testimonials";
 export { FAQ } from "./FAQ";
+export { LandingClosingTagline } from "./LandingClosingTagline";
 export { CtaPlovBlock } from "./CtaPlovBlock";
 export { Footer } from "./Footer";
