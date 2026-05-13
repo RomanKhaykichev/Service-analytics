@@ -123,7 +123,15 @@ export function HowItWorks() {
                 />
               </div>
               <h3 className="mt-4 font-semibold text-foreground">{item.title}</h3>
-              <p className="mt-2 text-sm text-muted-foreground whitespace-pre-line">{item.text}</p>
+              <p
+                className={
+                  item.step === 3
+                    ? "mt-2 text-sm text-muted-foreground whitespace-pre-line"
+                    : "mt-2 text-sm text-foreground whitespace-pre-line"
+                }
+              >
+                {item.text}
+              </p>
             </div>
           ))}
         </div>

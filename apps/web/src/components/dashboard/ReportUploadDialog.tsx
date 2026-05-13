@@ -1,4 +1,5 @@
 import { forwardRef, useImperativeHandle, useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Upload, FileSpreadsheet, Info, X, Loader2, CheckCircle, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -160,6 +161,7 @@ export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUpl
   const [open, setOpen] = useState(false);
   const [uploadVariant, setUploadVariant] = useState<"compact" | "guided">("compact");
   const [videoOpen, setVideoOpen] = useState(false);
+  const [stepImagePreview, setStepImagePreview] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, UploadedFile>>({});
   const [adIds, setAdIds] = useState<Record<string, string>>({});
@@ -223,6 +225,15 @@ export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUpl
       removeCanPlay?.();
     };
   }, [videoOpen]);
+
+  useEffect(() => {
+    if (!stepImagePreview) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setStepImagePreview(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [stepImagePreview]);
 
   // If we need to show StoreLimitDialog after a reload (triggered by store_limit_exceeded),
   // we persist the payload in localStorage.
@@ -540,7 +551,10 @@ export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUpl
   const handleOpenChange = (value: boolean) => {
     if (disabled) return;
     setOpen(value);
-    if (!value) setUploadVariant("compact");
+    if (!value) {
+      setUploadVariant("compact");
+      setStepImagePreview(null);
+    }
   };
 
   const isGuided = uploadVariant === "guided";
@@ -625,27 +639,32 @@ export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUpl
                             }
                           >
                             {urls.map((src, idx) => (
-                              <div
+                              <button
+                                type="button"
                                 key={`${item.step}-${idx}`}
+                                aria-label={t("report.stepImageZoomAria")}
+                                onClick={() =>
+                                  setStepImagePreview((prev) => (prev === src ? null : src))
+                                }
                                 className={
                                   multi
-                                    ? "flex min-h-[150px] w-[78%] max-w-[300px] shrink-0 items-center justify-center overflow-hidden rounded border border-border/50 bg-muted/20 sm:h-auto sm:min-h-[170px] sm:w-0 sm:max-w-none sm:flex-1 sm:shrink"
-                                    : "flex min-h-0 items-center justify-center overflow-hidden rounded border border-border/50 bg-muted/20"
+                                    ? "group flex min-h-[150px] w-[78%] max-w-[300px] shrink-0 cursor-zoom-in items-center justify-center overflow-hidden rounded border border-border/50 bg-muted/20 text-left outline-none ring-offset-background transition hover:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring sm:h-auto sm:min-h-[170px] sm:w-0 sm:max-w-none sm:flex-1 sm:shrink"
+                                    : "group flex min-h-0 w-full cursor-zoom-in items-center justify-center overflow-hidden rounded border border-border/50 bg-muted/20 text-left outline-none ring-offset-background transition hover:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring"
                                 }
                               >
                                 <img
                                   src={src}
                                   alt=""
-                                  className="max-h-[200px] w-full object-contain object-top sm:max-h-[220px]"
+                                  className="max-h-[200px] w-full object-contain object-top sm:max-h-[220px] pointer-events-none"
                                 />
-                              </div>
+                              </button>
                             ))}
                           </div>
                         );
                       })()}
-                      <p className="text-[11px] sm:text-xs text-muted-foreground leading-snug p-2 flex-1 whitespace-pre-line">{item.text}</p>
+                      <p className="text-[11px] sm:text-xs text-foreground leading-snug p-2 flex-1 whitespace-pre-line">{item.text}</p>
                       {item.step === 2 ? (
-                        <div className="flex flex-col sm:flex-row gap-3 items-center sm:items-start p-2 border-t border-border/40 bg-muted/15">
+                        <div className="flex flex-col sm:flex-row gap-3 items-center p-2 border-t border-amber-200/70 dark:border-amber-800/40 bg-amber-50/90 dark:bg-amber-950/25">
                           <a
                             href="https://t.me/PROFiboard"
                             target="_blank"
@@ -661,9 +680,11 @@ export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUpl
                               loading="lazy"
                             />
                           </a>
-                          <p className="text-[11px] sm:text-xs text-muted-foreground leading-snug flex-1 text-center sm:text-left">
-                            {t("report.firstUploadHelp")}
-                          </p>
+                          <div className="flex min-h-0 flex-1 items-center justify-center sm:min-h-[120px] sm:justify-start">
+                            <p className="text-[11px] sm:text-xs text-foreground leading-snug text-center sm:text-left">
+                              {t("report.firstUploadHelp")}
+                            </p>
+                          </div>
                         </div>
                       ) : null}
                       {item.noticeUnderTitle ? (
@@ -675,10 +696,6 @@ export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUpl
                   ))}
                 </div>
               </div>
-
-              <div className="my-4 border-t border-border/60" />
-
-              <h3 className="text-sm font-semibold text-foreground mb-2">{t("report.uploadFilesSectionTitle")}</h3>
             </>
           ) : (
             <div className="bg-primary/10 border border-primary/20 rounded-lg p-2.5 mt-3">
@@ -696,6 +713,8 @@ export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUpl
             </div>
           )}
 
+        {!isGuided && (
+          <>
         {/* Upload Progress */}
         {uploading && (
           <div className="mt-3">
@@ -823,35 +842,83 @@ export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUpl
             </div>
           </>
         )}
+          </>
+        )}
         </div>
 
         {/* Action Buttons */}
-        <div className="flex justify-between items-center mt-4 flex-shrink-0 pt-2 border-t border-border/50">
-          <div className="text-sm text-muted-foreground">
-            {uploadedCount > 0 && (
-              <span className="text-green-600 font-medium">
-                ✓ Загружено отчётов: {uploadedCount}
-              </span>
-            )}
-          </div>
+        <div
+          className={`flex items-center mt-4 flex-shrink-0 pt-2 border-t border-border/50 ${
+            isGuided ? "justify-end" : "justify-between"
+          }`}
+        >
+          {!isGuided ? (
+            <div className="text-sm text-muted-foreground">
+              {uploadedCount > 0 && (
+                <span className="text-green-600 font-medium">
+                  ✓ Загружено отчётов: {uploadedCount}
+                </span>
+              )}
+            </div>
+          ) : null}
           <div className="flex gap-3">
             <Button variant="outline" onClick={() => setOpen(false)} disabled={uploading}>
               {t('report.close')}
             </Button>
-            <Button onClick={handleSave} disabled={uploading}>
-              {uploading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {t('report.uploadingReports')}
-                </>
-              ) : (
-                t('report.upload')
-              )}
-            </Button>
+            {isGuided ? (
+              <Button onClick={() => setUploadVariant("compact")} disabled={uploading}>
+                {t("report.uploadFilesButton")}
+              </Button>
+            ) : (
+              <Button onClick={handleSave} disabled={uploading}>
+                {uploading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {t('report.uploadingReports')}
+                  </>
+                ) : (
+                  t('report.upload')
+                )}
+              </Button>
+            )}
           </div>
         </div>
       </DialogContent>
     </Dialog>
+
+    {stepImagePreview && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex cursor-zoom-out items-center justify-center bg-black/88 p-4 sm:p-10"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("report.stepImageZoomAria")}
+            onClick={() => setStepImagePreview(null)}
+          >
+            <button
+              type="button"
+              className="absolute right-3 top-3 z-[10000] cursor-pointer rounded-md bg-background/95 p-2 text-foreground shadow-md ring-1 ring-border hover:bg-muted"
+              onClick={(e) => {
+                e.stopPropagation();
+                setStepImagePreview(null);
+              }}
+              aria-label={t("report.close")}
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <img
+              src={stepImagePreview}
+              alt=""
+              className="max-h-[min(90vh,calc(100dvh-4rem))] max-w-[min(100%,calc(100vw-2rem))] w-auto object-contain"
+              onClick={(e) => {
+                e.stopPropagation();
+                setStepImagePreview(null);
+              }}
+            />
+          </div>,
+          document.body,
+        )
+      : null}
 
     <Dialog open={videoOpen} onOpenChange={setVideoOpen}>
       <DialogContent className="max-w-4xl w-[calc(100vw-2rem)] gap-0 p-0 sm:max-w-4xl overflow-hidden">
