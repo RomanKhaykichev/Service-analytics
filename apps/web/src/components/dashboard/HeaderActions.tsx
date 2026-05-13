@@ -17,6 +17,7 @@ import { LanguageDialog } from "./LanguageDialog";
 import { useNavigate, Link } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
+import { useStorageShops } from "@/hooks/useStorageShops";
 import { toast } from "sonner";
 
 function getUserDisplayName(user: { full_name?: string; user_metadata?: { full_name?: string }; email?: string } | null): string {
@@ -30,6 +31,7 @@ function getUserDisplayName(user: { full_name?: string; user_metadata?: { full_n
 export function HeaderActions() {
   const { t, language } = useLanguage();
   const { user, signOut } = useAuth();
+  const { shops, loading: shopsLoading } = useStorageShops();
   const navigate = useNavigate();
   const [tariffOpen, setTariffOpen] = useState(false);
   const [extendTariffOpen, setExtendTariffOpen] = useState(false);
@@ -43,6 +45,8 @@ export function HeaderActions() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
   const reportUploadRef = useRef<ReportUploadDialogHandle>(null);
+  /** Чтобы не открывать снова при каждом refetch при 0 магазинах; сбрасывается при появлении магазина или новом монтировании шапки (новый «вход» на главную). */
+  const noShopsGuidedOpenedThisMountRef = useRef(false);
   const displayName = getUserDisplayName(user);
 
   const validUntilLabel = (() => {
@@ -79,6 +83,26 @@ export function HeaderActions() {
       setExtendTariffOpen(true);
     }
   }, [isTrialExpired]);
+
+  // Появился хотя бы один магазин — снимаем блокировку повторного авто-открытия на этом монтировании (на случай снова пустых данных)
+  useEffect(() => {
+    if (shops.length > 0) {
+      noShopsGuidedOpenedThisMountRef.current = false;
+    }
+  }, [shops.length]);
+
+  // Нет магазинов в seller-storage: при каждом заходе на главную (монтирование шапки) показываем инструкцию, пока магазинов 0
+  useEffect(() => {
+    if (!user || user.is_admin) return;
+    if (isTrialExpired) return;
+    if (shopsLoading) return;
+    if (shops.length > 0) return;
+    if (noShopsGuidedOpenedThisMountRef.current) return;
+    noShopsGuidedOpenedThisMountRef.current = true;
+    queueMicrotask(() => {
+      reportUploadRef.current?.open("guided");
+    });
+  }, [user?.id, user?.is_admin, isTrialExpired, shopsLoading, shops.length]);
 
   return (
     <div className="flex items-center gap-6">
