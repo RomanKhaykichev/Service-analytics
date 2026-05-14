@@ -1,6 +1,22 @@
 import { forwardRef, useImperativeHandle, useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Upload, FileSpreadsheet, Info, X, Loader2, CheckCircle, XCircle } from "lucide-react";
+import {
+  Upload,
+  FileSpreadsheet,
+  Info,
+  X,
+  Loader2,
+  CheckCircle,
+  XCircle,
+  BarChart3,
+  Trophy,
+  PieChart,
+  Package,
+  LineChart,
+  ShieldCheck,
+  PlayCircle,
+  Star,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,6 +40,7 @@ import { toast } from "sonner";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getAuthHeaders, getApiBaseUrl } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
+import { Link } from "react-router-dom";
 import { getUzumReportHowItWorksSteps, getStepVisualImageUrls, IMPORT_REPORTS_VIDEO_SRC } from "@/content/uzumReportHowItWorks";
 
 interface UploadedFile {
@@ -154,6 +171,61 @@ function StoreLimitDialog({
   );
 }
 
+function GuidedStepImageGrid({
+  urls,
+  stepId,
+  ariaLabel,
+  onTogglePreview,
+}: {
+  urls: string[];
+  stepId: string;
+  ariaLabel: string;
+  onTogglePreview: (src: string) => void;
+}) {
+  const multi = urls.length > 1;
+  return (
+    <div
+      className={
+        multi
+          ? "flex flex-row flex-nowrap gap-2 overflow-x-auto bg-slate-50/90 p-2.5 [scrollbar-width:thin] dark:bg-zinc-900/50"
+          : "flex flex-col bg-slate-50/90 p-2.5 dark:bg-zinc-900/50"
+      }
+    >
+      {urls.map((src, idx) => (
+        <button
+          type="button"
+          key={`${stepId}-${idx}`}
+          aria-label={ariaLabel}
+          onClick={() => onTogglePreview(src)}
+          className={
+            multi
+              ? "group flex min-h-[150px] w-[78%] max-w-[300px] shrink-0 cursor-zoom-in items-center justify-center overflow-hidden rounded-lg border border-slate-200/90 bg-white text-left shadow-sm outline-none ring-offset-background transition hover:border-primary/40 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-primary/30 sm:h-auto sm:min-h-[170px] sm:w-0 sm:max-w-none sm:flex-1 sm:shrink dark:border-zinc-700 dark:bg-zinc-950/80 dark:hover:bg-zinc-900"
+              : "group flex min-h-0 w-full cursor-zoom-in items-center justify-center overflow-hidden rounded-lg border border-slate-200/90 bg-white text-left shadow-sm outline-none ring-offset-background transition hover:border-primary/40 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-primary/30 dark:border-zinc-700 dark:bg-zinc-950/80 dark:hover:bg-zinc-900"
+          }
+        >
+          <img
+            src={src}
+            alt=""
+            className="max-h-[200px] w-full object-contain object-top sm:max-h-[220px] pointer-events-none"
+          />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Фото продавцов с лендинга: секция отзывов «Что говорят о PROFiboard»
+ * (`apps/web/src/components/landing/Testimonials.tsx`, поле `avatar` у `testimonialsRu` / `testimonialsUz`).
+ * Файлы: `apps/web/public/testimonial-1.png` … `testimonial-4.png`.
+ */
+const LANDING_TESTIMONIAL_AVATAR_SRCS = [
+  "/testimonial-1.png", // Манукин Илья (RU) / Manukin Ilya (UZ)
+  "/testimonial-2.png", // Клещев Владислав / Kleshchev Vladislav
+  "/testimonial-3.png", // Хаметов Аброр / Xametov Abror
+  "/testimonial-4.png", // Азизов Бобур / Azizov Bobur
+] as const;
+
 export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUploadDialogProps>(
   function ReportUploadDialog({ disabled, onOpenExtendTariff }, ref) {
   const { t, language } = useLanguage();
@@ -186,6 +258,10 @@ export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUpl
   );
 
   const howItWorksSteps = getUzumReportHowItWorksSteps(language).filter((s) => s.step !== 3);
+  const guidedStep1Item = howItWorksSteps.find((s) => s.step === 1);
+  const guidedStep2Item = howItWorksSteps.find((s) => s.step === 2);
+  const guidedStep1Urls = guidedStep1Item ? getStepVisualImageUrls(guidedStep1Item) : [];
+  const guidedStep2Urls = guidedStep2Item ? getStepVisualImageUrls(guidedStep2Item) : [];
 
   useEffect(() => {
     if (!videoOpen) {
@@ -583,117 +659,273 @@ export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUpl
       <DialogContent
         className={
           isGuided
-            ? "max-w-4xl max-h-[92vh] flex flex-col bg-card border-border"
+            ? "max-w-6xl w-[calc(100vw-1.5rem)] max-h-[92vh] flex flex-col gap-0 border-slate-200/90 bg-white p-4 shadow-xl dark:border-zinc-700 dark:bg-zinc-950 sm:p-6 sm:max-w-6xl"
             : "max-w-3xl max-h-[90vh] flex flex-col bg-card border-border"
         }
       >
-        <DialogHeader className="flex-shrink-0">
-          <DialogTitle
-            className={
-              isGuided
-                ? "text-base sm:text-lg font-semibold leading-snug pr-8"
-                : "text-xl font-semibold"
-            }
-          >
-            {isGuided ? t("report.uploadDialogMainTitle") : t("report.uploadTitle")}
-          </DialogTitle>
+        <DialogHeader className="flex-shrink-0 space-y-0 border-b border-slate-200/80 pb-4 dark:border-zinc-700/80">
+          {isGuided ? (
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-8 pr-8 sm:pr-10">
+              <div className="min-w-0 flex-1 space-y-2 text-left">
+                <DialogTitle className="text-balance text-left text-xl font-bold leading-tight tracking-tight text-slate-900 dark:text-foreground sm:text-2xl">
+                  {t("report.guidedHeroTitle")}
+                </DialogTitle>
+                <p className="max-w-full text-balance text-sm font-medium leading-snug text-slate-600 dark:text-muted-foreground sm:text-[15px] sm:leading-relaxed">
+                  {t("report.guidedHeroSubtitle")}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVideoOpen(true)}
+                className="inline-flex shrink-0 items-center gap-2 self-start rounded-lg border-2 border-primary bg-primary/5 px-3.5 py-2.5 text-sm font-bold text-primary shadow-sm transition-colors hover:bg-primary/10 dark:bg-primary/10 dark:hover:bg-primary/18"
+              >
+                <PlayCircle className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
+                {t("report.watchImportVideoGuided")}
+              </button>
+            </div>
+          ) : (
+            <DialogTitle className="text-xl font-semibold">{t("report.uploadTitle")}</DialogTitle>
+          )}
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto pr-2 -mr-2 min-h-0">
+        <div className="flex-1 overflow-y-auto pr-1 -mr-1 min-h-0 sm:pr-2 sm:-mr-2">
           {isGuided ? (
             <>
-              <div className="space-y-4 mt-1">
-                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
-                  <h3 className="text-sm font-semibold text-foreground leading-snug">
-                    {t("report.uploadStepsHeading")}
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => setVideoOpen(true)}
-                    className="text-sm font-medium text-primary underline underline-offset-4 hover:text-primary/90 shrink-0"
-                  >
-                    {t("report.watchImportVideo")}
-                  </button>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {howItWorksSteps.map((item) => (
-                    <div
-                      key={item.step}
-                      className="rounded-lg border border-border bg-muted/20 overflow-hidden flex flex-col"
-                    >
-                      <div className="flex items-center justify-center gap-2 py-2 px-2 bg-muted/40 border-b border-border/60">
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-bold">
-                          {item.step}
-                        </span>
-                        <span className="text-xs font-semibold text-foreground text-left leading-tight">{item.title}</span>
-                      </div>
-                      {(() => {
-                        const urls = getStepVisualImageUrls(item);
-                        const multi = urls.length > 1;
+              <div className="mt-4 space-y-6">
+                {/* Пропорции как на макете: левая колонка уже, шаги шире */}
+                <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-[minmax(0,3.5fr)_minmax(0,8.5fr)] lg:items-stretch lg:gap-5">
+                  <div className="flex min-w-0 flex-col rounded-xl border border-slate-200/90 bg-primary/5 p-4 shadow-sm dark:border-zinc-700/90 dark:bg-primary/10">
+                    <h3 className="text-sm font-bold leading-snug tracking-tight text-primary sm:text-[15px]">
+                      {t("report.guidedBenefitsHeading")}
+                    </h3>
+                    <ul className="mt-3 space-y-2 text-left">
+                      {(
+                        [
+                          [BarChart3, "text-primary", "bg-violet-100 dark:bg-violet-950/50"],
+                          [Trophy, "text-emerald-600", "bg-emerald-100 dark:bg-emerald-950/40"],
+                          [PieChart, "text-blue-600", "bg-blue-100 dark:bg-blue-950/40"],
+                          [Package, "text-orange-600", "bg-orange-100 dark:bg-orange-950/40"],
+                          [LineChart, "text-sky-600", "bg-sky-100 dark:bg-sky-950/40"],
+                        ] as const
+                      ).map(([Icon, color, tile], i) => {
+                        const pairs = [
+                          ["report.guidedBenefit1Title", "report.guidedBenefit1Desc"],
+                          ["report.guidedBenefit2Title", "report.guidedBenefit2Desc"],
+                          ["report.guidedBenefit3Title", "report.guidedBenefit3Desc"],
+                          ["report.guidedBenefit4Title", "report.guidedBenefit4Desc"],
+                          ["report.guidedBenefit5Title", "report.guidedBenefit5Desc"],
+                        ] as const;
+                        const [titleKey, descKey] = pairs[i];
                         return (
-                          <div
-                            className={
-                              multi
-                                ? "flex flex-row flex-nowrap gap-2 overflow-x-auto bg-background/50 p-2 [scrollbar-width:thin]"
-                                : "flex flex-col bg-background/50 p-2"
-                            }
-                          >
-                            {urls.map((src, idx) => (
-                              <button
-                                type="button"
-                                key={`${item.step}-${idx}`}
-                                aria-label={t("report.stepImageZoomAria")}
-                                onClick={() =>
-                                  setStepImagePreview((prev) => (prev === src ? null : src))
-                                }
-                                className={
-                                  multi
-                                    ? "group flex min-h-[150px] w-[78%] max-w-[300px] shrink-0 cursor-zoom-in items-center justify-center overflow-hidden rounded border border-border/50 bg-muted/20 text-left outline-none ring-offset-background transition hover:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring sm:h-auto sm:min-h-[170px] sm:w-0 sm:max-w-none sm:flex-1 sm:shrink"
-                                    : "group flex min-h-0 w-full cursor-zoom-in items-center justify-center overflow-hidden rounded border border-border/50 bg-muted/20 text-left outline-none ring-offset-background transition hover:bg-muted/35 focus-visible:ring-2 focus-visible:ring-ring"
-                                }
-                              >
-                                <img
-                                  src={src}
-                                  alt=""
-                                  className="max-h-[200px] w-full object-contain object-top sm:max-h-[220px] pointer-events-none"
-                                />
-                              </button>
-                            ))}
-                          </div>
+                          <li key={titleKey} className="flex items-start gap-3">
+                            <span
+                              className={`mt-px flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${tile}`}
+                              aria-hidden
+                            >
+                              <Icon className={`h-5 w-5 ${color}`} strokeWidth={2.35} />
+                            </span>
+                            <div className="min-w-0 flex flex-col gap-0">
+                              <span className="text-sm font-bold leading-tight text-slate-900 dark:text-foreground">
+                                {t(titleKey)}
+                              </span>
+                              <span className="text-[13px] font-normal leading-tight text-slate-600 dark:text-muted-foreground">
+                                {t(descKey)}
+                              </span>
+                            </div>
+                          </li>
                         );
-                      })()}
-                      <p className="text-[11px] sm:text-xs text-foreground leading-snug p-2 flex-1 whitespace-pre-line">{item.text}</p>
-                      {item.step === 2 ? (
-                        <div className="flex flex-col sm:flex-row gap-3 items-center p-2 border-t border-amber-200/70 dark:border-amber-800/40 bg-amber-50/90 dark:bg-amber-950/25">
-                          <a
-                            href="https://t.me/PROFiboard"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="shrink-0 rounded-md overflow-hidden ring-1 ring-border/60 bg-card hover:opacity-95 transition-opacity"
-                          >
-                            <img
-                              src="/images/telegram-first-upload-qr.png"
-                              alt={t("support.telegramQrAlt")}
-                              className="w-[120px] h-[120px] object-contain"
-                              width={120}
-                              height={120}
-                              loading="lazy"
+                      })}
+                    </ul>
+                    <div className="mt-4 grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-1.5 rounded-lg border border-emerald-200 bg-emerald-50/95 p-3 text-left dark:border-emerald-800/60 dark:bg-emerald-950/35">
+                      <ShieldCheck
+                        className="row-start-1 h-7 w-7 shrink-0 self-start text-emerald-700 dark:text-emerald-300"
+                        strokeWidth={2.25}
+                        aria-hidden
+                      />
+                      <span className="row-start-1 min-w-0 self-start pt-0.5 text-xs font-bold leading-snug text-emerald-950 dark:text-emerald-50">
+                        {t("report.guidedDataSafetyTitle")}
+                      </span>
+                      <span className="col-span-2 row-start-2 w-full text-xs font-normal leading-relaxed text-slate-600 dark:text-muted-foreground">
+                        {t("report.guidedDataSafetyBody")}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-sm dark:border-zinc-700/90 dark:bg-zinc-950/60">
+                    <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row lg:items-stretch">
+                      <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_1fr_auto] content-start lg:min-h-0">
+                        <div className="flex shrink-0 items-center gap-2.5 border-b border-slate-200/90 bg-violet-50/90 px-3 py-2.5 dark:border-zinc-700/80 dark:bg-violet-950/25">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground shadow-sm">
+                            1
+                          </span>
+                          <span className="text-left text-sm font-bold leading-tight text-slate-900 dark:text-foreground">
+                            {t("report.guidedStep1Title")}
+                          </span>
+                        </div>
+                        <div className="flex min-h-0 w-full items-center justify-center">
+                          <div className="w-full max-w-full shrink-0">
+                            <GuidedStepImageGrid
+                              urls={guidedStep1Urls}
+                              stepId="g1"
+                              ariaLabel={t("report.stepImageZoomAria")}
+                              onTogglePreview={(src) =>
+                                setStepImagePreview((prev) => (prev === src ? null : src))
+                              }
                             />
-                          </a>
-                          <div className="flex min-h-0 flex-1 items-center justify-center sm:min-h-[120px] sm:justify-start">
-                            <p className="text-[11px] sm:text-xs text-foreground leading-snug text-center sm:text-left">
-                              {t("report.firstUploadHelp")}
-                            </p>
                           </div>
                         </div>
-                      ) : null}
-                      {item.noticeUnderTitle ? (
-                        <p className="text-[11px] sm:text-xs text-foreground leading-snug px-2 py-2 text-center bg-amber-50/90 dark:bg-amber-950/25 border-t border-amber-200/70 dark:border-amber-800/40">
-                          {item.noticeUnderTitle}
+                        <p className="min-h-0 whitespace-pre-line px-3 py-2.5 text-xs font-semibold leading-relaxed text-slate-800 dark:text-foreground/95 sm:text-[13px]">
+                          {t("report.guidedStep1Body")}
                         </p>
-                      ) : null}
+                      </div>
+
+                      <div
+                        className="h-0 w-full shrink-0 border-t border-slate-400/80 dark:border-zinc-700/90 lg:h-auto lg:min-h-0 lg:w-0 lg:self-stretch lg:border-t-0 lg:border-l"
+                        role="separator"
+                        aria-hidden
+                      />
+
+                      <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[auto_1fr_auto] content-start lg:min-h-0">
+                        <div className="flex shrink-0 items-center gap-2.5 border-b border-slate-200/90 bg-violet-50/90 px-3 py-2.5 dark:border-zinc-700/80 dark:bg-violet-950/25">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground shadow-sm">
+                            2
+                          </span>
+                          <span className="text-left text-sm font-bold leading-tight text-slate-900 dark:text-foreground">
+                            {t("report.guidedStep2Title")}
+                          </span>
+                        </div>
+                        <div className="flex min-h-0 w-full items-center justify-center">
+                          <div className="w-full max-w-full shrink-0">
+                            <GuidedStepImageGrid
+                              urls={guidedStep2Urls}
+                              stepId="g2"
+                              ariaLabel={t("report.stepImageZoomAria")}
+                              onTogglePreview={(src) =>
+                                setStepImagePreview((prev) => (prev === src ? null : src))
+                              }
+                            />
+                          </div>
+                        </div>
+                        <p className="min-h-0 whitespace-pre-line px-3 py-2.5 text-xs font-semibold leading-relaxed text-slate-800 dark:text-foreground/95 sm:text-[13px]">
+                          {t("report.guidedStep2Body")}
+                        </p>
+                      </div>
                     </div>
-                  ))}
+
+                    <div
+                      role="note"
+                      className="flex items-start gap-2.5 border-t border-slate-200/90 bg-violet-50/90 px-3 py-2.5 dark:border-zinc-700/80 dark:bg-violet-950/20"
+                    >
+                      <Info
+                        className="mt-0.5 h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400"
+                        strokeWidth={2.25}
+                        aria-hidden
+                      />
+                      <span className="min-w-0 flex-1 text-xs font-medium leading-snug text-slate-700 dark:text-slate-300 sm:text-[13px]">
+                        {t("report.guidedStep1Footnote")}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-12">
+                  <div className="flex flex-col gap-2.5 rounded-xl border border-violet-200/80 bg-violet-50/95 p-3 shadow-sm dark:border-violet-900/40 dark:bg-violet-950/25 sm:gap-3 sm:p-4 lg:col-span-8 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
+                    <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
+                      <div className="flex shrink-0 items-center gap-2 pl-0.5">
+                        <div className="flex items-center" aria-hidden>
+                          {LANDING_TESTIMONIAL_AVATAR_SRCS.map((src) => (
+                            <img
+                              key={src}
+                              src={src}
+                              alt=""
+                              width={36}
+                              height={36}
+                              loading="lazy"
+                              decoding="async"
+                              className="-ml-2 h-9 w-9 shrink-0 rounded-full border-[3px] border-white object-cover shadow-sm first:ml-0 dark:border-violet-950"
+                            />
+                          ))}
+                        </div>
+                        <div className="flex shrink-0 gap-0.5 text-amber-400" aria-hidden>
+                          {[0, 1, 2, 3, 4].map((i) => (
+                            <Star
+                              key={i}
+                              className="h-3.5 w-3.5 fill-amber-400 text-amber-400 sm:h-4 sm:w-4"
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <p className="min-w-0 text-xs font-medium leading-tight text-slate-700 dark:text-slate-200 sm:text-[13px] sm:leading-snug">
+                        <span className="font-bold text-slate-900 dark:text-foreground">
+                          {t("report.guidedSocialProofBold")}{" "}
+                        </span>
+                        {t("report.guidedSocialProofRest")}
+                      </p>
+                    </div>
+
+                    <div className="w-full shrink-0 rounded-xl border border-slate-200/90 bg-white p-3 shadow-sm dark:border-zinc-700/90 dark:bg-zinc-950/80 lg:max-w-none lg:min-w-[21rem] lg:basis-[48%] lg:shrink-0">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
+                        {/* Скрин демо-дашборда: `public/images/guided-demo-dashboard-preview.png` (как на лендинге / в макете) */}
+                        <div className="mx-auto shrink-0 overflow-hidden rounded-lg border border-slate-200/90 bg-slate-50 shadow-sm ring-1 ring-slate-200/50 dark:border-zinc-600 dark:bg-zinc-900 dark:ring-zinc-700/80 sm:mx-0">
+                          <img
+                            src="/images/guided-demo-dashboard-preview.png"
+                            alt={t("report.guidedDemoPreviewAlt")}
+                            width={160}
+                            height={100}
+                            loading="lazy"
+                            decoding="async"
+                            className="block h-auto max-h-[3.5rem] w-[6.5rem] max-w-full object-contain object-top sm:max-h-[4rem] sm:w-[7.25rem]"
+                          />
+                        </div>
+                        <div className="flex min-w-0 flex-1 flex-col gap-1.5 text-center sm:text-left">
+                          <p className="text-xs font-bold leading-tight text-emerald-950 dark:text-emerald-50 lg:whitespace-nowrap">
+                            {t("report.guidedDemoHeading")}
+                          </p>
+                          <p className="text-xs font-normal leading-snug text-slate-600 dark:text-muted-foreground">
+                            {t("report.guidedDemoSubtitle")}
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-9 w-full border-2 border-primary text-sm font-bold text-primary shadow-sm hover:bg-primary/10 sm:max-w-none"
+                            asChild
+                          >
+                            <Link to="/training" onClick={() => setOpen(false)}>
+                              {t("report.guidedDemoButton")}
+                            </Link>
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-center rounded-xl border border-emerald-200/90 bg-emerald-50/95 p-3 shadow-sm dark:border-emerald-800/50 dark:bg-emerald-950/35 lg:col-span-4">
+                    <div className="flex max-w-full flex-row items-center gap-3">
+                      <a
+                        href="https://t.me/PROFiboard"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 rounded-lg border border-white/80 bg-white p-0.5 shadow-md ring-1 ring-slate-200/80 transition-opacity hover:opacity-95 dark:border-zinc-700 dark:bg-zinc-950 dark:ring-zinc-700"
+                      >
+                        <img
+                          src="/images/telegram-first-upload-qr.png"
+                          alt={t("support.telegramQrAlt")}
+                          className="h-[100px] w-[100px] object-contain"
+                          width={100}
+                          height={100}
+                          loading="lazy"
+                        />
+                      </a>
+                      <div className="flex min-w-0 flex-col gap-1.5">
+                        <p className="text-left text-xs font-bold leading-tight text-emerald-950 dark:text-emerald-50 sm:text-[13px] sm:leading-snug">
+                          {t("report.guidedTelegramHelpTitle")}
+                        </p>
+                        <p className="text-left text-xs font-normal leading-snug text-slate-700 dark:text-emerald-100/90 sm:text-[13px] sm:leading-relaxed">
+                          {t("report.guidedTelegramHelpBody")}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </>
@@ -848,8 +1080,10 @@ export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUpl
 
         {/* Action Buttons */}
         <div
-          className={`flex items-center mt-4 flex-shrink-0 pt-2 border-t border-border/50 ${
-            isGuided ? "justify-end" : "justify-between"
+          className={`flex items-center flex-shrink-0 ${
+            isGuided
+              ? "mt-5 justify-end gap-3 border-t border-slate-200/90 pt-4 dark:border-zinc-700/80"
+              : "mt-4 justify-between border-t border-border/50 pt-2"
           }`}
         >
           {!isGuided ? (
@@ -862,11 +1096,24 @@ export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUpl
             </div>
           ) : null}
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={uploading}>
-              {t('report.close')}
+            <Button
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={uploading}
+              className={
+                isGuided
+                  ? "h-10 min-w-[104px] border-2 border-slate-300 bg-white font-bold text-slate-800 shadow-sm hover:bg-slate-50 dark:border-zinc-600 dark:bg-zinc-950 dark:text-foreground dark:hover:bg-zinc-900"
+                  : undefined
+              }
+            >
+              {t("report.close")}
             </Button>
             {isGuided ? (
-              <Button onClick={() => setUploadVariant("compact")} disabled={uploading}>
+              <Button
+                onClick={() => setUploadVariant("compact")}
+                disabled={uploading}
+                className="h-10 min-w-[168px] font-bold shadow-md"
+              >
                 {t("report.uploadFilesButton")}
               </Button>
             ) : (
