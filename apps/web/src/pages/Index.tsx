@@ -405,8 +405,8 @@ function Dashboard() {
         <div className="mt-8 flex justify-center">
           <div className="inline-block rounded-md border border-amber-300/80 bg-amber-50 px-4 py-3 text-center text-sm text-amber-900">
             {language === "uz"
-              ? "Trial: faqat oxirgi 60 kunlik ma'lumotlar ko'rsatiladi. To'liq davr va barcha do'konlar pullik tarifda mavjud."
-              : "Trial: отображаются данные за последние 60 дней. Полный период и все магазины доступны на платном тарифе."}
+              ? "Trial: faqat oxirgi 60 kunlik ma'lumotlar ko'rsatiladi. To'liq davr va barcha do'konlar Month 5 va Month 10 tariflarida mavjud."
+              : "Trial: отображаются данные за последние 60 дней. Полный период и все магазины доступны на тарифах Month 5 и Month 10."}
           </div>
         </div>
       )}

@@ -438,7 +438,7 @@ const translations: Record<Language, Record<string, string>> = {
     'report.uploadDialogMainTitle': '4 базовых отчета Uzum необходимых для анализа.',
     'report.guidedHeroTitle': 'Получите аналитику продаж и прибыли за 2 минуты',
     'report.guidedHeroSubtitle':
-      'Загрузите 4 отчета из Uzum Seller — и мы покажем, что приносит прибыль, а что тянет ваш бизнес вниз.',
+      'Загрузите 4 отчета из личного кабинета Uzum — и мы покажем, что приносит прибыль, а что тянет ваш бизнес вниз.',
     'report.guidedBenefitsHeading': 'Что вы получите после загрузки',
     'report.guidedBenefit1Title': 'Прибыль и реальные',
     'report.guidedBenefit1Desc': 'показатели по дням',
@@ -453,7 +453,7 @@ const translations: Record<Language, Record<string, string>> = {
     'report.guidedDataSafetyTitle': 'Ваши данные в безопасности',
     'report.guidedDataSafetyBody':
       'Мы не передаем данные третьим лицам. Вы можете удалить их в любой момент.',
-    'report.guidedStep1Title': 'Скачайте 4 отчета в Uzum Seller',
+    'report.guidedStep1Title': 'Скачайте 4 отчета из ЛК Uzum',
     'report.guidedStep1Body':
       '1. Сформируйте 4 отчета: Продажи, Услуги, Остатки (старый формат), Хранение.\n2. Сохраните в формате XLSX на компьютер.',
     'report.guidedStep1Footnote':
@@ -1012,7 +1012,7 @@ const translations: Record<Language, Record<string, string>> = {
     'report.uploadDialogMainTitle': 'Tahlil uchun zarur bo‘lgan Uzumning 4 ta asosiy hisoboti.',
     'report.guidedHeroTitle': '2 daqiqada savdo va foyda tahlilini oling',
     'report.guidedHeroSubtitle':
-      'Uzum Sellerdan 4 ta hisobotni yuklang — nima foyda keltirishi va biznesingizni pastga tortishini ko‘rsatamiz.',
+      'Uzum shaxsiy kabinetidan 4 ta hisobotni yuklang — nima foyda keltirishi va biznesingizni pastga tortishini ko‘rsatamiz.',
     'report.guidedBenefitsHeading': 'Yuklashdan keyin nima olasiz',
     'report.guidedBenefit1Title': 'Foyda va haqiqiy',
     'report.guidedBenefit1Desc': 'kunlar bo‘yicha ko‘rsatkichlar',
@@ -1027,7 +1027,7 @@ const translations: Record<Language, Record<string, string>> = {
     'report.guidedDataSafetyTitle': 'Ma’lumotlaringiz xavfsiz',
     'report.guidedDataSafetyBody':
       'Uchinchi shaxslarga bermaymiz. Istalgan vaqtda o‘chirib tashlashingiz mumkin.',
-    'report.guidedStep1Title': 'Uzum Sellerda 4 ta hisobotni yuklab oling',
+    'report.guidedStep1Title': 'Uzum SKdan 4 ta hisobotni yuklab oling',
     'report.guidedStep1Body':
       '1. 4 ta hisobotni shakllantiring: Savdolar, Xizmatlar, Qoldiqlar (eski format), Saqlash.\n2. XLSX formatida kompyuterga saqlang.',
     'report.guidedStep1Footnote':

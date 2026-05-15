@@ -13,12 +13,16 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { ReportUploadDialog, type ReportUploadDialogHandle } from "./ReportUploadDialog";
 import { PricingDialog } from "./PricingDialog";
 import { ProfileDialog } from "./ProfileDialog";
-import { LanguageDialog } from "./LanguageDialog";
 import { useNavigate, Link } from "react-router-dom";
-import { useLanguage } from "@/contexts/LanguageContext";
+import { useLanguage, type Language } from "@/contexts/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useStorageShops } from "@/hooks/useStorageShops";
 import { toast } from "sonner";
+
+const headerLanguages: { code: Language; label: string }[] = [
+  { code: "ru", label: "Русский" },
+  { code: "uz", label: "O'zbekcha" },
+];
 
 function getUserDisplayName(user: { full_name?: string; user_metadata?: { full_name?: string }; email?: string } | null): string {
   if (!user) return "Пользователь";
@@ -29,7 +33,7 @@ function getUserDisplayName(user: { full_name?: string; user_metadata?: { full_n
 }
 
 export function HeaderActions() {
-  const { t, language } = useLanguage();
+  const { t, language, setLanguage } = useLanguage();
   const { user, signOut } = useAuth();
   const { shops, loading: shopsLoading } = useStorageShops();
   const navigate = useNavigate();
@@ -43,7 +47,6 @@ export function HeaderActions() {
     navigate('/landing?auth=open');
   };
   const [profileOpen, setProfileOpen] = useState(false);
-  const [languageOpen, setLanguageOpen] = useState(false);
   const reportUploadRef = useRef<ReportUploadDialogHandle>(null);
   /** Чтобы не открывать снова при каждом refetch при 0 магазинах; сбрасывается при появлении магазина или новом монтировании шапки (новый «вход» на главную). */
   const noShopsGuidedOpenedThisMountRef = useRef(false);
@@ -105,7 +108,7 @@ export function HeaderActions() {
   }, [user?.id, user?.is_admin, isTrialExpired, shopsLoading, shops.length]);
 
   return (
-    <div className="flex items-center gap-6">
+    <div className="flex items-center gap-4 sm:gap-5">
       {/* Report Upload */}
       <ReportUploadDialog
         ref={reportUploadRef}
@@ -116,6 +119,7 @@ export function HeaderActions() {
         }}
       />
 
+      <div className="flex items-center gap-1 sm:gap-1.5">
       {/* Help — заметная кнопка, подпись на sm+, подсказка при наведении */}
       <DropdownMenu>
         <Tooltip>
@@ -162,6 +166,38 @@ export function HeaderActions() {
               {t("header.support")}
             </Link>
           </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* Language */}
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t("header.language")}
+                  className="shrink-0 h-9 w-8 px-0 sm:h-10 sm:w-9"
+                >
+                  <Globe className="w-4 h-4 sm:w-5 sm:h-5" aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">{t("header.language")}</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="end" className="w-40 bg-card border-border">
+          {headerLanguages.map(({ code, label }) => (
+            <DropdownMenuItem
+              key={code}
+              className="cursor-pointer"
+              onClick={() => setLanguage(code)}
+            >
+              <span className={language === code ? "font-semibold text-primary" : undefined}>{label}</span>
+            </DropdownMenuItem>
+          ))}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -214,17 +250,13 @@ export function HeaderActions() {
             {t('header.extendTariff')}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem className="cursor-pointer" onClick={() => setLanguageOpen(true)}>
-            <Globe className="w-4 h-4 mr-2" />
-            {t('header.language')}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
           <DropdownMenuItem className="cursor-pointer text-destructive" onClick={handleSignOut}>
             <LogOut className="w-4 h-4 mr-2" />
             {t('header.logout')}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      </div>
 
       {/* Тариф — полное окно с 4 планами и «Попробуй бесплатно» */}
       <PricingDialog open={tariffOpen} onOpenChange={setTariffOpen} variant="tariff" />
@@ -233,9 +265,6 @@ export function HeaderActions() {
 
       {/* Profile Dialog */}
       <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
-
-      {/* Language Dialog */}
-      <LanguageDialog open={languageOpen} onOpenChange={setLanguageOpen} />
     </div>
   );
 }
