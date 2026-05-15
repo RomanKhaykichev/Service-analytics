@@ -1168,33 +1168,48 @@ const translations: Record<Language, Record<string, string>> = {
   },
 };
 
+const APP_LANGUAGE_KEY = 'app-language';
+
+function getStoredLanguage(): Language | null {
+  const saved = localStorage.getItem(APP_LANGUAGE_KEY);
+  if (saved === 'ru' || saved === 'uz') return saved;
+  return null;
+}
+
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [language, setLanguageState] = useState<Language>(() => {
-    const saved = localStorage.getItem('app-language');
-    return (saved as Language) || 'ru';
-  });
+  const [language, setLanguageState] = useState<Language>(() => getStoredLanguage() ?? 'ru');
   const initialUserLangApplied = useRef(false);
 
-  // При загрузке/входе: подставляем язык из аккаунта пользователя
+  // После входа: язык с лендинга (localStorage) важнее старого значения в профиле; синхронизируем в аккаунт
   useEffect(() => {
     if (!user) {
       initialUserLangApplied.current = false;
       return;
     }
+    if (initialUserLangApplied.current) return;
+    initialUserLangApplied.current = true;
+
+    const stored = getStoredLanguage();
+    if (stored) {
+      setLanguageState(stored);
+      if (user.preferred_language !== stored) {
+        apiPatch('/api/auth/me', { preferred_language: stored }).catch(() => {});
+      }
+      return;
+    }
+
     const pl = user.preferred_language;
     if (pl === 'ru' || pl === 'uz') {
-      if (!initialUserLangApplied.current) {
-        initialUserLangApplied.current = true;
-        setLanguageState(pl);
-      }
+      setLanguageState(pl);
+      localStorage.setItem(APP_LANGUAGE_KEY, pl);
     }
   }, [user?.id, user?.preferred_language]);
 
   useEffect(() => {
-    localStorage.setItem('app-language', language);
+    localStorage.setItem(APP_LANGUAGE_KEY, language);
   }, [language]);
 
   const setLanguage = (lang: Language) => {
