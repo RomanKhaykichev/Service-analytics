@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Shield, Users, UserPlus, AlertCircle, Pencil, Trash2, UserMinus, CalendarPlus, Banknote, Upload, BarChart3, ChevronUp, ChevronDown, Store, Inbox } from "lucide-react";
+import { Shield, Users, UserPlus, AlertCircle, Pencil, Trash2, UserMinus, CalendarPlus, Banknote, Activity, BarChart3, ChevronUp, ChevronDown, Store, Inbox } from "lucide-react";
 import { Tooltip as UITooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -84,6 +84,7 @@ interface TenantRow {
   paid?: boolean;
   paid_amount?: number | null; // Оплачено — сумма, которую оплатил клиент
   last_login_at?: string | null;
+  login_count?: number;
 }
 
 interface TenantsResponse {
@@ -95,20 +96,23 @@ interface DashboardFunnel {
   visited_site: number;
   tried: number;
   registered: number;
+  with_shop: number;
   paid: number;
   conversion_pct: number;
 }
 
 interface DashboardFiles {
   total: number;
-  errors: number;
-  error_pct: number;
+  training_opens: number;
+  tariff_opens: number;
 }
 
 interface DashboardTotals {
   registered: number;
   paid_subscription: number;
   inactive_30d: number;
+  returned_count: number;
+  returned_pct: number;
 }
 
 interface MonthlyRow {
@@ -139,7 +143,7 @@ export default function Admin() {
   const [planFilter, setPlanFilter] = useState<string>("all");
   const API_PAGE_SIZE = 100;
   const [sort, setSort] = useState("created_at");
-  type TenantSortColumn = "created_at" | "phone" | "shops_count" | "plan" | "trial_days_left" | "paid_amount" | "last_login_at" | "imports_30d" | null;
+  type TenantSortColumn = "created_at" | "phone" | "shops_count" | "plan" | "trial_days_left" | "paid_amount" | "last_login_at" | "login_count" | "imports_30d" | null;
   const [sortColumn, setSortColumn] = useState<TenantSortColumn>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(null);
   const [tenantShops, setTenantShops] = useState<
@@ -344,6 +348,10 @@ export default function Admin() {
           aVal = a.last_login_at ?? "";
           bVal = b.last_login_at ?? "";
           return sortDirection === "asc" ? String(aVal).localeCompare(String(bVal)) : String(bVal).localeCompare(String(aVal));
+        case "login_count":
+          aVal = a.login_count ?? 0;
+          bVal = b.login_count ?? 0;
+          return sortDirection === "asc" ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
         case "imports_30d":
           aVal = a.imports_30d ?? 0;
           bVal = b.imports_30d ?? 0;
@@ -400,6 +408,7 @@ export default function Admin() {
         "Магазинов": r.shops_count ?? "",
         "Импорты 30д": r.imports_30d ?? "",
         "Дата входа": r.last_login_at ?? "",
+        "Вход": r.login_count ?? 0,
         "Notes": r.notes ?? "",
       }));
 
@@ -733,6 +742,7 @@ export default function Admin() {
                       dashboardMetrics.funnel.visited_site,
                       dashboardMetrics.funnel.tried,
                       dashboardMetrics.funnel.registered,
+                      dashboardMetrics.funnel.with_shop,
                       dashboardMetrics.funnel.paid,
                       1
                     );
@@ -740,7 +750,8 @@ export default function Admin() {
                       { n: dashboardMetrics.funnel.visited_site, label: "Зашли на сайт", pct: null, tooltip: "Количество человек, зашедших на сайт (лендинг)" },
                       { n: dashboardMetrics.funnel.tried, label: "Попробовали", pct: dashboardMetrics.funnel.visited_site ? Math.round((dashboardMetrics.funnel.tried / dashboardMetrics.funnel.visited_site) * 100) : 0, tooltip: "Количество тех, кто нажал «Попробовать бесплатно» в промо-окне" },
                       { n: dashboardMetrics.funnel.registered, label: "Зарегистрировались", pct: dashboardMetrics.funnel.tried ? Math.round((dashboardMetrics.funnel.registered / dashboardMetrics.funnel.tried) * 100) : 0 },
-                      { n: dashboardMetrics.funnel.paid, label: "Оплатили", pct: dashboardMetrics.funnel.registered ? Math.round((dashboardMetrics.funnel.paid / dashboardMetrics.funnel.registered) * 100) : 0 },
+                      { n: dashboardMetrics.funnel.with_shop, label: "Загрузили", pct: dashboardMetrics.funnel.registered ? Math.round((dashboardMetrics.funnel.with_shop / dashboardMetrics.funnel.registered) * 100) : 0, tooltip: "Клиенты с хотя бы одним магазином" },
+                      { n: dashboardMetrics.funnel.paid, label: "Оплатили", pct: dashboardMetrics.funnel.with_shop ? Math.round((dashboardMetrics.funnel.paid / dashboardMetrics.funnel.with_shop) * 100) : 0 },
                     ];
                     return (
                       <>
@@ -790,7 +801,7 @@ export default function Admin() {
               </CardContent>
             </Card>
 
-            {/* Колонка 2: Всего зарегистрировано (сверху) + Загружено файлов за 30 дней (снизу), ширина по заголовку */}
+            {/* Колонка 2: Всего зарегистрировано (сверху) + Активности 30Д (снизу) */}
             <div className="flex flex-col gap-2 min-h-[280px] w-max max-w-full">
               <Card className="flex-1 min-h-0 flex flex-col">
                 <CardHeader className="pb-2 shrink-0">
@@ -805,8 +816,17 @@ export default function Admin() {
                   ) : dashboardMetrics ? (
                     <>
                       <p className="text-2xl font-bold">{dashboardMetrics.totals.registered}</p>
-                      <p className="text-sm text-muted-foreground">Платная подписка: {dashboardMetrics.totals.paid_subscription}</p>
-                      <p className="text-sm text-muted-foreground">Неактивны более 30 дней: {dashboardMetrics.totals.inactive_30d}</p>
+                      <p className="text-sm text-muted-foreground">
+                        Платная подписка: <span className="font-bold text-foreground">{dashboardMetrics.totals.paid_subscription}</span>
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Неактивны более 30 дней: <span className="font-bold text-foreground">{dashboardMetrics.totals.inactive_30d}</span>
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Кол-во вернулись:{" "}
+                        <span className="font-bold text-foreground">{dashboardMetrics.totals.returned_count}</span>{" "}
+                        (<span className="font-bold text-foreground">{dashboardMetrics.totals.returned_pct}%</span>)
+                      </p>
                     </>
                   ) : null}
                 </CardContent>
@@ -814,8 +834,8 @@ export default function Admin() {
               <Card className="flex-1 min-h-0 flex flex-col">
                 <CardHeader className="pb-2 shrink-0">
                   <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground flex items-center gap-2">
-                    <Upload className="h-4 w-4 text-primary" />
-                    Загружено файлов 30д
+                    <Activity className="h-4 w-4 text-primary" />
+                    Активности 30Д
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1">
@@ -823,12 +843,14 @@ export default function Admin() {
                     <Skeleton className="h-16 w-full" />
                   ) : dashboardMetrics ? (
                     <>
-                      <p className="text-2xl font-bold">{dashboardMetrics.files.total}</p>
                       <p className="text-sm text-muted-foreground">
-                        Ошибки при загрузке: {dashboardMetrics.files.errors}
+                        Загружено файлов: <span className="font-bold text-foreground">{dashboardMetrics.files.total}</span>
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        Процент ошибок: {dashboardMetrics.files.error_pct}%
+                        Открыли обучение: <span className="font-bold text-foreground">{dashboardMetrics.files.training_opens}</span>
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Открыли тариф: <span className="font-bold text-foreground">{dashboardMetrics.files.tariff_opens}</span>
                       </p>
                     </>
                   ) : null}
@@ -1054,20 +1076,24 @@ export default function Admin() {
                 <Table
                   wrapperClassName="overflow-visible min-w-0"
                   className={cn(
-                    "min-w-[1700px]",
-                    "[&_th]:h-10 [&_th]:py-2 [&_th]:px-3 [&_td]:py-2 [&_td]:px-3",
+                    "w-full min-w-[1820px] table-fixed",
+                    "[&_th]:h-9 [&_th]:py-1.5 [&_th]:px-2 [&_td]:py-1.5 [&_td]:px-2",
+                    "[&_th]:align-middle [&_td]:align-middle",
+                    "[&_thead_th]:whitespace-nowrap",
+                    "[&_tbody_td]:whitespace-nowrap",
+                    "[&_tbody_td:first-child]:whitespace-normal",
                     "[&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20",
                     "[&_thead_th]:border-b [&_thead_th]:border-border [&_thead_th]:bg-card/95 [&_thead_th]:backdrop-blur-sm"
                   )}
                 >
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="sticky left-0 z-40 bg-card border-r border-border min-w-[200px] max-w-[260px]">Аккаунт</TableHead>
-                    <TableHead className="text-center">
+                    <TableHead className="sticky left-0 z-40 bg-card border-r border-border w-[220px]">Аккаунт</TableHead>
+                    <TableHead className="text-center w-[5.5rem]">
                       <button
                         type="button"
                         onClick={() => handleTenantSort("created_at")}
-                        className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full"
+                        className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full whitespace-nowrap"
                       >
                         Регистрация
                         <span className="flex flex-col">
@@ -1076,8 +1102,8 @@ export default function Admin() {
                         </span>
                       </button>
                     </TableHead>
-                    <TableHead className="text-center">
-                      <button type="button" onClick={() => handleTenantSort("phone")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full">
+                    <TableHead className="text-center w-[7.5rem]">
+                      <button type="button" onClick={() => handleTenantSort("phone")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full whitespace-nowrap">
                         Телефон
                         <span className="flex flex-col">
                           <ChevronUp className={cn("h-3 w-3 -mb-1", sortColumn === "phone" && sortDirection === "asc" ? "text-primary" : "text-muted-foreground/50")} />
@@ -1085,8 +1111,8 @@ export default function Admin() {
                         </span>
                       </button>
                     </TableHead>
-                    <TableHead className="text-center">
-                      <button type="button" onClick={() => handleTenantSort("shops_count")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full">
+                    <TableHead className="text-center w-[4.5rem]">
+                      <button type="button" onClick={() => handleTenantSort("shops_count")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full whitespace-nowrap">
                         Магазин
                         <span className="flex flex-col">
                           <ChevronUp className={cn("h-3 w-3 -mb-1", sortColumn === "shops_count" && sortDirection === "asc" ? "text-primary" : "text-muted-foreground/50")} />
@@ -1094,8 +1120,8 @@ export default function Admin() {
                         </span>
                       </button>
                     </TableHead>
-                    <TableHead className="text-center">
-                      <button type="button" onClick={() => handleTenantSort("plan")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full">
+                    <TableHead className="text-center w-[6.5rem]">
+                      <button type="button" onClick={() => handleTenantSort("plan")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full whitespace-nowrap">
                         Тариф
                         <span className="flex flex-col">
                           <ChevronUp className={cn("h-3 w-3 -mb-1", sortColumn === "plan" && sortDirection === "asc" ? "text-primary" : "text-muted-foreground/50")} />
@@ -1103,26 +1129,26 @@ export default function Admin() {
                         </span>
                       </button>
                     </TableHead>
-                    <TableHead className="text-center">
-                      <button type="button" onClick={() => handleTenantSort("trial_days_left")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full">
-                        Статус подписки
+                    <TableHead className="text-center w-[5.5rem]">
+                      <button type="button" title="Статус подписки" onClick={() => handleTenantSort("trial_days_left")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full whitespace-nowrap">
+                        Статус
                         <span className="flex flex-col">
                           <ChevronUp className={cn("h-3 w-3 -mb-1", sortColumn === "trial_days_left" && sortDirection === "asc" ? "text-primary" : "text-muted-foreground/50")} />
                           <ChevronDown className={cn("h-3 w-3", sortColumn === "trial_days_left" && sortDirection === "desc" ? "text-primary" : "text-muted-foreground/50")} />
                         </span>
                       </button>
                     </TableHead>
-                    <TableHead className="text-center">
-                      <button type="button" onClick={() => handleTenantSort("trial_days_left")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full">
-                        Остаток дней
+                    <TableHead className="text-center w-[5rem]">
+                      <button type="button" title="Остаток дней" onClick={() => handleTenantSort("trial_days_left")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full whitespace-nowrap">
+                        Дней
                         <span className="flex flex-col">
                           <ChevronUp className={cn("h-3 w-3 -mb-1", sortColumn === "trial_days_left" && sortDirection === "asc" ? "text-primary" : "text-muted-foreground/50")} />
                           <ChevronDown className={cn("h-3 w-3", sortColumn === "trial_days_left" && sortDirection === "desc" ? "text-primary" : "text-muted-foreground/50")} />
                         </span>
                       </button>
                     </TableHead>
-                    <TableHead className="text-center">
-                      <button type="button" onClick={() => handleTenantSort("paid_amount")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full">
+                    <TableHead className="text-center w-[5.5rem]">
+                      <button type="button" onClick={() => handleTenantSort("paid_amount")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full whitespace-nowrap">
                         Оплачено
                         <span className="flex flex-col">
                           <ChevronUp className={cn("h-3 w-3 -mb-1", sortColumn === "paid_amount" && sortDirection === "asc" ? "text-primary" : "text-muted-foreground/50")} />
@@ -1130,8 +1156,8 @@ export default function Admin() {
                         </span>
                       </button>
                     </TableHead>
-                    <TableHead className="text-center">
-                      <button type="button" onClick={() => handleTenantSort("last_login_at")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full">
+                    <TableHead className="text-center w-[6rem]">
+                      <button type="button" onClick={() => handleTenantSort("last_login_at")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full whitespace-nowrap">
                         Дата входа
                         <span className="flex flex-col">
                           <ChevronUp className={cn("h-3 w-3 -mb-1", sortColumn === "last_login_at" && sortDirection === "asc" ? "text-primary" : "text-muted-foreground/50")} />
@@ -1139,33 +1165,42 @@ export default function Admin() {
                         </span>
                       </button>
                     </TableHead>
-                    <TableHead className="text-center">
-                      <button type="button" onClick={() => handleTenantSort("imports_30d")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full">
-                        Импорты 30д
+                    <TableHead className="text-center w-[3.5rem]">
+                      <button type="button" onClick={() => handleTenantSort("login_count")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full whitespace-nowrap">
+                        Вход
+                        <span className="flex flex-col">
+                          <ChevronUp className={cn("h-3 w-3 -mb-1", sortColumn === "login_count" && sortDirection === "asc" ? "text-primary" : "text-muted-foreground/50")} />
+                          <ChevronDown className={cn("h-3 w-3", sortColumn === "login_count" && sortDirection === "desc" ? "text-primary" : "text-muted-foreground/50")} />
+                        </span>
+                      </button>
+                    </TableHead>
+                    <TableHead className="text-center w-[5.5rem]">
+                      <button type="button" title="Импорты за 30 дней" onClick={() => handleTenantSort("imports_30d")} className="inline-flex items-center justify-center gap-0.5 hover:text-foreground transition-colors w-full whitespace-nowrap">
+                        Импорты
                         <span className="flex flex-col">
                           <ChevronUp className={cn("h-3 w-3 -mb-1", sortColumn === "imports_30d" && sortDirection === "asc" ? "text-primary" : "text-muted-foreground/50")} />
                           <ChevronDown className={cn("h-3 w-3", sortColumn === "imports_30d" && sortDirection === "desc" ? "text-primary" : "text-muted-foreground/50")} />
                         </span>
                       </button>
                     </TableHead>
-                    <TableHead className="text-center whitespace-nowrap">Notes</TableHead>
-                    <TableHead className="text-center whitespace-nowrap">Действия</TableHead>
+                    <TableHead className="text-center w-[4.5rem]">Notes</TableHead>
+                    <TableHead className="text-center w-[11.5rem]">Действия</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="[&_tr]:bg-card">
                   {filteredTenants.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={12} className="text-center text-muted-foreground">
+                      <TableCell colSpan={13} className="text-center text-muted-foreground">
                         Нет тенантов
                       </TableCell>
                     </TableRow>
                   ) : (
                     filteredTenants.map((row) => (
                       <TableRow key={row.tenant_id}>
-                        <TableCell className="sticky left-0 z-10 bg-card border-r border-border min-w-[200px] max-w-[260px]">
-                          <div className="font-medium">{row.company_name || row.owner_email || row.tenant_id.slice(0, 8)}</div>
+                        <TableCell className="sticky left-0 z-10 bg-card border-r border-border w-[220px]">
+                          <div className="font-medium truncate">{row.company_name || row.owner_email || row.tenant_id.slice(0, 8)}</div>
                           {row.owner_email && (
-                            <div className="text-xs text-muted-foreground">{row.owner_email}</div>
+                            <div className="text-xs text-muted-foreground truncate">{row.owner_email}</div>
                           )}
                         </TableCell>
                         <TableCell className="text-center">{row.created_at ?? "—"}</TableCell>
@@ -1214,7 +1249,7 @@ export default function Admin() {
                             if (row.is_admin) {
                               return (
                                 <span
-                                  className="inline-block rounded-full px-3 py-1.5 text-sm font-medium bg-gradient-to-br from-[#e8e9ec] via-[#cfd1d9] to-[#9ca3af] text-slate-900 border border-slate-400/60 shadow-md shadow-slate-500/25"
+                                  className="inline-block rounded-full px-2 py-0.5 text-xs font-medium bg-gradient-to-br from-[#e8e9ec] via-[#cfd1d9] to-[#9ca3af] text-slate-900 border border-slate-400/60 shadow-md shadow-slate-500/25"
                                 >
                                   Admin
                                 </span>
@@ -1250,7 +1285,7 @@ export default function Admin() {
 
                             return (
                               <span
-                                className={`inline-block rounded-full px-3 py-1.5 text-sm font-medium ${pillClass}`}
+                                className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${pillClass}`}
                               >
                                 {label}
                               </span>
@@ -1260,13 +1295,14 @@ export default function Admin() {
                         <TableCell className="text-center">
                           <Badge
                             variant="secondary"
-                            className={
+                            className={cn(
+                              "text-xs py-0 px-2",
                               row.is_admin
                                 ? "bg-green-500 text-white"
                                 : row.trial_days_left != null && row.trial_days_left > 0
                                 ? "bg-green-500 text-white"
                                 : "bg-red-500 text-white"
-                            }
+                            )}
                           >
                             {row.is_admin
                               ? t("profile.active")
@@ -1286,6 +1322,7 @@ export default function Admin() {
                               : "—"}
                         </TableCell>
                         <TableCell className="text-center">{row.last_login_at ? row.last_login_at.slice(0, 10) : "—"}</TableCell>
+                        <TableCell className="text-center font-medium">{row.login_count ?? 0}</TableCell>
                         <TableCell className="text-center font-medium">{row.imports_30d}</TableCell>
                         <TableCell className="text-center">
                           {row.is_admin ? (
@@ -1330,14 +1367,14 @@ export default function Admin() {
                           {row.is_admin || (row.owner_email && row.owner_email === user?.email) ? (
                             "—"
                           ) : (
-                            <div className="flex flex-wrap gap-1 justify-center items-center">
+                            <div className="flex flex-nowrap gap-0.5 justify-center items-center">
                               {row.is_active ? (
                                 <UITooltip>
                                   <TooltipTrigger asChild>
                                     <Button
                                       size="icon"
                                       variant="ghost"
-                                      className="h-8 w-8"
+                                      className="h-7 w-7"
                                       onClick={() => handleDisable(row.tenant_id)}
                                     >
                                       <UserMinus className="h-4 w-4" />
@@ -1353,7 +1390,7 @@ export default function Admin() {
                                     <Button
                                       size="icon"
                                       variant="ghost"
-                                      className="h-8 w-8 text-destructive bg-destructive/10 hover:bg-destructive/20 hover:text-destructive"
+                                      className="h-7 w-7 text-destructive bg-destructive/10 hover:bg-destructive/20 hover:text-destructive"
                                       onClick={() => handleEnable(row.tenant_id)}
                                     >
                                       <UserPlus className="h-4 w-4" />
@@ -1369,7 +1406,7 @@ export default function Admin() {
                                   <Button
                                     size="icon"
                                     variant="ghost"
-                                    className="h-8 w-8"
+                                    className="h-7 w-7"
                                     onClick={() =>
                                       setExtendTrialModal({
                                         tenantId: row.tenant_id,
@@ -1389,7 +1426,7 @@ export default function Admin() {
                                   <Button
                                     size="icon"
                                     variant="ghost"
-                                    className="h-8 w-8"
+                                    className="h-7 w-7"
                                     onClick={() => setShopAllowTenantId(row.tenant_id)}
                                   >
                                     <Store className="h-4 w-4" />
@@ -1402,7 +1439,7 @@ export default function Admin() {
                                   <Button
                                     size="icon"
                                     variant="ghost"
-                                    className="h-8 w-8"
+                                    className="h-7 w-7"
                                     onClick={() =>
                                       setPaymentModal({
                                         tenantId: row.tenant_id,
@@ -1423,7 +1460,7 @@ export default function Admin() {
                                   <Button
                                     size="icon"
                                     variant="ghost"
-                                    className="h-8 w-8"
+                                    className="h-7 w-7"
                                     onClick={() =>
                                       setPasswordModal({
                                         tenantId: row.tenant_id,
@@ -1443,7 +1480,7 @@ export default function Admin() {
                                   <Button
                                     size="icon"
                                     variant="ghost"
-                                    className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
                                     onClick={() => handleDeleteTenant(row.tenant_id)}
                                   >
                                     <Trash2 className="h-4 w-4" />

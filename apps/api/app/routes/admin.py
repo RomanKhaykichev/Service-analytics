@@ -114,6 +114,7 @@ class TenantRow(BaseModel):
     paid: bool = False
     paid_amount: Optional[float] = None  # Оплачено — сумма, которую оплатил клиент
     last_login_at: Optional[str] = None  # дата последнего входа
+    login_count: int = 0  # Вход — сколько раз клиент зашёл на сервис (login_events)
 
 
 class TenantShopsResponse(BaseModel):
@@ -129,20 +130,23 @@ class DashboardFunnel(BaseModel):
     visited_site: int  # Зашли на сайт — количество человек, зашедших на сайт (лендинг)
     tried: int  # Попробовали — количество нажатий «Попробовать бесплатно» в промо-окне
     registered: int  # Зарегистрировали
+    with_shop: int  # Загрузили — клиенты с хотя бы одним магазином в dim_shop
     paid: int  # Оплатили (план paid или кол-во оплат — здесь кол-во пользователей на платной подписке)
-    conversion_pct: float  # Конверсия % (paid/registered*100)
+    conversion_pct: float  # Конверсия % (paid/visited*100)
 
 
 class DashboardFiles(BaseModel):
-    total: int  # Попыток загрузки файлов за последние 30 дней (по строкам import_file_attempts)
-    errors: int  # Файлов с ошибкой при загрузке (status ≠ success в import_file_attempts)
-    error_pct: float  # Доля таких файлов от total, %
+    total: int  # Загружено файлов за 30 дней
+    training_opens: int  # Открыли видео (страница «Обучение») за 30 дней
+    tariff_opens: int  # Тариф (окно «Оплата тарифа») за 30 дней
 
 
 class DashboardTotals(BaseModel):
     registered: int  # Всего зарегистрировано
     paid_subscription: int  # Платная подписка (пользователей)
     inactive_30d: int  # Неактивны более 30 дней: не заходили 30+ дней (по колонке last_login_at в users)
+    returned_count: int  # Вернулись: клиенты с ≥1 входом за 30 дней (login_events)
+    returned_pct: float  # (returned_count / всего пользователей) * 100
 
 
 class MonthlyRow(BaseModel):
@@ -611,6 +615,7 @@ async def admin_dashboard_metrics(
     funnel_visited = 0
     funnel_tried = 0
     funnel_registered = 0
+    funnel_with_shop = 0
     funnel_paid = 0
     try:
         if funnel_range is None:
@@ -654,6 +659,17 @@ async def admin_dashboard_metrics(
                     WHERE COALESCE(LOWER(TRIM(plan)), 'trial') = 'paid'
                 """)).fetchone()
                 funnel_paid = r3[0] or 0 if r3 else 0
+
+            r = db.execute(text("""
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = :s AND table_name = 'dim_shop'
+            """), {"s": schema}).fetchone()
+            if r:
+                r2 = db.execute(text(f"""
+                    SELECT COUNT(DISTINCT user_id) FROM {qname('dim_shop')}
+                    WHERE COALESCE(trim(shop_name), '') != '(Не определено)'
+                """)).fetchone()
+                funnel_with_shop = r2[0] or 0 if r2 else 0
         else:
             from_m, to_m = funnel_range
             # За месяц: фильтр по датам
@@ -693,6 +709,19 @@ async def admin_dashboard_metrics(
                 funnel_paid = r3[0] or 0 if r3 else 0
             except Exception:
                 funnel_paid = 0
+
+            r = db.execute(text("""
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema = :s AND table_name = 'dim_shop'
+            """), {"s": schema}).fetchone()
+            if r:
+                r2 = db.execute(text(f"""
+                    SELECT COUNT(DISTINCT ds.user_id) FROM {qname('dim_shop')} ds
+                    INNER JOIN {qname('users')} u ON u.id = ds.user_id
+                    WHERE COALESCE(trim(ds.shop_name), '') != '(Не определено)'
+                      AND u.created_at::date >= :from_d AND u.created_at::date <= :to_d
+                """), {"from_d": from_m, "to_d": to_m}).fetchone()
+                funnel_with_shop = r2[0] or 0 if r2 else 0
     except Exception as e:
         logger.warning("Admin dashboard_metrics funnel: %s", e)
         db.rollback()
@@ -702,13 +731,16 @@ async def admin_dashboard_metrics(
         visited_site=funnel_visited,
         tried=funnel_tried,
         registered=funnel_registered,
+        with_shop=funnel_with_shop,
         paid=funnel_paid,
         conversion_pct=round(conversion_pct, 1),
     )
 
     files_total = 0
-    files_errors = 0
+    training_opens = 0
+    tariff_opens = 0
     files_since = datetime.now(timezone.utc) - timedelta(days=30)
+    d30 = today - timedelta(days=30)
     try:
         r = db.execute(text("""
             SELECT 1 FROM information_schema.tables
@@ -716,13 +748,11 @@ async def admin_dashboard_metrics(
         """), {"s": schema}).fetchone()
         if r:
             row = db.execute(text(f"""
-                SELECT COUNT(*), COUNT(*) FILTER (WHERE LOWER(TRIM(status)) <> 'success')
-                FROM {qname('import_file_attempts')}
+                SELECT COUNT(*) FROM {qname('import_file_attempts')}
                 WHERE created_at >= :files_since
             """), {"files_since": files_since}).fetchone()
             if row:
                 files_total = row[0] or 0
-                files_errors = row[1] or 0
         else:
             r_ts = db.execute(text(f"""
                 SELECT column_name FROM information_schema.columns
@@ -734,19 +764,43 @@ async def admin_dashboard_metrics(
                     WHERE b.created_at >= :files_since
                 """), {"files_since": files_since}).fetchone()
                 files_total = row[0] or 0 if row else 0
-            else:
-                # Без created_at нельзя ограничить 30 днями — оставляем 0
-                files_total = 0
-            # Без import_file_attempts не знаем ошибки по файлам — 0
-            files_errors = 0
+
+        r_tr = db.execute(text("""
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = :s AND table_name = 'training_page_views'
+        """), {"s": schema}).fetchone()
+        if r_tr:
+            row = db.execute(text(f"""
+                SELECT COUNT(*) FROM {qname('training_page_views')}
+                WHERE created_at >= :files_since
+            """), {"files_since": files_since}).fetchone()
+            if row:
+                training_opens = row[0] or 0
+
+        r_tp = db.execute(text("""
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = :s AND table_name = 'tariff_payment_opens'
+        """), {"s": schema}).fetchone()
+        if r_tp:
+            row = db.execute(text(f"""
+                SELECT COUNT(*) FROM {qname('tariff_payment_opens')}
+                WHERE created_at >= :files_since
+            """), {"files_since": files_since}).fetchone()
+            if row:
+                tariff_opens = row[0] or 0
     except Exception as e:
         logger.warning("Admin dashboard_metrics files: %s", e)
         db.rollback()
-    error_pct = (files_errors / files_total * 100) if files_total else 0.0
-    files = DashboardFiles(total=files_total, errors=files_errors, error_pct=round(error_pct, 1))
+    files = DashboardFiles(
+        total=files_total,
+        training_opens=training_opens,
+        tariff_opens=tariff_opens,
+    )
 
     totals_paid = funnel_paid
     inactive_30d = 0
+    returned_count = 0
+    returned_pct = 0.0
     try:
         r = db.execute(text("""
             SELECT column_name FROM information_schema.columns
@@ -762,6 +816,20 @@ async def admin_dashboard_metrics(
             inactive_30d = r2[0] or 0 if r2 else 0
         else:
             inactive_30d = funnel_registered
+
+        total_users = funnel_registered
+        r_login = db.execute(text("""
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = :s AND table_name = 'login_events'
+        """), {"s": schema}).fetchone()
+        if r_login:
+            row_ret = db.execute(text(f"""
+                SELECT COUNT(DISTINCT user_id) FROM {qname('login_events')}
+                WHERE logged_at::date >= :d30
+            """), {"d30": d30}).fetchone()
+            if row_ret:
+                returned_count = row_ret[0] or 0
+        returned_pct = (returned_count / total_users * 100) if total_users else 0.0
     except Exception as e:
         logger.warning("Admin dashboard_metrics totals: %s", e)
         db.rollback()
@@ -769,6 +837,8 @@ async def admin_dashboard_metrics(
         registered=funnel_registered,
         paid_subscription=totals_paid,
         inactive_30d=inactive_30d,
+        returned_count=returned_count,
+        returned_pct=round(returned_pct, 1),
     )
 
     monthly: list[MonthlyRow] = []
@@ -882,6 +952,16 @@ async def admin_tenants_list(
     except Exception:
         pass
 
+    has_login_events = False
+    try:
+        r = db.execute(text("""
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = :s AND table_name = 'login_events'
+        """), {"s": schema}).fetchone()
+        has_login_events = r is not None
+    except Exception:
+        pass
+
     # Build tenant list from users + last batch + data freshness
     # Simple query: all users, then enrich with subqueries
     order_col = "created_at"
@@ -971,6 +1051,22 @@ async def admin_tenants_list(
         LIMIT :limit OFFSET :offset
     """
     rows = db.execute(text(list_sql), params).fetchall()
+
+    login_counts: dict[str, int] = {}
+    if has_login_events and rows:
+        uids = [str(row[0]) for row in rows]
+        placeholders = ", ".join(f":uid_{i}" for i in range(len(uids)))
+        count_params = {f"uid_{i}": uid for i, uid in enumerate(uids)}
+        try:
+            count_rows = db.execute(text(f"""
+                SELECT user_id::text, COUNT(*)::int FROM {qname('login_events')}
+                WHERE user_id IN ({placeholders})
+                GROUP BY user_id
+            """), count_params).fetchall()
+            login_counts = {str(r[0]): int(r[1] or 0) for r in count_rows or []}
+        except Exception as e:
+            logger.debug("admin_tenants_list login_counts: %s", e)
+
     tenants_out: list[TenantRow] = []
 
     for row in rows or []:
@@ -1127,6 +1223,7 @@ async def admin_tenants_list(
             paid=paid,
             paid_amount=paid_amount_val,
             last_login_at=last_login_at_val[:10] if last_login_at_val else None,
+            login_count=login_counts.get(uid, 0),
         ))
 
     return TenantsListResponse(tenants=tenants_out, total_count=total)

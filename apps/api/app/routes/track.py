@@ -1,14 +1,18 @@
 """
-Публичные эндпоинты трекинга для воронки админки (без авторизации).
-- POST /api/track/landing-visit — визит на лендинг
-- POST /api/track/promo-try — клик «Попробовать бесплатно» в промо-окне
+Эндпоинты трекинга для воронки и метрик админки.
+- POST /api/track/landing-visit — визит на лендинг (без авторизации)
+- POST /api/track/promo-try — клик «Попробовать бесплатно» (без авторизации)
+- POST /api/track/training-page — открытие страницы «Обучение» (авторизация)
+- POST /api/track/tariff-payment-open — открытие окна «Оплата тарифа» (авторизация)
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from pydantic import BaseModel
+from uuid import UUID
 
 from app.db import get_db, qname
+from app.deps import require_user
 from app.settings import get_settings
 
 router = APIRouter()
@@ -56,6 +60,38 @@ def _ensure_tracking_tables(db: Session) -> None:
         ON {schema}.promo_try_clicks (created_at)
     """))
 
+    db.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS {schema}.training_page_views (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id uuid NOT NULL REFERENCES {schema}.users(id) ON DELETE CASCADE,
+            created_at timestamptz NOT NULL DEFAULT now()
+        )
+    """))
+    db.execute(text(f"""
+        CREATE INDEX IF NOT EXISTS ix_training_page_views_created_at
+        ON {schema}.training_page_views (created_at)
+    """))
+    db.execute(text(f"""
+        CREATE INDEX IF NOT EXISTS ix_training_page_views_user_id
+        ON {schema}.training_page_views (user_id)
+    """))
+
+    db.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS {schema}.tariff_payment_opens (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id uuid NOT NULL REFERENCES {schema}.users(id) ON DELETE CASCADE,
+            created_at timestamptz NOT NULL DEFAULT now()
+        )
+    """))
+    db.execute(text(f"""
+        CREATE INDEX IF NOT EXISTS ix_tariff_payment_opens_created_at
+        ON {schema}.tariff_payment_opens (created_at)
+    """))
+    db.execute(text(f"""
+        CREATE INDEX IF NOT EXISTS ix_tariff_payment_opens_user_id
+        ON {schema}.tariff_payment_opens (user_id)
+    """))
+
 
 @router.post("/track/landing-visit")
 async def track_landing_visit(body: TrackBody, db: Session = Depends(get_db)):
@@ -87,6 +123,44 @@ async def track_promo_try(body: TrackBody, db: Session = Depends(get_db)):
         db.execute(
             text(f"INSERT INTO {qname('promo_try_clicks')} (visitor_key, created_at) VALUES (:k, now())"),
             {"k": key},
+        )
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"ok": False, "error": str(e)}
+    return {"ok": True}
+
+
+@router.post("/track/training-page")
+async def track_training_page(
+    user_id: UUID = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    """Учёт открытия страницы «Обучение»."""
+    try:
+        _ensure_tracking_tables(db)
+        db.execute(
+            text(f"INSERT INTO {qname('training_page_views')} (user_id, created_at) VALUES (:uid, now())"),
+            {"uid": user_id},
+        )
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        return {"ok": False, "error": str(e)}
+    return {"ok": True}
+
+
+@router.post("/track/tariff-payment-open")
+async def track_tariff_payment_open(
+    user_id: UUID = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    """Учёт открытия окна «Оплата тарифа»."""
+    try:
+        _ensure_tracking_tables(db)
+        db.execute(
+            text(f"INSERT INTO {qname('tariff_payment_opens')} (user_id, created_at) VALUES (:uid, now())"),
+            {"uid": user_id},
         )
         db.commit()
     except Exception as e:

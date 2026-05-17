@@ -117,6 +117,56 @@ def main():
         conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_upload_batch_created_at ON {schema}.upload_batch (created_at)"))
         conn.commit()
 
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS {schema}.login_events (
+                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id uuid NOT NULL REFERENCES {schema}.users(id) ON DELETE CASCADE,
+                logged_at timestamptz NOT NULL DEFAULT now()
+            )
+        """))
+        conn.execute(text(f"""
+            CREATE INDEX IF NOT EXISTS ix_login_events_logged_at ON {schema}.login_events (logged_at)
+        """))
+        conn.execute(text(f"""
+            CREATE INDEX IF NOT EXISTS ix_login_events_user_id ON {schema}.login_events (user_id)
+        """))
+        conn.commit()
+        # Один раз восстановить счётчик из last_login_at, если событий ещё нет
+        conn.execute(text(f"""
+            INSERT INTO {schema}.login_events (user_id, logged_at)
+            SELECT u.id, u.last_login_at
+            FROM {schema}.users u
+            WHERE u.last_login_at IS NOT NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM {schema}.login_events le WHERE le.user_id = u.id
+              )
+        """))
+        conn.commit()
+
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS {schema}.training_page_views (
+                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id uuid NOT NULL REFERENCES {schema}.users(id) ON DELETE CASCADE,
+                created_at timestamptz NOT NULL DEFAULT now()
+            )
+        """))
+        conn.execute(text(f"""
+            CREATE INDEX IF NOT EXISTS ix_training_page_views_created_at
+            ON {schema}.training_page_views (created_at)
+        """))
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS {schema}.tariff_payment_opens (
+                id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id uuid NOT NULL REFERENCES {schema}.users(id) ON DELETE CASCADE,
+                created_at timestamptz NOT NULL DEFAULT now()
+            )
+        """))
+        conn.execute(text(f"""
+            CREATE INDEX IF NOT EXISTS ix_tariff_payment_opens_created_at
+            ON {schema}.tariff_payment_opens (created_at)
+        """))
+        conn.commit()
+
         # Если upload_batch уже была создана с FK на user_account — перепривязать на app.users
         conn.execute(text(f"ALTER TABLE {schema}.upload_batch DROP CONSTRAINT IF EXISTS upload_batch_user_id_fkey"))
         conn.commit()
@@ -147,7 +197,15 @@ def main():
         conn.rollback()
 
     print("OK: схема и таблицы авторизации и загрузки созданы (или уже существуют).")
-    print("  Таблицы:", f"{schema}.users", f"{schema}.auth_identities", f"{schema}.refresh_tokens", f"{schema}.verification_codes", f"{schema}.upload_batch")
+    print(
+        "  Таблицы:",
+        f"{schema}.users",
+        f"{schema}.auth_identities",
+        f"{schema}.refresh_tokens",
+        f"{schema}.verification_codes",
+        f"{schema}.upload_batch",
+        f"{schema}.login_events",
+    )
 
 
 if __name__ == "__main__":

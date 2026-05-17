@@ -1,5 +1,6 @@
 import { Gift } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { apiPost } from "@/lib/api";
 import {
   Dialog,
   DialogContent,
@@ -47,6 +48,12 @@ export function PricingDialog({ open, onOpenChange, variant = "tariff" }: Pricin
     onOpenChange(false);
     setIsPaymentDialogOpen(true);
   };
+
+  useEffect(() => {
+    if (isPaymentDialogOpen) {
+      apiPost("/api/track/tariff-payment-open", {}).catch(() => {});
+    }
+  }, [isPaymentDialogOpen]);
 
   if (variant === "extend" || variant === "expired") {
     return (

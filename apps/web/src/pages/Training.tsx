@@ -1,4 +1,5 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { apiPost } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -18,6 +19,10 @@ export default function Training() {
   const playWhenLoadedRef = useRef(false);
 
   const active = TRAINING_VIDEO_PLAYLIST[activeIndex] ?? TRAINING_VIDEO_PLAYLIST[0];
+
+  useEffect(() => {
+    apiPost("/api/track/training-page", {}).catch(() => {});
+  }, []);
 
   const handleSelect = useCallback((index: number) => {
     setActiveIndex(index);

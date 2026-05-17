@@ -41,6 +41,7 @@ from app.phone_verification import (
     record_verify_fail,
     send_registration_otp_sms,
 )
+from app.utils.login_events import record_login_event, touch_last_login_at
 from app.auth import (
     hash_password,
     verify_password,
@@ -257,6 +258,9 @@ def _issue_auth_response(user: User, db: Session, response: Response) -> AuthRes
         expires_at=expires_at
     )
     db.add(db_refresh_token)
+    now_utc = datetime.now(timezone.utc)
+    touch_last_login_at(db, user.id, now_utc)
+    record_login_event(db, user.id, now_utc)
     db.commit()
     db.refresh(user)
     user_resp = UserResponse.model_validate(user)
@@ -482,22 +486,9 @@ async def login(
     )
     db.add(db_refresh_token)
     
-    # Update last_login_at and записать посещение для графика «Посещения»
     now_utc = datetime.now(timezone.utc)
-    try:
-        db.execute(text(f"UPDATE {qname('users')} SET last_login_at = :now WHERE id = :uid"), {"now": now_utc, "uid": user.id})
-    except Exception as e:
-        logger.debug("last_login_at update skipped: %s", e)
-    schema = get_settings().DB_SCHEMA
-    r = db.execute(text("SELECT 1 FROM information_schema.tables WHERE table_schema = :s AND table_name = 'login_events'"), {"s": schema}).fetchone()
-    if r:
-        try:
-            db.execute(text(f"INSERT INTO {qname('login_events')} (user_id, logged_at) VALUES (:uid, :now)"), {"uid": user.id, "now": now_utc})
-            logger.info("login_events: записано посещение user_id=%s", user.id)
-        except Exception as e:
-            logger.warning("login_events insert failed: %s", e)
-    else:
-        logger.warning("Таблица login_events отсутствует — метрика «Посещения» будет 0. Выполните: cd apps/api && alembic upgrade head")
+    touch_last_login_at(db, user.id, now_utc)
+    record_login_event(db, user.id, now_utc)
     db.commit()
     db.refresh(user)
     user_resp = UserResponse.model_validate(user)
@@ -627,20 +618,8 @@ async def refresh(
         db.add(new_db_refresh_token)
         
         now_utc = datetime.now(timezone.utc)
-        try:
-            db.execute(text(f"UPDATE {qname('users')} SET last_login_at = :now WHERE id = :uid"), {"now": now_utc, "uid": user_id})
-        except Exception as e:
-            logger.debug("last_login_at update skipped: %s", e)
-        schema = get_settings().DB_SCHEMA
-        r = db.execute(text("SELECT 1 FROM information_schema.tables WHERE table_schema = :s AND table_name = 'login_events'"), {"s": schema}).fetchone()
-        if r:
-            try:
-                db.execute(text(f"INSERT INTO {qname('login_events')} (user_id, logged_at) VALUES (:uid, :now)"), {"uid": user_id, "now": now_utc})
-                logger.info("login_events: записано посещение user_id=%s (refresh)", user_id)
-            except Exception as e:
-                logger.warning("login_events insert failed: %s", e)
-        else:
-            logger.warning("Таблица login_events отсутствует — выполните: alembic upgrade head")
+        touch_last_login_at(db, user_id, now_utc)
+        record_login_event(db, user_id, now_utc)
         db.commit()
 
         # Обновляем HttpOnly cookie с новым refresh-токеном
