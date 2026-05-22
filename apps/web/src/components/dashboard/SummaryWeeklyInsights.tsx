@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Warehouse, Wallet, ChevronDown, Sparkles } from "lucide-react";
+import { Warehouse, Wallet, ChevronDown, Sparkles, Upload, TrendingDown, BarChart3 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useSummaryWeeklyInsights, type WeeklyInsightProduct } from "@/hooks/useSummaryWeeklyInsights";
 import { formatCurrency, formatPercent } from "@/lib/formatters";
@@ -27,6 +27,42 @@ function InsightRow({ icon, children }: InsightRowProps) {
   );
 }
 
+function WeeklyInsightsEmptyState() {
+  const { t } = useLanguage();
+  const bullets = [
+    {
+      text: t("summary.weeklyInsights.emptyBullet1"),
+      icon: <Wallet className="w-4 h-4 text-success" />,
+    },
+    {
+      text: t("summary.weeklyInsights.emptyBullet2"),
+      icon: <Warehouse className="w-4 h-4 text-primary" />,
+    },
+    {
+      text: t("summary.weeklyInsights.emptyBullet3"),
+      icon: <TrendingDown className="w-4 h-4 text-destructive" />,
+    },
+    {
+      text: t("summary.weeklyInsights.emptyBullet4"),
+      icon: <BarChart3 className="w-4 h-4 text-warning" />,
+    },
+  ];
+
+  return (
+    <div className="mt-2 text-sm text-muted-foreground">
+      <ul className="space-y-1.5 pl-1">
+        {bullets.map((item) => (
+          <li key={item.text} className="flex items-start gap-2">
+            <span className="text-primary shrink-0">•</span>
+            <div className="flex-shrink-0 mt-0.5">{item.icon}</div>
+            <span>{item.text}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function ProductNameLink({
   name,
   onClick,
@@ -51,12 +87,14 @@ export function SummaryWeeklyInsights({
   onOpenProduct,
 }: SummaryWeeklyInsightsProps) {
   const { t } = useLanguage();
-  const { data, loading } = useSummaryWeeklyInsights(referenceDate, shop);
+  const { data, loading, hasData } = useSummaryWeeklyInsights(referenceDate, shop);
   const [isExpanded, setIsExpanded] = useState(true);
+  const showEmptyState = !loading && !hasData;
 
-  if (!referenceDate) return null;
-
-  const blockTitle = t("summary.weeklyInsights.title");
+  const isEmptyTitle = showEmptyState;
+  const blockTitle = isEmptyTitle
+    ? t("summary.weeklyInsights.emptyIntro")
+    : t("summary.weeklyInsights.title");
   const collapseLabel = isExpanded
     ? t("summary.weeklyInsights.collapse")
     : t("summary.weeklyInsights.expand");
@@ -69,9 +107,18 @@ export function SummaryWeeklyInsights({
       aria-expanded={isExpanded}
       aria-label={collapseLabel}
     >
-      <h3 className="font-semibold text-foreground flex items-center gap-1.5">
-        {blockTitle}
-        <Sparkles className="w-4 h-4 shrink-0 text-primary" aria-hidden />
+      <h3 className="font-semibold text-foreground flex items-center gap-1.5 min-w-0">
+        {isEmptyTitle ? (
+          <>
+            <Upload className="w-4 h-4 shrink-0 text-primary" aria-hidden />
+            <span className="text-left">{blockTitle}</span>
+          </>
+        ) : (
+          <>
+            {blockTitle}
+            <Sparkles className="w-4 h-4 shrink-0 text-primary" aria-hidden />
+          </>
+        )}
       </h3>
       <ChevronDown
         className={cn(
@@ -93,6 +140,15 @@ export function SummaryWeeklyInsights({
             <Skeleton className="h-5 w-full" />
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (showEmptyState) {
+    return (
+      <div className="mt-6 rounded-xl border border-violet-200/80 dark:border-violet-800/50 bg-violet-50/50 dark:bg-violet-950/20 p-4 shadow-sm">
+        {header}
+        {isExpanded && <WeeklyInsightsEmptyState />}
       </div>
     );
   }

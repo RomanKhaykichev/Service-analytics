@@ -111,14 +111,16 @@ export function useSummaryWeeklyInsights(referenceDate: string | null | undefine
       : [],
   });
 
-  const loading = queries.some((q) => q.isLoading);
+  const loading = ranges ? queries.some((q) => q.isLoading) : false;
   const error = queries.find((q) => q.error)?.error;
+  const productsItems = queries[2]?.data?.items ?? [];
+  const hasData = productsItems.length > 0;
 
   const data = useMemo((): SummaryWeeklyInsightsData | null => {
-    if (!ranges || queries.length < 3) return null;
+    if (!ranges || queries.length < 3 || !hasData) return null;
     const prevStorage = queries[0].data?.uzumStorage ?? 0;
     const lastStorage = queries[1].data?.uzumStorage ?? 0;
-    const items = queries[2].data?.items ?? [];
+    const items = productsItems;
 
     let storageChangePercent = 0;
     if (prevStorage > 0) {
@@ -137,7 +139,7 @@ export function useSummaryWeeklyInsights(referenceDate: string | null | undefine
       minProfitProduct: min,
       maxProfitProduct: max,
     };
-  }, [ranges, queries]);
+  }, [ranges, queries, hasData, productsItems]);
 
-  return { data, loading, error };
+  return { data, loading, error, hasData };
 }
