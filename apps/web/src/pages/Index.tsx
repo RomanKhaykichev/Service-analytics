@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ShoppingCart, Truck, Package, RotateCcw, Percent, CreditCard, DollarSign, TrendingDown, Wallet, Target, BarChart3, TrendingUp, ArrowDown, AlertTriangle, Boxes, Warehouse, Tag, ShoppingBag, Receipt, Info } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { SummaryTabs } from "@/components/dashboard/SummaryTabs";
 import { SummaryFilters } from "@/components/dashboard/SummaryFilters";
 import { SummaryBlock } from "@/components/dashboard/SummaryBlock";
+import { SummaryWeeklyInsights } from "@/components/dashboard/SummaryWeeklyInsights";
 import { RevenueProgressBar } from "@/components/dashboard/RevenueProgressBar";
 import { RevenueDailyChart } from "@/components/dashboard/RevenueDailyChart";
 import { UzumServicesChart } from "@/components/dashboard/UzumServicesChart";
@@ -13,7 +14,8 @@ import { DailyView } from "@/components/dashboard/DailyView";
 import { ExpensesView } from "@/components/dashboard/ExpensesView";
 import { ShipmentView } from "@/components/dashboard/ShipmentView";
 import { HeaderActions } from "@/components/dashboard/HeaderActions";
-import { ProductsView } from "@/components/dashboard/ProductsView";
+import { ProductsView, type ProductsTableItemType } from "@/components/dashboard/ProductsView";
+import type { WeeklyInsightProduct } from "@/hooks/useSummaryWeeklyInsights";
 import { useAuth } from "@/hooks/useAuth";
 import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
 import { useCumulativeRevenueGlobal } from "@/hooks/useCumulativeRevenueGlobal";
@@ -27,6 +29,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { DateRangeProvider, useDateRange } from "@/contexts/DateRangeContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { getWeeklyInsightRanges } from "@/lib/weekRanges";
 
 function Dashboard() {
   const { t, language } = useLanguage();
@@ -39,6 +42,8 @@ function Dashboard() {
   const [shipmentDaysUntilShipment, setShipmentDaysUntilShipment] = useState(7);
   const [shipmentConsiderStock, setShipmentConsiderStock] = useState<string>("yes");
   const [shipmentCalculatedByKey, setShipmentCalculatedByKey] = useState<Record<string, number>>({});
+  const [productToOpen, setProductToOpen] = useState<ProductsTableItemType | null>(null);
+  const handleOpenProductHandled = useCallback(() => setProductToOpen(null), []);
   const setShipmentCalculatedRecommended = (map: Record<string, number>) => {
     setShipmentCalculatedByKey(map);
   };
@@ -438,6 +443,22 @@ function Dashboard() {
         )}
       </div>
 
+      {activeTab === "summary" && (
+        <SummaryWeeklyInsights
+          referenceDate={salesMaxDate ?? maxDate ?? dateTo}
+          shop={selectedShop}
+          onOpenProduct={(entry: WeeklyInsightProduct) => {
+            const referenceDate = salesMaxDate ?? maxDate ?? dateTo;
+            if (referenceDate) {
+              const { lastWeekFrom, lastWeekTo } = getWeeklyInsightRanges(referenceDate);
+              setDateRange({ dateFrom: lastWeekFrom, dateTo: lastWeekTo });
+            }
+            setProductToOpen(entry.item);
+            setActiveTab("products");
+          }}
+        />
+      )}
+
       {/* Content based on active tab */}
       {activeTab === "monthly" ? (
         <div className="mt-6">
@@ -493,7 +514,14 @@ function Dashboard() {
         </div>
       ) : activeTab === "products" ? (
         <div className="mt-6">
-          <ProductsView shop={selectedShop} taxPercent={taxPercent} dateFrom={dateFrom} dateTo={dateTo} />
+          <ProductsView
+            shop={selectedShop}
+            taxPercent={taxPercent}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            openProduct={productToOpen}
+            onOpenProductHandled={handleOpenProductHandled}
+          />
         </div>
       ) : activeTab === "expenses" ? (
         <div className="mt-6">

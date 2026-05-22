@@ -87,15 +87,31 @@ interface ProductsViewProps {
   taxPercent?: number;
   dateFrom?: string;
   dateTo?: string;
+  /** Открыть карточку товара (например, из блока «Ваш бизнес за последние 7 дней»). */
+  openProduct?: ProductsTableItemType | null;
+  onOpenProductHandled?: () => void;
 }
 
-export function ProductsView({ shop, taxPercent = 1, dateFrom, dateTo }: ProductsViewProps) {
+export function ProductsView({
+  shop,
+  taxPercent = 1,
+  dateFrom,
+  dateTo,
+  openProduct,
+  onOpenProductHandled,
+}: ProductsViewProps) {
   const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [groupByCards, setGroupByCards] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductsTableItemType | null>(null);
   const [sortField, setSortField] = useState<SortField | null>("sales_qty");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+
+  useEffect(() => {
+    if (!openProduct) return;
+    setSelectedProduct(openProduct);
+    onOpenProductHandled?.();
+  }, [openProduct, onOpenProductHandled]);
 
   useEffect(() => {
     if (selectedProduct) {
