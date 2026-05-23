@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ShoppingCart, Truck, Package, RotateCcw, Percent, CreditCard, DollarSign, TrendingDown, Wallet, Target, BarChart3, TrendingUp, ArrowDown, AlertTriangle, Boxes, Warehouse, Tag, ShoppingBag, Receipt, Info } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
@@ -14,6 +14,7 @@ import { DailyView } from "@/components/dashboard/DailyView";
 import { ExpensesView } from "@/components/dashboard/ExpensesView";
 import { ShipmentView } from "@/components/dashboard/ShipmentView";
 import { HeaderActions } from "@/components/dashboard/HeaderActions";
+import type { ReportUploadDialogHandle } from "@/components/dashboard/ReportUploadDialog";
 import { ProductsView, type ProductsTableItemType } from "@/components/dashboard/ProductsView";
 import type { WeeklyInsightProduct } from "@/hooks/useSummaryWeeklyInsights";
 import { useAuth } from "@/hooks/useAuth";
@@ -44,6 +45,10 @@ function Dashboard() {
   const [shipmentCalculatedByKey, setShipmentCalculatedByKey] = useState<Record<string, number>>({});
   const [productToOpen, setProductToOpen] = useState<ProductsTableItemType | null>(null);
   const handleOpenProductHandled = useCallback(() => setProductToOpen(null), []);
+  const reportUploadRef = useRef<ReportUploadDialogHandle>(null);
+  const openGuidedUpload = useCallback(() => {
+    reportUploadRef.current?.open("guided");
+  }, []);
   const setShipmentCalculatedRecommended = (map: Record<string, number>) => {
     setShipmentCalculatedByKey(map);
   };
@@ -391,7 +396,7 @@ function Dashboard() {
           </div>
           
           <div className="flex items-center gap-2">
-            <HeaderActions />
+            <HeaderActions reportUploadRef={reportUploadRef} />
           </div>
         </div>
         
@@ -447,6 +452,7 @@ function Dashboard() {
         <SummaryWeeklyInsights
           referenceDate={salesMaxDate ?? maxDate ?? dateTo}
           shop={selectedShop}
+          onOpenUploadReports={openGuidedUpload}
           onOpenProduct={(entry: WeeklyInsightProduct) => {
             const referenceDate = salesMaxDate ?? maxDate ?? dateTo;
             if (referenceDate) {

@@ -32,7 +32,11 @@ function getUserDisplayName(user: { full_name?: string; user_metadata?: { full_n
   return "Пользователь";
 }
 
-export function HeaderActions() {
+interface HeaderActionsProps {
+  reportUploadRef?: React.RefObject<ReportUploadDialogHandle | null>;
+}
+
+export function HeaderActions({ reportUploadRef: reportUploadRefProp }: HeaderActionsProps = {}) {
   const { t, language, setLanguage } = useLanguage();
   const { user, signOut } = useAuth();
   const { shops, loading: shopsLoading } = useStorageShops();
@@ -47,7 +51,8 @@ export function HeaderActions() {
     navigate('/landing?auth=open');
   };
   const [profileOpen, setProfileOpen] = useState(false);
-  const reportUploadRef = useRef<ReportUploadDialogHandle>(null);
+  const reportUploadRefInternal = useRef<ReportUploadDialogHandle>(null);
+  const reportUploadRef = reportUploadRefProp ?? reportUploadRefInternal;
   /** Чтобы не открывать снова при каждом refetch при 0 магазинах; сбрасывается при появлении магазина или новом монтировании шапки (новый «вход» на главную). */
   const noShopsGuidedOpenedThisMountRef = useRef(false);
   const displayName = getUserDisplayName(user);

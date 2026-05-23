@@ -10,6 +10,7 @@ interface SummaryWeeklyInsightsProps {
   referenceDate: string | null | undefined;
   shop?: string | null;
   onOpenProduct?: (product: WeeklyInsightProduct) => void;
+  onOpenUploadReports?: () => void;
 }
 
 interface InsightRowProps {
@@ -81,10 +82,32 @@ function ProductNameLink({
   );
 }
 
+function UploadReportsLink({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className="font-semibold text-primary underline underline-offset-2 decoration-primary/50 hover:decoration-primary transition-colors"
+    >
+      {children}
+    </button>
+  );
+}
+
 export function SummaryWeeklyInsights({
   referenceDate,
   shop,
   onOpenProduct,
+  onOpenUploadReports,
 }: SummaryWeeklyInsightsProps) {
   const { t } = useLanguage();
   const { data, loading, hasData } = useSummaryWeeklyInsights(referenceDate, shop);
@@ -92,9 +115,7 @@ export function SummaryWeeklyInsights({
   const showEmptyState = !loading && !hasData;
 
   const isEmptyTitle = showEmptyState;
-  const blockTitle = isEmptyTitle
-    ? t("summary.weeklyInsights.emptyIntro")
-    : t("summary.weeklyInsights.title");
+  const blockTitle = isEmptyTitle ? null : t("summary.weeklyInsights.title");
   const collapseLabel = isExpanded
     ? t("summary.weeklyInsights.collapse")
     : t("summary.weeklyInsights.expand");
@@ -111,7 +132,16 @@ export function SummaryWeeklyInsights({
         {isEmptyTitle ? (
           <>
             <Upload className="w-4 h-4 shrink-0 text-primary" aria-hidden />
-            <span className="text-left">{blockTitle}</span>
+            <span className="text-left font-normal text-muted-foreground">
+              {onOpenUploadReports ? (
+                <UploadReportsLink onClick={onOpenUploadReports}>
+                  {t("summary.weeklyInsights.emptyIntroLink")}
+                </UploadReportsLink>
+              ) : (
+                t("summary.weeklyInsights.emptyIntroLink")
+              )}
+              {t("summary.weeklyInsights.emptyIntroSuffix")}
+            </span>
           </>
         ) : (
           <>
