@@ -1,4 +1,4 @@
-﻿import {
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -182,15 +182,13 @@ function InsightRow({
       language === "uz" ? (
         <>
           Saqlash xarajatlari{" "}
-          <span className="font-semibold text-emerald-600">{item.highlight}</span>
-          <br />
+          <span className="font-semibold text-emerald-600">{item.highlight}</span>{" "}
           <span className="text-zinc-500">(-{item.amount} {currency})</span>
         </>
       ) : (
         <>
           Расходы за хранение{" "}
-          <span className="font-semibold text-emerald-600">{item.highlight}</span>
-          <br />
+          <span className="font-semibold text-emerald-600">{item.highlight}</span>{" "}
           <span className="text-zinc-500">(-{item.amount} {currency})</span>
         </>
       );
