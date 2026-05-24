@@ -19,7 +19,6 @@ import {
 } from "lucide-react";
 import { apiPostNoAuth, getVisitorKey } from "@/lib/api";
 import { useLanguage } from "@/contexts/LanguageContext";
-import promoDashboardPreview from "@/assets/landing/promo-dashboard-preview.png";
 
 interface PromoTrialDialogProps {
   open: boolean;
@@ -91,8 +90,6 @@ const copy = {
       { Icon: Shield, line1: "Безопасно", line2: "и надежно", iconClass: "text-emerald-600" },
     ],
     cta: "Получить доступ",
-    dashboardAlt:
-      "Сводка продаж, финансов и график продаж по дням в PROFiboard",
   },
   uz: {
     headlineBefore: "Zarar keltiradigan tovarlar va ",
@@ -155,7 +152,6 @@ const copy = {
       { Icon: Shield, line1: "Xavfsiz", line2: "va ishonchli", iconClass: "text-emerald-600" },
     ],
     cta: "Kirish olish",
-    dashboardAlt: "PROFiboard dasturidagi savdo va moliya ko‘rsatkichlari",
   },
 } as const;
 
@@ -186,13 +182,15 @@ function InsightRow({
       language === "uz" ? (
         <>
           Saqlash xarajatlari{" "}
-          <span className="font-semibold text-emerald-600">{item.highlight}</span>{" "}
+          <span className="font-semibold text-emerald-600">{item.highlight}</span>
+          <br />
           <span className="text-zinc-500">(-{item.amount} {currency})</span>
         </>
       ) : (
         <>
           Расходы за хранение{" "}
-          <span className="font-semibold text-emerald-600">{item.highlight}</span>{" "}
+          <span className="font-semibold text-emerald-600">{item.highlight}</span>
+          <br />
           <span className="text-zinc-500">(-{item.amount} {currency})</span>
         </>
       );
@@ -297,43 +295,31 @@ export function PromoTrialDialog({
           </h3>
           <p className="mt-1 text-center text-xs text-zinc-500">{t.subtitle}</p>
 
-          <div className="mt-3 grid grid-cols-1 min-[400px]:grid-cols-2 sm:grid-cols-4 gap-x-2 gap-y-2.5">
-            {t.features.map(({ line1, line2, bg, color, Icon }) => (
-              <div key={line1} className="flex items-center gap-2 min-w-0">
-                <div
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${bg} ${color}`}
-                >
-                  <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
+          <div className="mt-3 flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4">
+            <div className="sm:basis-[42%] shrink-0 grid grid-cols-2 gap-x-2 gap-y-2.5 sm:flex sm:flex-col sm:gap-2.5">
+              {t.features.map(({ line1, line2, bg, color, Icon }) => (
+                <div key={line1} className="flex items-center gap-2 min-w-0">
+                  <div
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${bg} ${color}`}
+                  >
+                    <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  </div>
+                  <div className="min-w-0 text-left leading-tight">
+                    <p className="text-[11px] font-bold text-zinc-800">{line1}</p>
+                    <p className="text-[10px] text-zinc-500">{line2}</p>
+                  </div>
                 </div>
-                <div className="min-w-0 text-left leading-tight">
-                  <p className="text-[11px] font-bold text-zinc-800">{line1}</p>
-                  <p className="text-[10px] text-zinc-500">{line2}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50/60 p-2.5 sm:p-3 shadow-sm">
-            <div className="flex flex-col lg:flex-row lg:items-center gap-2.5 lg:gap-3">
-              <div className="lg:basis-[40%] lg:shrink-0 lg:min-w-0">
-                <p className="text-xs font-semibold" style={{ color: PURPLE }}>
-                  {t.insightsTitle}
-                </p>
-                <ul className="mt-2 space-y-2">
-                  {t.insights.map((item) => (
-                    <InsightRow key={item.kind} item={item} language={lang} />
-                  ))}
-                </ul>
-              </div>
-              <div className="lg:basis-[60%] lg:shrink-0 lg:min-w-0 flex justify-center">
-                <div className="w-[88%] rounded-lg border border-zinc-200 bg-white overflow-hidden shadow-sm">
-                  <img
-                    src={promoDashboardPreview}
-                    alt={t.dashboardAlt}
-                    className="block w-full h-auto"
-                  />
-                </div>
-              </div>
+              ))}
+            </div>
+            <div className="sm:basis-[58%] min-w-0 rounded-xl border border-zinc-200 bg-zinc-50/60 p-2.5 sm:p-3">
+              <p className="text-xs font-semibold" style={{ color: PURPLE }}>
+                {t.insightsTitle}
+              </p>
+              <ul className="mt-2 space-y-2">
+                {t.insights.map((item) => (
+                  <InsightRow key={item.kind} item={item} language={lang} />
+                ))}
+              </ul>
             </div>
           </div>
 
