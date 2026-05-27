@@ -20,6 +20,7 @@ from app.services.uzum_export import (
     build_xlsx_bytes,
     report_metadata,
 )
+from app.services.uzum_time import timezone_metadata
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -228,7 +229,7 @@ class UzumExportBody(BaseModel):
 def list_uzum_report_templates(user_id: UUID = Depends(require_user)):
     """Column templates matching uploaded XLSX report types."""
     _ = user_id
-    return {"reports": report_metadata()}
+    return {"reports": report_metadata(), **timezone_metadata()}
 
 
 @router.post("/uzum-seller/reports/export")
@@ -297,4 +298,5 @@ def preview_uzum_report(
         "columns": [{"name": c.name, "mapped": c.mapped} for c in columns],
         "rows": rows[:limit],
         "warnings": warnings,
+        **timezone_metadata(),
     }

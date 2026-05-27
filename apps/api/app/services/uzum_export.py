@@ -6,14 +6,20 @@ import io
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
-from zoneinfo import ZoneInfo
 
 import requests
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
+from app.services.uzum_time import (
+    calendar_date_to_epoch_ms,
+    format_datetime,
+    last_n_days_range_ms,
+    normalize_epoch_ms,
+    parse_to_epoch_ms,
+    timezone_metadata,
+)
 from app.utils.column_mappings import (
     CANONICAL_EXPENSES,
     CANONICAL_LEFTOUT_OLD,
@@ -34,7 +40,6 @@ MAX_RETRIES_RATE_LIMIT = 6
 MAX_BACKOFF_SEC = 45.0
 PAUSE_BETWEEN_SHOPS_SEC = 0.75
 SALES_LOOKBACK_DAYS = 15
-UZ_TZ = ZoneInfo("Asia/Tashkent")
 
 FINANCE_ORDER_STATUSES = [
     "TO_WITHDRAW",
@@ -53,13 +58,13 @@ SALES_STATUS_RU = {
 EXPENSE_STATUS_RU = {
     "CREATED": "Создан",
     "REFUNDED": "Возвращен",
-    "CONFIRMED": "Подтвержден",
+    "CONFIRMED": "Оплачено",
     "CANCELED": "Отменен",
 }
 
 EXPENSE_TYPE_RU = {
-    "OUTCOME": "Расход",
-    "INCOME": "Поступление",
+    "OUTCOME": "Оплата",
+    "INCOME": "Возврат",
 }
 
 SHEET_NAMES = {
@@ -81,35 +86,6 @@ FILE_NAMES = {
 class ExportColumn:
     name: str
     mapped: bool
-
-
-def _ms_to_datetime_str(value: Any) -> str:
-    if value is None or value == "":
-        return ""
-    try:
-        ms = int(value)
-        if ms > 10_000_000_000_000:
-            ms = ms // 1000
-        dt = datetime.fromtimestamp(ms / 1000, tz=UZ_TZ)
-        return dt.strftime("%d.%m.%Y %H:%M")
-    except (TypeError, ValueError, OSError):
-        return str(value)
-
-
-def _iso_to_datetime_str(value: Any) -> str:
-    if not value:
-        return ""
-    text = str(value)
-    try:
-        normalized = text.replace("Z", "+00:00")
-        dt = datetime.fromisoformat(normalized)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=UZ_TZ)
-        else:
-            dt = dt.astimezone(UZ_TZ)
-        return dt.strftime("%d.%m.%Y %H:%M")
-    except ValueError:
-        return text
 
 
 class ShopUnavailableError(RuntimeError):
@@ -196,41 +172,9 @@ def _shop_label(shop_names: dict[int, str], shop_id: Any) -> str:
         return ""
 
 
-def _normalize_epoch_ms(value: Any) -> Optional[int]:
-    if value is None or value == "":
-        return None
-    try:
-        ms = int(value)
-    except (TypeError, ValueError):
-        return None
-    if ms < 10_000_000_000:
-        ms *= 1000
-    elif ms > 10_000_000_000_000:
-        ms //= 1000
-    return ms
-
-
-def _iso_to_epoch_ms(value: Any) -> Optional[int]:
-    if not value:
-        return None
-    if isinstance(value, (int, float)):
-        return _normalize_epoch_ms(value)
-    text = str(value).strip()
-    if not text:
-        return None
-    try:
-        normalized = text.replace("Z", "+00:00")
-        dt = datetime.fromisoformat(normalized)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=UZ_TZ)
-        return int(dt.timestamp() * 1000)
-    except ValueError:
-        return None
-
-
 def _order_item_timestamp_ms(item: dict[str, Any]) -> Optional[int]:
     for key in ("date", "dateIssued"):
-        ts = _normalize_epoch_ms(item.get(key))
+        ts = normalize_epoch_ms(item.get(key))
         if ts is not None:
             return ts
     return None
@@ -238,7 +182,7 @@ def _order_item_timestamp_ms(item: dict[str, Any]) -> Optional[int]:
 
 def _payment_timestamp_ms(payment: dict[str, Any]) -> Optional[int]:
     for key in ("dateService", "dateCreated"):
-        ts = _iso_to_epoch_ms(payment.get(key))
+        ts = parse_to_epoch_ms(payment.get(key))
         if ts is not None:
             return ts
     return None
@@ -326,15 +270,6 @@ def _pstorage_label(value: Any) -> str:
     if value is False:
         return "Бесплатное"
     return ""
-
-
-def _last_n_days_range_ms(days: int) -> tuple[int, int]:
-    now = datetime.now(UZ_TZ)
-    end_dt = now.replace(hour=23, minute=59, second=59, microsecond=999000)
-    start_dt = (now - timedelta(days=days)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
-    return int(start_dt.timestamp() * 1000), int(end_dt.timestamp() * 1000)
 
 
 def _safe_float(value: Any) -> Optional[float]:
@@ -1137,7 +1072,7 @@ class UzumApiClient:
         shop_names: dict[int, str],
     ) -> dict[int, float]:
         """Среднесуточные продажи за 15 дней по skuId (приоритет — заказы FBO)."""
-        date_from_ms, date_to_ms = _last_n_days_range_ms(SALES_LOOKBACK_DAYS)
+        date_from_ms, date_to_ms = last_n_days_range_ms(SALES_LOOKBACK_DAYS)
         totals = self._fetch_scheme_order_qty_totals(
             shop_ids, date_from_ms, date_to_ms, "FBO", catalog
         )
@@ -1239,8 +1174,8 @@ def _build_sales_rows(
         rows.append(
             {
                 "Статус": SALES_STATUS_RU.get(str(item.get("status") or ""), item.get("status") or ""),
-                "Дата создания": _ms_to_datetime_str(item.get("date")),
-                "Дата получения": _ms_to_datetime_str(item.get("dateIssued")),
+                "Дата создания": format_datetime(item.get("date")),
+                "Дата получения": format_datetime(item.get("dateIssued")),
                 "№ заказа": item.get("orderId"),
                 "Штрихкод": (cat.barcode if cat else "") or _format_barcode(item.get("barcode")),
                 "SKU": _sales_sku_label(item, cat),
@@ -1285,8 +1220,8 @@ def _build_expenses_rows(payments: list[dict[str, Any]], shop_names: dict[int, s
                 "Источник": p.get("source") or "",
                 "Услуга": p.get("name") or "",
                 "Статус": EXPENSE_STATUS_RU.get(str(p.get("status") or ""), p.get("status") or ""),
-                "ID операции": p.get("externalId") or p.get("id"),
-                "Дата списания": _iso_to_datetime_str(p.get("dateService") or p.get("dateCreated")),
+                "ID операции": p.get("id") if p.get("id") is not None else p.get("externalId"),
+                "Дата списания": format_datetime(p.get("dateService") or p.get("dateCreated")),
                 "Стоимость (сумы)": p.get("paymentPrice"),
                 "Количество": p.get("amount"),
                 "Сумма (сумы)": p.get("paymentPrice"),
@@ -1484,17 +1419,8 @@ REPORT_BUILDERS: dict[str, ReportBuilder] = {
 
 
 def date_to_epoch_ms(date_str: Optional[str], end_of_day: bool = False) -> Optional[int]:
-    if not date_str:
-        return None
-    try:
-        dt = datetime.strptime(date_str.strip(), "%Y-%m-%d")
-        if end_of_day:
-            dt = dt.replace(hour=23, minute=59, second=59, microsecond=999000)
-        else:
-            dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
-        return int(dt.replace(tzinfo=UZ_TZ).timestamp() * 1000)
-    except ValueError:
-        return None
+    """Alias: calendar day boundaries in Uzbekistan (GMT+5)."""
+    return calendar_date_to_epoch_ms(date_str, end_of_day=end_of_day)
 
 
 def build_report(
@@ -1563,6 +1489,7 @@ def report_metadata() -> list[dict[str, Any]]:
         "inventory_old": "left-out-report",
     }
     meta = []
+    tz = timezone_metadata()
     for report_type, sheet in SHEET_NAMES.items():
         cols = _columns_for_report_type(report_type)
         meta.append(
@@ -1573,6 +1500,7 @@ def report_metadata() -> list[dict[str, Any]]:
                 "hint": hints[report_type],
                 "columns": [{"name": c.name, "mapped": c.mapped} for c in cols],
                 "needs_date_range": report_type in ("sales", "expenses"),
+                **tz,
             }
         )
     return meta
