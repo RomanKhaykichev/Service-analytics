@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
-from app.routes import shops, products, charts, auth, debug, kpi, imports, extra_expenses, sales, filters, admin, track, support_tickets
+from app.routes import shops, products, charts, auth, debug, kpi, imports, extra_expenses, sales, filters, admin, track, support_tickets, uzum_seller
 from app.settings import get_settings, get_cors_origins
 from app.db import engine
 import logging
@@ -150,6 +150,7 @@ app.include_router(filters.router, prefix="/api", tags=["filters"])
 app.include_router(admin.router, prefix="/api", tags=["admin"])
 app.include_router(track.router, prefix="/api", tags=["track"])
 app.include_router(support_tickets.router, prefix="/api", tags=["support"])
+app.include_router(uzum_seller.router, prefix="/api", tags=["uzum-seller"])
 
 
 @app.get("/health")

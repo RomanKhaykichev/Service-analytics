@@ -319,6 +319,53 @@ export async function apiGet<T>(path: string, params?: Record<string, any>): Pro
 /**
  * Make POST request to API
  */
+/**
+ * POST request that returns a file download (blob).
+ */
+export async function apiPostDownload(
+  path: string,
+  body: Record<string, unknown>,
+  filename: string
+): Promise<string[]> {
+  const response = await handleWithRefresh(path, {
+    method: "POST",
+    headers: {
+      ...getAuthHeaders(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `HTTP ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+
+  const warnHeader = response.headers.get("X-Uzum-Warnings");
+  if (!warnHeader) return [];
+  try {
+    const binary = atob(warnHeader);
+    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+    const parsed = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed.filter((w): w is string => typeof w === "string");
+    }
+  } catch {
+    /* legacy plain-text header */
+  }
+  return [warnHeader];
+}
+
 export async function apiPost<T>(path: string, body: any): Promise<T> {
   try {
     const response = await handleWithRefresh(path, {
