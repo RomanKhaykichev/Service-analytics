@@ -25,6 +25,7 @@ from app.utils.column_mappings import (
     CANONICAL_LEFTOUT_OLD,
     CANONICAL_SALES,
     CANONICAL_STORAGE,
+    STORAGE_COLUMN_ORDER,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ logger = logging.getLogger(__name__)
 API_BASE_URL = "https://api-seller.uzum.uz/api/seller-openapi"
 REQUEST_TIMEOUT = 45
 PAGE_SIZE = 100
+FBS_ORDERS_PAGE_SIZE = 50  # OpenAPI max for GET /v2/fbs/orders
 PRODUCT_PAGE_SIZE = 100
 MAX_PAGES = 200
 # Uzum rate-limits seller API; space out calls and retry on 429.
@@ -250,26 +252,133 @@ def _barcode_keys(barcode: str) -> list[str]:
     return keys
 
 
+# OpenAPI DimensionalGroup.group + типичные коды в выгрузках UZ (KGT/MGT/BGT) -> RU кабинета
+_DIMENSIONAL_GROUP_TO_RU: dict[str, str] = {
+    "SMALL": "СГТ",
+    "MEDIUM": "МГТ",
+    "LARGE": "БГТ",
+    "UNKNOWN": "",
+    "KGT": "МГТ",
+    "MGT": "МГТ",
+    "BGT": "БГТ",
+    "SGT": "СГТ",
+    "СГТ": "СГТ",
+    "МГТ": "МГТ",
+    "БГТ": "БГТ",
+    "KICHIK": "СГТ",
+    "ORTA": "МГТ",
+    "KATTA": "БГТ",
+}
+
+
 def _format_dimensional_group(value: Any) -> str:
     if value is None:
         return ""
     if isinstance(value, str):
-        return value
+        s = value.strip()
+        if not s:
+            return ""
+        mapped = _DIMENSIONAL_GROUP_TO_RU.get(s.upper())
+        return mapped if mapped is not None else s
     if isinstance(value, dict):
-        for key in ("name", "code", "title", "label"):
+        grp = value.get("group")
+        if grp is not None:
+            mapped = _DIMENSIONAL_GROUP_TO_RU.get(str(grp).upper())
+            if mapped is not None:
+                return mapped
+            return str(grp).strip()
+        for key in ("title", "name", "label", "code"):
             part = value.get(key)
             if part:
-                return str(part)
+                return _format_dimensional_group(str(part))
         return ""
-    return str(value)
+    return str(value).strip()
 
 
-def _pstorage_label(value: Any) -> str:
-    if value is True:
-        return "Платное хранение"
-    if value is False:
-        return "Бесплатное"
+def _sku_dimensional_group(sku: dict[str, Any]) -> str:
+    for key in (
+        "actualDimensionalGroup",
+        "dimensionalGroup",
+        "paidStorageDimensionalGroup",
+    ):
+        label = _format_dimensional_group(sku.get(key))
+        if label:
+            return label
     return ""
+
+
+def _storage_type_label(cat: Optional["SkuCatalogEntry"]) -> str:
+    """«Хранение»: Бесплатное / Платное (как в seller-storage-report кабинета)."""
+    if not cat:
+        return ""
+    if cat.pstorage is True:
+        return "Платное"
+    if cat.pstorage is False:
+        return "Бесплатное"
+    amount = _safe_float(cat.paid_storage_amount)
+    if amount is not None and amount > 0:
+        return "Платное"
+    return "Бесплатное"
+
+
+def _storage_price_per_unit(cat: Optional["SkuCatalogEntry"]) -> Any:
+    """Тариф за 1 ед. в день (paidStoragePriceItem) — в кабинете есть и при бесплатном хранении."""
+    if not cat or cat.paid_storage_price_item is None:
+        return ""
+    return cat.paid_storage_price_item
+
+
+def _storage_fee_1_day(cat: Optional["SkuCatalogEntry"], fbo_stock: Any) -> Any:
+    """Всего за 1 день = тариф × остаток FBO (как в seller-storage-report кабинета)."""
+    if not cat:
+        return ""
+    if cat.pstorage is False:
+        return 0
+    price = _safe_float(cat.paid_storage_price_item)
+    stock = _safe_float(fbo_stock if fbo_stock not in (None, "") else cat.quantity_active)
+    if price is not None and stock is not None:
+        return int(round(price * stock))
+    return 0
+
+
+def _storage_fee_30d(cat: Optional["SkuCatalogEntry"], fbo_stock: Any) -> Any:
+    """Всего за 30 дней = (тариф × остаток FBO) × 30, как в seller-storage-report."""
+    if not cat:
+        return ""
+    daily = _safe_float(_storage_fee_1_day(cat, fbo_stock))
+    if daily is not None and daily > 0:
+        return int(round(daily * 30))
+    amount = _safe_float(cat.paid_storage_amount)
+    if amount is not None and amount > 0:
+        return int(round(amount))
+    return 0
+
+
+def _include_in_storage_report(entry: SkuCatalogEntry) -> bool:
+    """Строки отчёта по FBO-хранению — из каталога, не из FBS-остатков."""
+    if (_safe_float(entry.quantity_active) or 0) > 0:
+        return True
+    if (_safe_float(entry.avg_daily_stock) or 0) > 0:
+        return True
+    if entry.paid_storage_price_item is not None:
+        return True
+    if entry.pstorage is not None:
+        return True
+    if entry.dimensional_group:
+        return True
+    return False
+
+
+def _storage_turnover_days(fbo_stock: Any, avg_sales_15d: Any) -> Any:
+    """Как в seller-storage-report: остаток FBO / среднесуточные продажи FBO за 15 дней."""
+    stock = _safe_float(fbo_stock)
+    avg = _safe_float(avg_sales_15d)
+    if stock is None or avg is None or avg <= 0:
+        return ""
+    days = stock / avg
+    if days >= 100:
+        return int(round(days))
+    return int(round(days)) if abs(days - round(days)) < 0.05 else round(days, 1)
 
 
 def _safe_float(value: Any) -> Optional[float]:
@@ -314,6 +423,7 @@ class SkuCatalogEntry:
     paid_storage_price_item: Any
     paid_storage_amount: Any
     avg_daily_sales: Any
+    avg_daily_stock: Any
     quantity_active: Any
     quantity_pending: Any
     pstorage: Optional[bool]
@@ -339,6 +449,37 @@ class ProductCatalogIndex:
     @property
     def size(self) -> int:
         return len(self.by_sku_id_global)
+
+    def enrich_storage_fields(self) -> None:
+        """Дозаполнить габарит и тариф из других SKU того же товара / магазина."""
+        for skus in self.skus_by_product.values():
+            ref_dg = ""
+            ref_price: Any = None
+            for sku in skus:
+                if sku.dimensional_group:
+                    ref_dg = sku.dimensional_group
+                    break
+            for sku in skus:
+                if sku.paid_storage_price_item is not None:
+                    ref_price = sku.paid_storage_price_item
+                    break
+            for sku in skus:
+                if not sku.dimensional_group and ref_dg:
+                    sku.dimensional_group = ref_dg
+                if sku.paid_storage_price_item is None and ref_price is not None:
+                    sku.paid_storage_price_item = ref_price
+
+        dg_price_by_shop: dict[tuple[int, str], Any] = {}
+        for entry in self.by_sku_id.values():
+            if entry.dimensional_group and entry.paid_storage_price_item is not None:
+                key = (entry.shop_id, entry.dimensional_group)
+                dg_price_by_shop.setdefault(key, entry.paid_storage_price_item)
+
+        for entry in self.by_sku_id.values():
+            if entry.paid_storage_price_item is None and entry.dimensional_group:
+                fallback = dg_price_by_shop.get((entry.shop_id, entry.dimensional_group))
+                if fallback is not None:
+                    entry.paid_storage_price_item = fallback
 
     def add_shop_products(self, shop_id: int, products: list[dict[str, Any]]) -> None:
         for product in products:
@@ -373,14 +514,13 @@ class ProductCatalogIndex:
                     product_id=product_id,
                     barcode=barcode,
                     category=category,
-                    dimensional_group=_format_dimensional_group(
-                        sku.get("dimensionalGroup") or sku.get("paidStorageDimensionalGroup")
-                    ),
+                    dimensional_group=_sku_dimensional_group(sku),
                     purchase_price=sku.get("purchasePrice"),
                     sell_price=sku.get("price"),
                     paid_storage_price_item=sku.get("paidStoragePriceItem"),
                     paid_storage_amount=sku.get("paidStorageAmount"),
                     avg_daily_sales=sku.get("avgdsales"),
+                    avg_daily_stock=sku.get("avgdquantity"),
                     quantity_active=sku.get("quantityActive"),
                     quantity_pending=sku.get("quantityPending"),
                     pstorage=sku.get("pstorage"),
@@ -1025,6 +1165,48 @@ class UzumApiClient:
             qty = 0
         totals[sku_id] = totals.get(sku_id, 0) + qty
 
+    def _fetch_scheme_order_qty_totals_for_shop(
+        self,
+        shop_id: int,
+        date_from_ms: int,
+        date_to_ms: int,
+        scheme: str,
+        catalog: ProductCatalogIndex,
+        *,
+        unit_ms: bool = True,
+    ) -> dict[int, int]:
+        totals: dict[int, int] = {}
+        page = 0
+        while page < MAX_PAGES:
+            params: dict[str, Any] = {
+                "shopIds": [shop_id],
+                "page": page,
+                "size": FBS_ORDERS_PAGE_SIZE,
+                "status": "COMPLETED",
+                "scheme": scheme,
+            }
+            _apply_date_query_params(params, date_from_ms, date_to_ms, unit_ms=unit_ms)
+            data = self.get("/v2/fbs/orders", params)
+            payload = (data or {}).get("payload") or {}
+            orders = payload.get("orders") or []
+            if not orders:
+                break
+            for order in orders:
+                if not isinstance(order, dict):
+                    continue
+                for item in order.get("orderItems") or []:
+                    if isinstance(item, dict):
+                        self._accumulate_item_qty(item, catalog, totals)
+            total_amount = payload.get("totalAmount")
+            if total_amount is not None and (page + 1) * FBS_ORDERS_PAGE_SIZE >= int(
+                total_amount
+            ):
+                break
+            if len(orders) < FBS_ORDERS_PAGE_SIZE:
+                break
+            page += 1
+        return totals
+
     def _fetch_scheme_order_qty_totals(
         self,
         shop_ids: list[int],
@@ -1034,36 +1216,45 @@ class UzumApiClient:
         catalog: ProductCatalogIndex,
     ) -> dict[int, int]:
         totals: dict[int, int] = {}
-        page = 0
-        while page < MAX_PAGES:
-            params: dict[str, Any] = {
-                "shopIds": shop_ids,
-                "page": page,
-                "size": PAGE_SIZE,
-                "status": "COMPLETED",
-                "dateFrom": date_from_ms,
-                "dateTo": date_to_ms,
-            }
-            data = self.get("/v2/fbs/orders", params)
-            payload = (data or {}).get("payload") or {}
-            orders = payload.get("orders") or []
-            if not orders:
-                break
-            for order in orders:
-                if not isinstance(order, dict):
-                    continue
-                if str(order.get("scheme") or "").upper() != scheme.upper():
-                    continue
-                for item in order.get("orderItems") or []:
-                    if isinstance(item, dict):
-                        self._accumulate_item_qty(item, catalog, totals)
-            total_amount = payload.get("totalAmount")
-            if total_amount is not None and (page + 1) * PAGE_SIZE >= int(total_amount):
-                break
-            if len(orders) < PAGE_SIZE:
-                break
-            page += 1
+        for shop_id in shop_ids:
+            shop_totals: Optional[dict[int, int]] = None
+            last_error: Optional[RuntimeError] = None
+            for unit_ms in (True, False):
+                try:
+                    shop_totals = self._fetch_scheme_order_qty_totals_for_shop(
+                        shop_id,
+                        date_from_ms,
+                        date_to_ms,
+                        scheme,
+                        catalog,
+                        unit_ms=unit_ms,
+                    )
+                    break
+                except RuntimeError as exc:
+                    last_error = exc
+                    if "400" not in str(exc):
+                        raise
+            if shop_totals is None:
+                if last_error:
+                    raise last_error
+                shop_totals = {}
+            for sku_id, qty in shop_totals.items():
+                totals[sku_id] = totals.get(sku_id, 0) + qty
+            if PAUSE_BETWEEN_SHOPS_SEC > 0:
+                time.sleep(PAUSE_BETWEEN_SHOPS_SEC)
         return totals
+
+    @staticmethod
+    def _catalog_avg_daily_sales_by_sku(catalog: ProductCatalogIndex) -> dict[int, float]:
+        out: dict[int, float] = {}
+        for entry in catalog.by_sku_id_global.values():
+            sku_id = entry.sku_id
+            if sku_id is None or sku_id in out:
+                continue
+            avg = _safe_float(entry.avg_daily_sales)
+            if avg is not None and avg > 0:
+                out[sku_id] = avg
+        return out
 
     def fetch_avg_daily_sales_15d_by_sku(
         self,
@@ -1073,23 +1264,47 @@ class UzumApiClient:
     ) -> dict[int, float]:
         """Среднесуточные продажи за 15 дней по skuId (приоритет — заказы FBO)."""
         date_from_ms, date_to_ms = last_n_days_range_ms(SALES_LOOKBACK_DAYS)
-        totals = self._fetch_scheme_order_qty_totals(
-            shop_ids, date_from_ms, date_to_ms, "FBO", catalog
-        )
-        if not totals:
-            items = self.fetch_finance_orders(date_from_ms, date_to_ms, shop_ids, shop_names)
-            for item in items:
-                self._accumulate_item_qty(item, catalog, totals)
-            if totals:
-                self.warnings.append(
-                    f"«Среднесуточные продажи FBO за {SALES_LOOKBACK_DAYS} дней»: "
-                    "заказы FBO в API не найдены, использованы все финансовые продажи за период."
-                )
-        return {
-            sku_id: total / SALES_LOOKBACK_DAYS
-            for sku_id, total in totals.items()
-            if total > 0
-        }
+        totals: dict[int, int] = {}
+        try:
+            totals = self._fetch_scheme_order_qty_totals(
+                shop_ids, date_from_ms, date_to_ms, "FBO", catalog
+            )
+        except RuntimeError as exc:
+            logger.warning("FBS orders for 15d sales failed: %s", exc)
+            self.warnings.append(
+                f"Заказы FBO за {SALES_LOOKBACK_DAYS} дн. недоступны ({exc}). "
+                "Среднесуточные продажи взяты из каталога или финансового API."
+            )
+        if totals:
+            return {
+                sku_id: total / SALES_LOOKBACK_DAYS
+                for sku_id, total in totals.items()
+                if total > 0
+            }
+
+        catalog_rates = self._catalog_avg_daily_sales_by_sku(catalog)
+        if catalog_rates:
+            self.warnings.append(
+                f"«Среднесуточные продажи FBO за {SALES_LOOKBACK_DAYS} дней»: "
+                "использовано поле avgdsales из каталога товаров."
+            )
+            return catalog_rates
+
+        for item in self.fetch_finance_orders(
+            date_from_ms, date_to_ms, shop_ids, shop_names
+        ):
+            self._accumulate_item_qty(item, catalog, totals)
+        if totals:
+            self.warnings.append(
+                f"«Среднесуточные продажи FBO за {SALES_LOOKBACK_DAYS} дней»: "
+                "использованы финансовые продажи за период."
+            )
+            return {
+                sku_id: total / SALES_LOOKBACK_DAYS
+                for sku_id, total in totals.items()
+                if total > 0
+            }
+        return {}
 
 
 def _sales_sku_label(item: dict[str, Any], cat: Optional[SkuCatalogEntry]) -> str:
@@ -1232,52 +1447,93 @@ def _build_expenses_rows(payments: list[dict[str, Any]], shop_names: dict[int, s
     return columns, rows
 
 
+def _storage_row_dict(
+    cat: SkuCatalogEntry,
+    shop_names: dict[int, str],
+    sales_15d_by_sku: Optional[dict[int, float]],
+    fbo_stock_override: Any = None,
+) -> dict[str, Any]:
+    sku_id = cat.sku_id
+    avg_sales_15d: Any = ""
+    if sku_id is not None and sales_15d_by_sku:
+        rate = sales_15d_by_sku.get(sku_id)
+        if rate is not None:
+            avg_sales_15d = _format_sales_rate(rate)
+    if avg_sales_15d == "" and cat.avg_daily_sales not in (None, ""):
+        avg_sales_15d = _format_sales_rate(float(cat.avg_daily_sales))
+
+    fbo_stock = fbo_stock_override
+    if fbo_stock in (None, ""):
+        fbo_stock = cat.quantity_active
+
+    avg_stock_15d = cat.avg_daily_stock
+    if avg_stock_15d in (None, ""):
+        avg_stock_15d = fbo_stock
+
+    turnover = _storage_turnover_days(fbo_stock, avg_sales_15d)
+
+    return {
+        "Магазин": _shop_label(shop_names, cat.shop_id),
+        "Название товара": cat.product_title,
+        "ID товара": cat.product_id,
+        "SKU": _sales_sku_label({}, cat),
+        "Штрихкод": cat.barcode,
+        "Габаритная группа": cat.dimensional_group,
+        "Среднесуточные остатки FBO за 15 дней, шт": avg_stock_15d,
+        "Среднесуточные продажи FBO за 15 дней, шт": avg_sales_15d,
+        "Оборачиваемость, дней": turnover,
+        "Хранение": _storage_type_label(cat),
+        "За хранение 1 единицы 1 день, сум": _storage_price_per_unit(cat),
+        "Остатки FBO (всего в продаже и на СДХ), шт": fbo_stock,
+        "Всего за хранение 1 день, сум": _storage_fee_1_day(cat, fbo_stock),
+        "Всего за хранение последние 30 дней, сум": _storage_fee_30d(cat, fbo_stock),
+    }
+
+
 def _build_storage_rows(
     stocks: list[dict[str, Any]],
     shop_names: dict[int, str],
     catalog: Optional[ProductCatalogIndex] = None,
+    sales_15d_by_sku: Optional[dict[int, float]] = None,
+    shop_ids: Optional[list[int]] = None,
 ) -> tuple[list[ExportColumn], list[dict[str, Any]]]:
-    columns = [
-        ExportColumn("Магазин", True),
-        ExportColumn("Название товара", True),
-        ExportColumn("ID товара", True),
-        ExportColumn("SKU", True),
-        ExportColumn("Штрихкод", True),
-        ExportColumn("Габаритная группа", True),
-        ExportColumn("Оборачиваемость, дней", True),
-        ExportColumn("Хранение", True),
-        ExportColumn("Всего за хранение последние 30 дней, сум", True),
-    ]
+    columns = [ExportColumn(name, True) for name in STORAGE_COLUMN_ORDER]
     assert {c.name for c in columns} == CANONICAL_STORAGE
 
+    allowed_shops = set(shop_ids) if shop_ids else None
     rows: list[dict[str, Any]] = []
+    seen: set[tuple[int, int]] = set()
+
+    if catalog:
+        catalog.enrich_storage_fields()
+        for (shop_id, sku_id), entry in catalog.by_sku_id.items():
+            if allowed_shops is not None and shop_id not in allowed_shops:
+                continue
+            key = (shop_id, sku_id)
+            if key in seen:
+                continue
+            if not _include_in_storage_report(entry):
+                continue
+            seen.add(key)
+            rows.append(_storage_row_dict(entry, shop_names, sales_15d_by_sku))
+
     for s in stocks:
         cat = catalog.lookup_stock_row(s) if catalog else None
-        barcode = _format_barcode(s.get("barcode")) or (cat.barcode if cat else "")
-        product_id = s.get("skuId")
-        if cat and cat.product_id is not None:
-            product_id = cat.product_id
-        stock_qty = s.get("amount")
-        if cat and cat.quantity_active is not None:
-            stock_qty = cat.quantity_active
-        turnover = _compute_turnover_days(
-            stock_qty, cat.avg_daily_sales if cat else None
-        )
+        if cat is None or cat.sku_id is None:
+            continue
+        key = (cat.shop_id, cat.sku_id)
+        if key in seen:
+            continue
+        if allowed_shops is not None and cat.shop_id not in allowed_shops:
+            continue
+        seen.add(key)
+        fbo_stock = s.get("amount")
+        if cat.quantity_active is not None:
+            fbo_stock = cat.quantity_active
         rows.append(
-            {
-                "Магазин": _shop_label(shop_names, cat.shop_id) if cat else "",
-                "Название товара": s.get("productTitle")
-                or s.get("skuTitle")
-                or (cat.product_title if cat else ""),
-                "ID товара": product_id,
-                "SKU": s.get("skuId"),
-                "Штрихкод": barcode,
-                "Габаритная группа": cat.dimensional_group if cat else "",
-                "Оборачиваемость, дней": turnover,
-                "Хранение": _pstorage_label(cat.pstorage) if cat else "",
-                "Всего за хранение последние 30 дней, сум": cat.paid_storage_amount if cat else "",
-            }
+            _storage_row_dict(cat, shop_names, sales_15d_by_sku, fbo_stock_override=fbo_stock)
         )
+
     return columns, rows
 
 
@@ -1392,8 +1648,9 @@ def _build_storage(
     shops = _shops_name_map(client)
     resolved_ids = client.resolve_shop_ids(shop_ids)
     catalog = client.fetch_product_catalog_index(resolved_ids)
+    sales_15d = client.fetch_avg_daily_sales_15d_by_sku(resolved_ids, catalog, shops)
     stocks = client.fetch_sku_stocks()
-    return _build_storage_rows(stocks, shops, catalog)
+    return _build_storage_rows(stocks, shops, catalog, sales_15d, resolved_ids)
 
 
 def _build_inventory_old(
@@ -1474,7 +1731,7 @@ def _columns_for_report_type(report_type: str) -> list[ExportColumn]:
     if report_type == "expenses":
         return [ExportColumn(n, True) for n in sorted(CANONICAL_EXPENSES)]
     if report_type == "storage":
-        return [ExportColumn(n, True) for n in sorted(CANONICAL_STORAGE)]
+        return [ExportColumn(n, True) for n in STORAGE_COLUMN_ORDER]
     if report_type == "inventory_old":
         return [ExportColumn(n, True) for n in sorted(CANONICAL_LEFTOUT_OLD)]
     raise ValueError(f"Unknown report type: {report_type}")
