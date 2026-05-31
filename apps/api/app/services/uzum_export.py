@@ -22,9 +22,10 @@ from app.services.uzum_time import (
 )
 from app.utils.column_mappings import (
     CANONICAL_EXPENSES,
-    CANONICAL_LEFTOUT_OLD,
+    CANONICAL_LEFTOUT_API,
     CANONICAL_SALES,
     CANONICAL_STORAGE,
+    LEFTOUT_API_COLUMN_ORDER,
     STORAGE_COLUMN_ORDER,
 )
 
@@ -253,6 +254,18 @@ def _barcode_keys(barcode: str) -> list[str]:
 
 
 # OpenAPI DimensionalGroup.group + типичные коды в выгрузках UZ (KGT/MGT/BGT) -> RU кабинета
+_DIMENSIONAL_GROUP_SHORT: dict[str, str] = {
+    "СГТ": "S",
+    "МГТ": "M",
+    "БГТ": "L",
+    "SMALL": "S",
+    "MEDIUM": "M",
+    "LARGE": "L",
+    "S": "S",
+    "M": "M",
+    "L": "L",
+}
+
 _DIMENSIONAL_GROUP_TO_RU: dict[str, str] = {
     "SMALL": "СГТ",
     "MEDIUM": "МГТ",
@@ -293,6 +306,12 @@ def _format_dimensional_group(value: Any) -> str:
                 return _format_dimensional_group(str(part))
         return ""
     return str(value).strip()
+
+
+def _dimensional_group_short(label: str) -> str:
+    if not label:
+        return ""
+    return _DIMENSIONAL_GROUP_SHORT.get(label.strip().upper(), label)
 
 
 def _sku_dimensional_group(sku: dict[str, Any]) -> str:
@@ -369,9 +388,9 @@ def _include_in_storage_report(entry: SkuCatalogEntry) -> bool:
     return False
 
 
-def _storage_turnover_days(fbo_stock: Any, avg_sales_15d: Any) -> Any:
-    """Как в seller-storage-report: остаток FBO / среднесуточные продажи FBO за 15 дней."""
-    stock = _safe_float(fbo_stock)
+def _storage_turnover_days(avg_stock_15d: Any, avg_sales_15d: Any) -> Any:
+    """Оборачиваемость = среднесуточные остатки FBO за 15 дн. / среднесуточные продажи FBO за 15 дн."""
+    stock = _safe_float(avg_stock_15d)
     avg = _safe_float(avg_sales_15d)
     if stock is None or avg is None or avg <= 0:
         return ""
@@ -400,6 +419,48 @@ def _compute_turnover_days(stock_qty: Any, avg_daily_sales: Any) -> Any:
     if days >= 100:
         return int(round(days))
     return round(days, 1)
+
+
+PRODUCT_STATUS_RU: dict[str, str] = {
+    "IN_STOCK": "В продаже",
+    "READY_TO_SEND": "Готов к отправке",
+    "SENT": "Отправлен",
+    "RUN_OUT": "Закончился",
+    "BLOCKED": "Заблокирован",
+    "SKU_BLOCKED": "SKU заблокирован",
+    "ARCHIVED": "В архиве",
+    "DELETED": "Удалён",
+    "NO_SKU": "Нет SKU",
+    "NOT_READY_TO_SEND": "Не готов к отправке",
+    "PERM_BANNED": "Заблокирован навсегда",
+}
+
+
+def _product_status_label(product: dict[str, Any]) -> str:
+    status = product.get("status")
+    if isinstance(status, dict):
+        title = status.get("title")
+        if title:
+            return str(title)
+        value = status.get("value")
+        if value:
+            return PRODUCT_STATUS_RU.get(str(value), str(value))
+    return ""
+
+
+def _qty_int(value: Any) -> int:
+    parsed = _safe_float(value)
+    return int(parsed) if parsed is not None else 0
+
+
+def _commission_amount_and_share(price: Any, commission: Any) -> tuple[Any, Any]:
+    sell = _safe_float(price)
+    share = _safe_float(commission)
+    if sell is None or share is None:
+        return "", ""
+    amount = int(round(sell * share / 100))
+    share_out: Any = int(share) if abs(share - round(share)) < 0.01 else round(share, 2)
+    return amount, share_out
 
 
 def _format_sales_rate(value: float) -> Any:
@@ -432,6 +493,12 @@ class SkuCatalogEntry:
     article: str
     seller_item_code: str
     product_title: str
+    quantity_defected: Any
+    quantity_returned: Any
+    characteristics: str
+    commission: Any
+    product_status: str
+    shop_name: str
 
 
 @dataclass
@@ -494,6 +561,7 @@ class ProductCatalogIndex:
                 except (TypeError, ValueError):
                     product_id = None
             product_title = str(product.get("title") or product.get("skuTitle") or "")
+            product_status = _product_status_label(product)
             sku_list = product.get("skuList") or []
             if not isinstance(sku_list, list):
                 continue
@@ -529,6 +597,12 @@ class ProductCatalogIndex:
                     article=str(sku.get("article") or ""),
                     seller_item_code=str(sku.get("sellerItemCode") or ""),
                     product_title=str(sku.get("productTitle") or product_title),
+                    quantity_defected=sku.get("quantityDefected"),
+                    quantity_returned=sku.get("quantityReturned"),
+                    characteristics=str(sku.get("characteristics") or "").strip(),
+                    commission=sku.get("commission"),
+                    product_status=product_status,
+                    shop_name="",
                 )
                 if sku_id is not None:
                     self.by_sku_id[(shop_id, sku_id)] = entry
@@ -1470,7 +1544,7 @@ def _storage_row_dict(
     if avg_stock_15d in (None, ""):
         avg_stock_15d = fbo_stock
 
-    turnover = _storage_turnover_days(fbo_stock, avg_sales_15d)
+    turnover = _storage_turnover_days(avg_stock_15d, avg_sales_15d)
 
     return {
         "Магазин": _shop_label(shop_names, cat.shop_id),
@@ -1537,64 +1611,100 @@ def _build_storage_rows(
     return columns, rows
 
 
+def _leftout_row_dict(cat: SkuCatalogEntry, shop_names: dict[int, str]) -> dict[str, Any]:
+    in_sale = _qty_int(cat.quantity_active)
+    in_reserve = _qty_int(cat.quantity_pending)
+    defect = _qty_int(cat.quantity_defected)
+    from_customer = _qty_int(cat.quantity_returned)
+    to_customer = 0
+    stock_total = in_sale + in_reserve + defect
+    fbo_stock = cat.quantity_active
+    comm_amount, comm_share = _commission_amount_and_share(cat.sell_price, cat.commission)
+    shop_label = _shop_label(shop_names, cat.shop_id)
+
+    return {
+        "ID": cat.sku_id,
+        "Наименование": cat.product_title or cat.sku_full_title or cat.sku_title,
+        "Штрихкод": cat.barcode,
+        "SKU": _sales_sku_label({}, cat),
+        "ID товара": cat.product_id,
+        "Размер": cat.characteristics,
+        "В продаже": in_sale,
+        "В резерве": in_reserve,
+        "Брак": defect,
+        "Габаритная группа": _dimensional_group_short(cat.dimensional_group),
+        "За хранение 1 единицы 1 день, сум": _storage_price_per_unit(cat),
+        "Всего за хранение 1 день, сум": _storage_fee_1_day(cat, fbo_stock),
+        "Всего за хранение последние 30 дней, сум": _storage_fee_30d(cat, fbo_stock),
+        "Остаток на складе": stock_total,
+        "Доступно для продажи": in_sale,
+        "Зарезервировано": in_reserve,
+        "В пути от покупателя": from_customer,
+        "В пути к покупателю": to_customer,
+        "Категория": cat.category,
+        "Бренд": "",
+        "Статус": cat.product_status,
+        "Цена": cat.sell_price if cat.sell_price is not None else "",
+        "Скидка": "",
+        "Цена со скидкой": cat.sell_price if cat.sell_price is not None else "",
+        "Комиссия": comm_amount,
+        "Доля комиссии": comm_share,
+        "Склад": shop_label,
+    }
+
+
+def _include_in_leftout_report(entry: SkuCatalogEntry) -> bool:
+    if entry.barcode or entry.sku_id is not None:
+        return True
+    for field in (
+        entry.quantity_active,
+        entry.quantity_pending,
+        entry.quantity_defected,
+        entry.quantity_returned,
+    ):
+        if (_safe_float(field) or 0) > 0:
+            return True
+    return False
+
+
 def _build_inventory_old_rows(
     stocks: list[dict[str, Any]],
+    shop_names: dict[int, str],
     catalog: Optional[ProductCatalogIndex] = None,
-    sales_15d_by_sku: Optional[dict[int, float]] = None,
+    shop_ids: Optional[list[int]] = None,
 ) -> tuple[list[ExportColumn], list[dict[str, Any]]]:
-    columns = [
-        ExportColumn("Штрихкод", True),
-        ExportColumn("SKU", True),
-        ExportColumn("ID товара", True),
-        ExportColumn("Наименование", True),
-        ExportColumn("В продаже", True),
-        ExportColumn("Себест. (сумы)", True),
-        ExportColumn("Стоимость продажи (сумы)", True),
-        ExportColumn("Оборачиваемость, дней", True),
-        ExportColumn("Стоимость хранения 1 дня, сум", True),
-        ExportColumn("Среднесуточные продажи", True),
-        ExportColumn("Среднесуточные продажи FBO за 15 дней, шт", True),
-        ExportColumn("К отправке", True),
-        ExportColumn("Общий остаток", True),
-    ]
-    assert {c.name for c in columns} == CANONICAL_LEFTOUT_OLD
+    columns = [ExportColumn(name, True) for name in LEFTOUT_API_COLUMN_ORDER]
+    assert {c.name for c in columns} == CANONICAL_LEFTOUT_API
 
+    allowed_shops = set(shop_ids) if shop_ids else None
     rows: list[dict[str, Any]] = []
+    seen: set[tuple[int, int]] = set()
+
+    if catalog:
+        catalog.enrich_storage_fields()
+        for (shop_id, sku_id), entry in catalog.by_sku_id.items():
+            if allowed_shops is not None and shop_id not in allowed_shops:
+                continue
+            key = (shop_id, sku_id)
+            if key in seen:
+                continue
+            if not _include_in_leftout_report(entry):
+                continue
+            seen.add(key)
+            rows.append(_leftout_row_dict(entry, shop_names))
+
     for s in stocks:
-        amount = s.get("amount")
         cat = catalog.lookup_stock_row(s) if catalog else None
-        sku_id: Optional[int] = None
-        raw_sku = s.get("skuId")
-        if raw_sku is not None:
-            try:
-                sku_id = int(raw_sku)
-            except (TypeError, ValueError):
-                sku_id = None
-        fbo_avg: Any = ""
-        if sku_id is not None and sales_15d_by_sku:
-            rate = sales_15d_by_sku.get(sku_id)
-            if rate is not None:
-                fbo_avg = _format_sales_rate(rate)
-        turnover = _compute_turnover_days(amount, cat.avg_daily_sales if cat else None)
-        rows.append(
-            {
-                "Штрихкод": _format_barcode(s.get("barcode")) or (cat.barcode if cat else ""),
-                "SKU": s.get("skuId"),
-                "ID товара": cat.product_id if cat and cat.product_id is not None else s.get("skuId"),
-                "Наименование": s.get("productTitle")
-                or s.get("skuTitle")
-                or (cat.product_title if cat else ""),
-                "В продаже": amount,
-                "Себест. (сумы)": cat.purchase_price if cat else "",
-                "Стоимость продажи (сумы)": cat.sell_price if cat else "",
-                "Оборачиваемость, дней": turnover,
-                "Стоимость хранения 1 дня, сум": cat.paid_storage_price_item if cat else "",
-                "Среднесуточные продажи": cat.avg_daily_sales if cat else "",
-                "Среднесуточные продажи FBO за 15 дней, шт": fbo_avg,
-                "К отправке": cat.quantity_pending if cat else "",
-                "Общий остаток": amount,
-            }
-        )
+        if cat is None or cat.sku_id is None:
+            continue
+        key = (cat.shop_id, cat.sku_id)
+        if key in seen:
+            continue
+        if allowed_shops is not None and cat.shop_id not in allowed_shops:
+            continue
+        seen.add(key)
+        rows.append(_leftout_row_dict(cat, shop_names))
+
     return columns, rows
 
 
@@ -1662,9 +1772,8 @@ def _build_inventory_old(
     shops = _shops_name_map(client)
     resolved_ids = client.resolve_shop_ids(shop_ids)
     catalog = client.fetch_product_catalog_index(resolved_ids)
-    sales_15d = client.fetch_avg_daily_sales_15d_by_sku(resolved_ids, catalog, shops)
     stocks = client.fetch_sku_stocks()
-    return _build_inventory_old_rows(stocks, catalog, sales_15d)
+    return _build_inventory_old_rows(stocks, shops, catalog, resolved_ids)
 
 
 REPORT_BUILDERS: dict[str, ReportBuilder] = {
@@ -1733,7 +1842,7 @@ def _columns_for_report_type(report_type: str) -> list[ExportColumn]:
     if report_type == "storage":
         return [ExportColumn(n, True) for n in STORAGE_COLUMN_ORDER]
     if report_type == "inventory_old":
-        return [ExportColumn(n, True) for n in sorted(CANONICAL_LEFTOUT_OLD)]
+        return [ExportColumn(n, True) for n in LEFTOUT_API_COLUMN_ORDER]
     raise ValueError(f"Unknown report type: {report_type}")
 
 
