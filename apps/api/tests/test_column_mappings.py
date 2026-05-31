@@ -11,6 +11,12 @@ from app.utils.column_mappings import (
     MissingRequiredColumnsError,
     CANONICAL_BY_FILE_TYPE,
     UZ_TO_RU_BY_FILE_TYPE,
+    CANONICAL_SALES,
+    CANONICAL_EXPENSES,
+    CANONICAL_STORAGE,
+    SALES_COLUMN_ORDER,
+    EXPENSES_COLUMN_ORDER,
+    STORAGE_COLUMN_ORDER,
 )
 
 
@@ -164,3 +170,11 @@ def test_sales_uz_um_export_headers():
     assert rename["Yaratilish sanasi"] == "Дата создания"
     assert rename["Buyurtma raqami"] == "№ заказа"
     assert rename["Shtrixkod"] == "Штрихкод"
+
+
+def test_uzum_api_column_orders_match_canonical():
+    assert set(SALES_COLUMN_ORDER) == CANONICAL_SALES
+    assert set(EXPENSES_COLUMN_ORDER) == CANONICAL_EXPENSES
+    assert set(STORAGE_COLUMN_ORDER) == CANONICAL_STORAGE
+    assert len(SALES_COLUMN_ORDER) == len(CANONICAL_SALES)
+    assert len(EXPENSES_COLUMN_ORDER) == len(CANONICAL_EXPENSES)

@@ -380,14 +380,16 @@ def _norm_col_leftout_old(s) -> str:
 LEFTOUT_OLD_REQUIRED_NORMALIZED = {"штрихкод", "в продаже", "себест. (сумы)", "стоимость продажи (сумы)"}
 
 
-def _detect_leftout_old_header_row(xl: pd.ExcelFile, sheet_name: str) -> int | None:
+def _detect_report_header_row(xl: pd.ExcelFile, sheet_name: str, file_type: str) -> int | None:
     """Find header row: Uzum cabinet (row 1) or API export without timezone title (row 0)."""
     from app.utils.column_mappings import (
         MissingRequiredColumnsError,
         map_headers_to_canonical,
     )
 
-    required_canonical = REQUIRED.get("leftout_old", [])
+    required_canonical = REQUIRED.get(file_type, [])
+    if not required_canonical:
+        return None
     for header_row in range(30):
         try:
             df = pd.read_excel(
@@ -408,13 +410,17 @@ def _detect_leftout_old_header_row(xl: pd.ExcelFile, sheet_name: str) -> int | N
             continue
         headers = [norm(c) for c in cols]
         try:
-            map_headers_to_canonical("leftout_old", headers, required_canonical)
+            map_headers_to_canonical(file_type, headers, required_canonical)
             return header_row
         except MissingRequiredColumnsError:
             continue
         except Exception:
             continue
     return None
+
+
+def _detect_leftout_old_header_row(xl: pd.ExcelFile, sheet_name: str) -> int | None:
+    return _detect_report_header_row(xl, sheet_name, "leftout_old")
 
 
 def validate_leftout_old_xlsx(file_bytes: bytes) -> None:
@@ -454,18 +460,26 @@ def read_excel_as_str(file_content: bytes, sheet: str, file_type: str = None) ->
                     f"Лист '{sheet}' не найден в файле. Доступные листы: {xl.sheet_names}"
                 )
     converters = {}
-    if file_type in ("leftout", "storage", "leftout_old"):
+    if file_type in ("leftout", "storage", "leftout_old", "sales"):
         converters = {
             "Штрихкод": lambda x: str(x) if pd.notna(x) else "",
             "SKU": lambda x: str(x) if pd.notna(x) else "",
         }
     header_row = 1
-    if file_type == "leftout_old":
-        detected = _detect_leftout_old_header_row(xl, sheet_used)
+    if file_type:
+        detected = _detect_report_header_row(xl, sheet_used, file_type)
         if detected is not None:
             header_row = detected
-    # leftout_old: auto-detect header row (0 = API export, 1 = Uzum cabinet with timezone title)
-    dtype_arg = str if file_type == "leftout_old" else ({"Штрихкод": "string", "SKU": "string"} if file_type in ("leftout", "storage") else None)
+    # auto-detect header row (0 = API export, 1 = Uzum cabinet with timezone title)
+    dtype_arg = (
+        str
+        if file_type == "leftout_old"
+        else (
+            {"Штрихкод": "string", "SKU": "string"}
+            if file_type in ("leftout", "storage", "sales")
+            else None
+        )
+    )
     df = pd.read_excel(
         xl,
         sheet_name=sheet_used,

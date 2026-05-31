@@ -25,7 +25,9 @@ from app.utils.column_mappings import (
     CANONICAL_LEFTOUT_API,
     CANONICAL_SALES,
     CANONICAL_STORAGE,
+    EXPENSES_COLUMN_ORDER,
     LEFTOUT_API_COLUMN_ORDER,
+    SALES_COLUMN_ORDER,
     STORAGE_COLUMN_ORDER,
 )
 
@@ -52,10 +54,21 @@ FINANCE_ORDER_STATUSES = [
 ]
 
 SALES_STATUS_RU = {
-    "TO_WITHDRAW": "К выводу",
+    "TO_WITHDRAW": "Завершен",
     "PROCESSING": "В обработке",
     "CANCELED": "Отменен",
     "PARTIALLY_CANCELLED": "Частично отменен",
+}
+
+EXPENSE_SOURCE_RU: dict[str, str] = {
+    "STORAGE": "Склад",
+    "WAREHOUSE": "Склад",
+    "SKLAD": "Склад",
+    "OMBOR": "Склад",
+    "MARKETING": "Маркетинг",
+    "ADVERTISING": "Маркетинг",
+    "REKLAMA": "Маркетинг",
+    "ADS": "Маркетинг",
 }
 
 EXPENSE_STATUS_RU = {
@@ -1655,30 +1668,36 @@ def _sales_money_fields(item: dict[str, Any]) -> tuple[Any, Any, Any, Any, Any]:
     return price, revenue, revenue_net, item.get("commission"), item.get("logisticDeliveryFee")
 
 
+def _expense_source_label(raw: Any, service_name: str = "") -> str:
+    """Источник услуги в формате кабинета Uzum: «Склад» / «Маркетинг»."""
+    if raw in (None, ""):
+        text = ""
+    else:
+        text = str(raw).strip()
+    if text:
+        mapped = EXPENSE_SOURCE_RU.get(text.upper())
+        if mapped:
+            return mapped
+        lower = text.lower().replace("\u2019", "'").replace("\u02bb", "'")
+        if lower in ("склад", "sklad", "ombor", "storage", "warehouse"):
+            return "Склад"
+        if lower in ("маркетинг", "marketing", "reklama", "advertising"):
+            return "Маркетинг"
+    svc = str(service_name or "").upper()
+    if any(token in svc for token in ("РЕКЛАМ", "MARKET", "BID", "PROMO", "ADS")):
+        return "Маркетинг"
+    if any(token in svc for token in ("ХРАНЕН", "STORAGE", "СКЛАД", "WAREHOUSE")):
+        return "Склад"
+    return text
+
+
 def _build_sales_rows(
     items: list[dict[str, Any]],
     shop_names: dict[int, str],
     catalog: Optional[ProductCatalogIndex] = None,
 ) -> tuple[list[ExportColumn], list[dict[str, Any]]]:
-    columns = [
-        ExportColumn("Статус", True),
-        ExportColumn("Дата создания", True),
-        ExportColumn("Дата получения", True),
-        ExportColumn("№ заказа", True),
-        ExportColumn("Штрихкод", True),
-        ExportColumn("SKU", True),
-        ExportColumn("Наименование", True),
-        ExportColumn("Категория", True),
-        ExportColumn("Количество", True),
-        ExportColumn("Возвраты", True),
-        ExportColumn("Выручка (сумы)", True),
-        ExportColumn("Выручка с вычетом комиссии и логистики (сумы)", True),
-        ExportColumn("Комиссия маркетплейса (сумы)", True),
-        ExportColumn("Цена (сумы)", True),
-        ExportColumn("Промокод (сумы)", False),
-        ExportColumn("Себестоимость (сумы)", True),
-        ExportColumn("Логистический сбор", True),
-    ]
+    unmapped = {"Промокод (сумы)"}
+    columns = [ExportColumn(name, name not in unmapped) for name in SALES_COLUMN_ORDER]
     assert {c.name for c in columns} == CANONICAL_SALES
 
     rows: list[dict[str, Any]] = []
@@ -1714,26 +1733,17 @@ def _build_sales_rows(
 
 
 def _build_expenses_rows(payments: list[dict[str, Any]], shop_names: dict[int, str]) -> tuple[list[ExportColumn], list[dict[str, Any]]]:
-    columns = [
-        ExportColumn("Источник", True),
-        ExportColumn("Услуга", True),
-        ExportColumn("Статус", True),
-        ExportColumn("ID операции", True),
-        ExportColumn("Дата списания", True),
-        ExportColumn("Стоимость (сумы)", True),
-        ExportColumn("Количество", True),
-        ExportColumn("Сумма (сумы)", True),
-        ExportColumn("Тип операции", True),
-    ]
+    columns = [ExportColumn(name, True) for name in EXPENSES_COLUMN_ORDER]
     assert {c.name for c in columns} == CANONICAL_EXPENSES
 
     rows: list[dict[str, Any]] = []
     for p in payments:
         shop_id = p.get("shopId")
+        service_name = str(p.get("name") or "")
         rows.append(
             {
-                "Источник": p.get("source") or "",
-                "Услуга": p.get("name") or "",
+                "Источник": _expense_source_label(p.get("source"), service_name),
+                "Услуга": service_name,
                 "Статус": EXPENSE_STATUS_RU.get(str(p.get("status") or ""), p.get("status") or ""),
                 "ID операции": p.get("id") if p.get("id") is not None else p.get("externalId"),
                 "Дата списания": format_datetime(p.get("dateService") or p.get("dateCreated")),
@@ -2180,9 +2190,9 @@ def build_xlsx_bytes(
 def _columns_for_report_type(report_type: str) -> list[ExportColumn]:
     if report_type == "sales":
         unmapped = {"Промокод (сумы)"}
-        return [ExportColumn(n, n not in unmapped) for n in sorted(CANONICAL_SALES)]
+        return [ExportColumn(n, n not in unmapped) for n in SALES_COLUMN_ORDER]
     if report_type == "expenses":
-        return [ExportColumn(n, True) for n in sorted(CANONICAL_EXPENSES)]
+        return [ExportColumn(n, True) for n in EXPENSES_COLUMN_ORDER]
     if report_type == "storage":
         return [ExportColumn(n, True) for n in STORAGE_COLUMN_ORDER]
     if report_type == "inventory_old":
