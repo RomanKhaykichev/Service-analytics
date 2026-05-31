@@ -74,7 +74,7 @@ SHEET_NAMES = {
     "sales": "Отчет по продажам",
     "expenses": "Отчет по услугам",
     "storage": "Отчет по хранению",
-    "inventory_old": "Остатки (старый)",
+    "inventory_old": "Отчет по остаткам",
 }
 
 FILE_NAMES = {
@@ -453,14 +453,41 @@ def _qty_int(value: Any) -> int:
     return int(parsed) if parsed is not None else 0
 
 
-def _commission_amount_and_share(price: Any, commission: Any) -> tuple[Any, Any]:
-    sell = _safe_float(price)
-    share = _safe_float(commission)
-    if sell is None or share is None:
-        return "", ""
-    amount = int(round(sell * share / 100))
-    share_out: Any = int(share) if abs(share - round(share)) < 0.01 else round(share, 2)
-    return amount, share_out
+def _optional_number(value: Any) -> Any:
+    if value in (None, ""):
+        return None
+    return value
+
+
+def _invoice_is_pending(invoice: dict[str, Any]) -> bool:
+    """Накладная FBO, по которой ещё есть товар к отправке на склад."""
+    if invoice.get("dateAccepted"):
+        return False
+    status = invoice.get("invoiceStatus") or {}
+    value = str(status.get("value") or invoice.get("status") or "").upper()
+    if value in ("ACCEPTED", "COMPLETED", "CANCELLED", "CANCELED", "REJECTED", "DECLINED"):
+        return False
+    total_to = _qty_int(invoice.get("totalToStock"))
+    total_acc = _qty_int(invoice.get("totalAccepted"))
+    if total_to > 0 and total_acc >= total_to and invoice.get("dateAccepted"):
+        return False
+    return True
+
+
+def _sku_label_match(label: str, entry: "SkuCatalogEntry") -> bool:
+    if not label:
+        return False
+    for candidate in (
+        entry.article,
+        entry.seller_item_code,
+        entry.sku_title,
+        entry.sku_full_title,
+    ):
+        if not candidate:
+            continue
+        if label == candidate or label in candidate or candidate in label:
+            return True
+    return False
 
 
 def _format_sales_rate(value: float) -> Any:
@@ -487,6 +514,8 @@ class SkuCatalogEntry:
     avg_daily_stock: Any
     quantity_active: Any
     quantity_pending: Any
+    quantity_fbs: Any
+    quantity_additional: Any
     pstorage: Optional[bool]
     sku_title: str
     sku_full_title: str
@@ -499,6 +528,8 @@ class SkuCatalogEntry:
     commission: Any
     product_status: str
     shop_name: str
+    preview_image: str
+    quantity_on_photo_studio: Any
 
 
 @dataclass
@@ -548,6 +579,110 @@ class ProductCatalogIndex:
                 if fallback is not None:
                     entry.paid_storage_price_item = fallback
 
+    def enrich_purchase_prices_from_orders(self, order_items: list[dict[str, Any]]) -> int:
+        """Себестоимость из финансовых продаж (как в sells-report), если в каталоге пусто."""
+        filled = 0
+        for item in order_items:
+            if not isinstance(item, dict):
+                continue
+            price = item.get("purchasePrice")
+            if price in (None, ""):
+                continue
+            entry = self.lookup_order_item(item)
+            if entry is None or entry.purchase_price is not None:
+                continue
+            entry.purchase_price = price
+            filled += 1
+        return filled
+
+    def enrich_from_fbo_invoices(self, invoices: list[dict[str, Any]]) -> tuple[int, int]:
+        """К отправке и себестоимость из открытых FBO-накладных (/v1/invoice)."""
+        to_ship_filled = 0
+        price_filled = 0
+        pending_by_sku: dict[tuple[int, int], int] = {}
+
+        for invoice in invoices:
+            if not isinstance(invoice, dict) or not _invoice_is_pending(invoice):
+                continue
+            shop_raw = invoice.get("shopId")
+            if shop_raw is None:
+                continue
+            try:
+                shop_id = int(shop_raw)
+            except (TypeError, ValueError):
+                continue
+
+            products = invoice.get("productForInvoiceDto") or []
+            if not isinstance(products, list):
+                continue
+            for product in products:
+                if not isinstance(product, dict):
+                    continue
+                sku_list = product.get("skuForInvoiceDtoList") or []
+                if not isinstance(sku_list, list):
+                    continue
+                product_price = _optional_number(product.get("purchasePrice"))
+                for sku in sku_list:
+                    if not isinstance(sku, dict):
+                        continue
+                    entry = self._match_invoice_sku(shop_id, sku, product)
+                    if entry is None or entry.sku_id is None:
+                        continue
+                    sku_price = _optional_number(sku.get("purchasePrice")) or product_price
+                    if entry.purchase_price is None and sku_price is not None:
+                        entry.purchase_price = sku_price
+                        price_filled += 1
+                    qty = _qty_int(sku.get("quantityToStock"))
+                    if qty <= 0:
+                        continue
+                    key = (shop_id, entry.sku_id)
+                    pending_by_sku[key] = pending_by_sku.get(key, 0) + qty
+
+        for (shop_id, sku_id), qty in pending_by_sku.items():
+            entry = self.by_sku_id.get((shop_id, sku_id))
+            if entry is None:
+                continue
+            if _qty_int(entry.quantity_pending) > 0:
+                continue
+            entry.quantity_pending = qty
+            to_ship_filled += 1
+        return to_ship_filled, price_filled
+
+    def _match_invoice_sku(
+        self,
+        shop_id: int,
+        sku: dict[str, Any],
+        product: dict[str, Any],
+    ) -> Optional[SkuCatalogEntry]:
+        raw_id = sku.get("id")
+        if raw_id is not None:
+            try:
+                entry = self.by_sku_id.get((shop_id, int(raw_id)))
+                if entry:
+                    return entry
+            except (TypeError, ValueError):
+                pass
+
+        title = str(sku.get("skuTitle") or product.get("skuTitle") or "")
+        if title:
+            for entry in self.by_sku_id.values():
+                if entry.shop_id == shop_id and _sku_label_match(title, entry):
+                    return entry
+        return None
+
+    def enrich_purchase_prices_from_product_skus(self) -> None:
+        for skus in self.skus_by_product.values():
+            ref: Any = None
+            for sku in skus:
+                if sku.purchase_price is not None:
+                    ref = sku.purchase_price
+                    break
+            if ref is None:
+                continue
+            for sku in skus:
+                if sku.purchase_price is None:
+                    sku.purchase_price = ref
+
     def add_shop_products(self, shop_id: int, products: list[dict[str, Any]]) -> None:
         for product in products:
             if not isinstance(product, dict):
@@ -583,7 +718,7 @@ class ProductCatalogIndex:
                     barcode=barcode,
                     category=category,
                     dimensional_group=_sku_dimensional_group(sku),
-                    purchase_price=sku.get("purchasePrice"),
+                    purchase_price=_optional_number(sku.get("purchasePrice")),
                     sell_price=sku.get("price"),
                     paid_storage_price_item=sku.get("paidStoragePriceItem"),
                     paid_storage_amount=sku.get("paidStorageAmount"),
@@ -591,6 +726,8 @@ class ProductCatalogIndex:
                     avg_daily_stock=sku.get("avgdquantity"),
                     quantity_active=sku.get("quantityActive"),
                     quantity_pending=sku.get("quantityPending"),
+                    quantity_fbs=sku.get("quantityFbs"),
+                    quantity_additional=sku.get("quantityAdditional"),
                     pstorage=sku.get("pstorage"),
                     sku_title=str(sku.get("skuTitle") or ""),
                     sku_full_title=str(sku.get("skuFullTitle") or ""),
@@ -603,6 +740,8 @@ class ProductCatalogIndex:
                     commission=sku.get("commission"),
                     product_status=product_status,
                     shop_name="",
+                    preview_image=str(sku.get("previewImage") or ""),
+                    quantity_on_photo_studio=sku.get("quantityOnPhotoStudio"),
                 )
                 if sku_id is not None:
                     self.by_sku_id[(shop_id, sku_id)] = entry
@@ -642,14 +781,15 @@ class ProductCatalogIndex:
 
         if product_id is not None:
             key = (shop_id, product_id)
-            sku_title = str(item.get("skuTitle") or item.get("skuCharTitle") or "")
+            labels = [
+                str(item.get("skuTitle") or ""),
+                str(item.get("skuCharTitle") or ""),
+                str(item.get("skuCharValue") or ""),
+            ]
             for candidate in self.skus_by_product.get(key, []):
-                if sku_title and (
-                    sku_title == candidate.sku_title
-                    or sku_title in candidate.sku_title
-                    or candidate.sku_title in sku_title
-                ):
-                    return candidate
+                for label in labels:
+                    if _sku_label_match(label, candidate):
+                        return candidate
             entry = self.by_product_id.get(key)
             if entry:
                 return entry
@@ -1177,6 +1317,92 @@ class UzumApiClient:
         payload = (data or {}).get("payload") or {}
         return payload.get("skuAmountList") or []
 
+    def fetch_fbo_invoices(self, shop_ids: list[int]) -> list[dict[str, Any]]:
+        """FBO-накладные с составом (для «К отправке» и себестоимости)."""
+        invoices: list[dict[str, Any]] = []
+        page = 0
+        while page < MAX_PAGES:
+            data = self.get("/v1/invoice", {"page": page, "size": 50})
+            batch: list[dict[str, Any]] = []
+            if isinstance(data, list):
+                batch = [x for x in data if isinstance(x, dict)]
+            elif isinstance(data, dict):
+                payload = data.get("payload")
+                if isinstance(payload, list):
+                    batch = [x for x in payload if isinstance(x, dict)]
+            if not batch:
+                break
+            invoices.extend(batch)
+            if len(batch) < 50:
+                break
+            page += 1
+
+        if invoices:
+            return self._hydrate_fbo_invoice_products(invoices)
+
+        combined: list[dict[str, Any]] = []
+        for shop_id in shop_ids:
+            shop_page = 0
+            while shop_page < MAX_PAGES:
+                try:
+                    data = self.get(
+                        f"/v1/shop/{shop_id}/invoice",
+                        {"page": shop_page, "size": 50},
+                    )
+                except RuntimeError:
+                    break
+                batch = data if isinstance(data, list) else []
+                batch = [x for x in batch if isinstance(x, dict)]
+                if not batch:
+                    break
+                for inv in batch:
+                    inv = dict(inv)
+                    inv.setdefault("shopId", shop_id)
+                    combined.append(inv)
+                if len(batch) < 50:
+                    break
+                shop_page += 1
+            if PAUSE_BETWEEN_SHOPS_SEC > 0:
+                time.sleep(PAUSE_BETWEEN_SHOPS_SEC)
+        return self._hydrate_fbo_invoice_products(combined)
+
+    def _hydrate_fbo_invoice_products(
+        self,
+        invoices: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        hydrated: list[dict[str, Any]] = []
+        for invoice in invoices:
+            inv = dict(invoice)
+            products = inv.get("productForInvoiceDto")
+            if isinstance(products, list) and products:
+                hydrated.append(inv)
+                continue
+            if not _invoice_is_pending(inv):
+                hydrated.append(inv)
+                continue
+            shop_raw = inv.get("shopId")
+            inv_id = inv.get("id")
+            if shop_raw is None or inv_id is None:
+                hydrated.append(inv)
+                continue
+            try:
+                shop_id = int(shop_raw)
+                invoice_id = int(inv_id)
+            except (TypeError, ValueError):
+                hydrated.append(inv)
+                continue
+            try:
+                data = self.get(
+                    f"/v1/shop/{shop_id}/invoice/products",
+                    {"invoiceId": invoice_id},
+                )
+                if isinstance(data, list):
+                    inv["productForInvoiceDto"] = data
+            except RuntimeError:
+                pass
+            hydrated.append(inv)
+        return hydrated
+
     def fetch_product_catalog_index(self, shop_ids: list[int]) -> ProductCatalogIndex:
         index = ProductCatalogIndex.empty()
         if not shop_ids:
@@ -1611,56 +1837,140 @@ def _build_storage_rows(
     return columns, rows
 
 
-def _leftout_row_dict(cat: SkuCatalogEntry, shop_names: dict[int, str]) -> dict[str, Any]:
+def _leftout_dimensional_group(label: str) -> str:
+    if label:
+        return label
+    return "Неопределенная"
+
+
+def _leftout_storage_label(cat: SkuCatalogEntry) -> str:
+    if cat.pstorage is True:
+        return "Платное"
+    if cat.pstorage is False:
+        return "Бесплатное"
+    return "Нет данных"
+
+
+def _leftout_status_label(cat: SkuCatalogEntry) -> str:
     in_sale = _qty_int(cat.quantity_active)
-    in_reserve = _qty_int(cat.quantity_pending)
+    returned = _qty_int(cat.quantity_returned)
+    if returned > 0 and in_sale == 0:
+        return "Возврат"
+    if in_sale > 0:
+        return "В продаже"
+    if cat.product_status:
+        return cat.product_status
+    return "Не в продаже"
+
+
+def _leftout_storage_daily_fee(cat: SkuCatalogEntry, in_sale: int) -> Any:
+    if cat.pstorage is not True:
+        return 0
+    price = _safe_float(cat.paid_storage_price_item)
+    if price is None:
+        return 0
+    return int(round(price * in_sale))
+
+
+def _leftout_to_ship_qty(
+    cat: SkuCatalogEntry,
+    fbs_stock_row: Optional[dict[str, Any]] = None,
+) -> int:
+    """К отправке: pending → FBS в каталоге → остаток FBS из /v2/fbs/sku/stocks."""
+    for val in (
+        cat.quantity_pending,
+        cat.quantity_fbs,
+        cat.quantity_additional,
+        fbs_stock_row.get("amount") if fbs_stock_row else None,
+    ):
+        qty = _qty_int(val)
+        if qty > 0:
+            return qty
+    return 0
+
+
+def _leftout_purchase_price(cat: SkuCatalogEntry) -> Any:
+    if cat.purchase_price is not None:
+        return cat.purchase_price
+    return ""
+
+
+def _leftout_row_dict(
+    cat: SkuCatalogEntry,
+    sales_15d_by_sku: Optional[dict[int, float]] = None,
+    fbs_stock_row: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    to_ship = _leftout_to_ship_qty(cat, fbs_stock_row)
+    in_sale = _qty_int(cat.quantity_active)
+    returned = _qty_int(cat.quantity_returned)
     defect = _qty_int(cat.quantity_defected)
-    from_customer = _qty_int(cat.quantity_returned)
-    to_customer = 0
-    stock_total = in_sale + in_reserve + defect
-    fbo_stock = cat.quantity_active
-    comm_amount, comm_share = _commission_amount_and_share(cat.sell_price, cat.commission)
-    shop_label = _shop_label(shop_names, cat.shop_id)
+    on_photo = _qty_int(cat.quantity_on_photo_studio)
+    sdh = 0
+
+    cost = _leftout_purchase_price(cat)
+    price = cat.sell_price
+    cost_num = _safe_float(cost) if cost not in (None, "") else None
+    price_num = _safe_float(price)
+    total_cost = int(round(cost_num * in_sale)) if cost_num is not None and in_sale else 0
+    total_price = int(round(price_num * in_sale)) if price_num is not None and in_sale else 0
+
+    avg_sales: Any = ""
+    if cat.sku_id is not None and sales_15d_by_sku:
+        rate = sales_15d_by_sku.get(cat.sku_id)
+        if rate is not None:
+            avg_sales = _format_sales_rate(rate)
+    if avg_sales == "" and cat.avg_daily_sales not in (None, ""):
+        avg_sales = _format_sales_rate(float(cat.avg_daily_sales))
+
+    avg_stock = cat.avg_daily_stock
+    if avg_stock in (None, ""):
+        avg_stock = in_sale if in_sale else ""
+
+    turnover = _storage_turnover_days(avg_stock, avg_sales)
+    tariff = cat.paid_storage_price_item if cat.paid_storage_price_item is not None else 0
+    seller_sku = _sales_sku_label({}, cat)
 
     return {
         "ID": cat.sku_id,
         "Наименование": cat.product_title or cat.sku_full_title or cat.sku_title,
         "Штрихкод": cat.barcode,
-        "SKU": _sales_sku_label({}, cat),
+        "SKU": seller_sku,
         "ID товара": cat.product_id,
-        "Размер": cat.characteristics,
+        "К отправке": to_ship,
         "В продаже": in_sale,
-        "В резерве": in_reserve,
+        "Возврат": returned,
         "Брак": defect,
-        "Габаритная группа": _dimensional_group_short(cat.dimensional_group),
-        "За хранение 1 единицы 1 день, сум": _storage_price_per_unit(cat),
-        "Всего за хранение 1 день, сум": _storage_fee_1_day(cat, fbo_stock),
-        "Всего за хранение последние 30 дней, сум": _storage_fee_30d(cat, fbo_stock),
-        "Остаток на складе": stock_total,
-        "Доступно для продажи": in_sale,
-        "Зарезервировано": in_reserve,
-        "В пути от покупателя": from_customer,
-        "В пути к покупателю": to_customer,
-        "Категория": cat.category,
-        "Бренд": "",
-        "Статус": cat.product_status,
-        "Цена": cat.sell_price if cat.sell_price is not None else "",
-        "Скидка": "",
-        "Цена со скидкой": cat.sell_price if cat.sell_price is not None else "",
-        "Комиссия": comm_amount,
-        "Доля комиссии": comm_share,
-        "Склад": shop_label,
+        "Себест. (сумы)": cost,
+        "Стоимость продажи (сумы)": price if price is not None else "",
+        "Общий остаток": in_sale,
+        "Общая сумма остатков (сумы)": total_price,
+        "Себест. (сумма) (сумы)": total_cost,
+        "Стоимость продажи (сумма) (сумы)": total_price,
+        "Остаток на СДХ": sdh,
+        "Остаток на фотостудии": on_photo,
+        "Остаток на СДХ (сумма) (сумы)": 0,
+        "Доступно к отправке": "",
+        "Статус": _leftout_status_label(cat),
+        "Габаритная группа": _leftout_dimensional_group(cat.dimensional_group),
+        "Среднесуточные остатки": avg_stock,
+        "Среднесуточные продажи": avg_sales,
+        "Оборачиваемость": turnover,
+        "Хранение": _leftout_storage_label(cat),
+        "Тариф, сум": tariff,
+        "Стоимость хранения 1 дня, сум": _leftout_storage_daily_fee(cat, in_sale),
+        "Ссылка на товар": cat.preview_image,
     }
 
 
 def _include_in_leftout_report(entry: SkuCatalogEntry) -> bool:
-    if entry.barcode or entry.sku_id is not None:
+    if entry.sku_id is not None and entry.barcode:
         return True
     for field in (
         entry.quantity_active,
         entry.quantity_pending,
         entry.quantity_defected,
         entry.quantity_returned,
+        entry.quantity_on_photo_studio,
     ):
         if (_safe_float(field) or 0) > 0:
             return True
@@ -1669,12 +1979,23 @@ def _include_in_leftout_report(entry: SkuCatalogEntry) -> bool:
 
 def _build_inventory_old_rows(
     stocks: list[dict[str, Any]],
-    shop_names: dict[int, str],
+    _shop_names: dict[int, str],
     catalog: Optional[ProductCatalogIndex] = None,
     shop_ids: Optional[list[int]] = None,
+    sales_15d_by_sku: Optional[dict[int, float]] = None,
 ) -> tuple[list[ExportColumn], list[dict[str, Any]]]:
     columns = [ExportColumn(name, True) for name in LEFTOUT_API_COLUMN_ORDER]
     assert {c.name for c in columns} == CANONICAL_LEFTOUT_API
+
+    stocks_by_sku: dict[int, dict[str, Any]] = {}
+    for s in stocks:
+        raw = s.get("skuId")
+        if raw is None:
+            continue
+        try:
+            stocks_by_sku[int(raw)] = s
+        except (TypeError, ValueError):
+            continue
 
     allowed_shops = set(shop_ids) if shop_ids else None
     rows: list[dict[str, Any]] = []
@@ -1691,7 +2012,8 @@ def _build_inventory_old_rows(
             if not _include_in_leftout_report(entry):
                 continue
             seen.add(key)
-            rows.append(_leftout_row_dict(entry, shop_names))
+            fbs_row = stocks_by_sku.get(sku_id) if sku_id is not None else None
+            rows.append(_leftout_row_dict(entry, sales_15d_by_sku, fbs_row))
 
     for s in stocks:
         cat = catalog.lookup_stock_row(s) if catalog else None
@@ -1703,7 +2025,7 @@ def _build_inventory_old_rows(
         if allowed_shops is not None and cat.shop_id not in allowed_shops:
             continue
         seen.add(key)
-        rows.append(_leftout_row_dict(cat, shop_names))
+        rows.append(_leftout_row_dict(cat, sales_15d_by_sku, s))
 
     return columns, rows
 
@@ -1772,8 +2094,30 @@ def _build_inventory_old(
     shops = _shops_name_map(client)
     resolved_ids = client.resolve_shop_ids(shop_ids)
     catalog = client.fetch_product_catalog_index(resolved_ids)
+    lookback_from, lookback_to = last_n_days_range_ms(365)
+    order_items = client.fetch_finance_orders(lookback_from, lookback_to, resolved_ids, shops)
+    filled_prices = catalog.enrich_purchase_prices_from_orders(order_items)
+    catalog.enrich_purchase_prices_from_product_skus()
+    if filled_prices:
+        client.warnings.append(
+            "Себест. (сумы): подставлена себестоимость из финансовых продаж за 365 дней."
+        )
+    try:
+        invoices = client.fetch_fbo_invoices(resolved_ids)
+        to_ship_filled, invoice_prices = catalog.enrich_from_fbo_invoices(invoices)
+        if to_ship_filled:
+            client.warnings.append(
+                "К отправке: дополнено из открытых FBO-накладных (/v1/invoice)."
+            )
+        if invoice_prices:
+            client.warnings.append(
+                "Себест. (сумы): дополнено из FBO-накладных."
+            )
+    except RuntimeError as exc:
+        logger.warning("FBO invoices skipped for left-out report: %s", exc)
+    sales_15d = client.fetch_avg_daily_sales_15d_by_sku(resolved_ids, catalog, shops)
     stocks = client.fetch_sku_stocks()
-    return _build_inventory_old_rows(stocks, shops, catalog, resolved_ids)
+    return _build_inventory_old_rows(stocks, shops, catalog, resolved_ids, sales_15d)
 
 
 REPORT_BUILDERS: dict[str, ReportBuilder] = {

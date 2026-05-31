@@ -380,6 +380,43 @@ def _norm_col_leftout_old(s) -> str:
 LEFTOUT_OLD_REQUIRED_NORMALIZED = {"штрихкод", "в продаже", "себест. (сумы)", "стоимость продажи (сумы)"}
 
 
+def _detect_leftout_old_header_row(xl: pd.ExcelFile, sheet_name: str) -> int | None:
+    """Find header row: Uzum cabinet (row 1) or API export without timezone title (row 0)."""
+    from app.utils.column_mappings import (
+        MissingRequiredColumnsError,
+        map_headers_to_canonical,
+    )
+
+    required_canonical = REQUIRED.get("leftout_old", [])
+    for header_row in range(30):
+        try:
+            df = pd.read_excel(
+                xl,
+                sheet_name=sheet_name,
+                header=header_row,
+                nrows=0,
+                engine="openpyxl",
+            )
+        except Exception:
+            continue
+        cols = [
+            c
+            for c in df.columns
+            if c is not None and not str(c).startswith("Unnamed")
+        ]
+        if not cols:
+            continue
+        headers = [norm(c) for c in cols]
+        try:
+            map_headers_to_canonical("leftout_old", headers, required_canonical)
+            return header_row
+        except MissingRequiredColumnsError:
+            continue
+        except Exception:
+            continue
+    return None
+
+
 def validate_leftout_old_xlsx(file_bytes: bytes) -> None:
     """
     Strict validation: accept only files that look like left-out-report_old.
@@ -387,46 +424,11 @@ def validate_leftout_old_xlsx(file_bytes: bytes) -> None:
     Raises HTTPException(400) if the file is not valid.
     Call this BEFORE any DB operations (before delete_old_data/create_batch).
     """
-    from app.utils.column_mappings import (
-        map_headers_to_canonical,
-        MissingRequiredColumnsError,
-    )
-
     buf = io.BytesIO(file_bytes)
     xl = pd.ExcelFile(buf, engine="openpyxl")
-    sheet_names = xl.sheet_names
-    required_canonical = REQUIRED.get("leftout_old", [])
-
-    for sheet_name in sheet_names:
-        for header_row in range(30):
-            try:
-                df = pd.read_excel(
-                    xl,
-                    sheet_name=sheet_name,
-                    header=header_row,
-                    nrows=0,
-                    engine="openpyxl",
-                )
-            except Exception:
-                continue
-            cols = [
-                c
-                for c in df.columns
-                if c is not None and not str(c).startswith("Unnamed")
-            ]
-            if not cols:
-                continue
-
-            # Normalize whitespace/newlines in header names and let map_headers_to_canonical
-            # decide whether it's RU or UZ (or RU variants like "(дней)").
-            headers = [norm(c) for c in cols]
-            try:
-                map_headers_to_canonical("leftout_old", headers, required_canonical)
-                return  # valid
-            except MissingRequiredColumnsError:
-                continue
-            except Exception:
-                continue
+    for sheet_name in xl.sheet_names:
+        if _detect_leftout_old_header_row(xl, sheet_name) is not None:
+            return
 
     raise HTTPException(status_code=400, detail="Неверный формат left-out-report_old")
 
@@ -457,12 +459,17 @@ def read_excel_as_str(file_content: bytes, sheet: str, file_type: str = None) ->
             "Штрихкод": lambda x: str(x) if pd.notna(x) else "",
             "SKU": lambda x: str(x) if pd.notna(x) else "",
         }
-    # leftout_old: header=1, all columns as string
+    header_row = 1
+    if file_type == "leftout_old":
+        detected = _detect_leftout_old_header_row(xl, sheet_used)
+        if detected is not None:
+            header_row = detected
+    # leftout_old: auto-detect header row (0 = API export, 1 = Uzum cabinet with timezone title)
     dtype_arg = str if file_type == "leftout_old" else ({"Штрихкод": "string", "SKU": "string"} if file_type in ("leftout", "storage") else None)
     df = pd.read_excel(
         xl,
         sheet_name=sheet_used,
-        header=1,
+        header=header_row,
         dtype=dtype_arg,
         converters=converters if converters else None,
         engine="openpyxl"
