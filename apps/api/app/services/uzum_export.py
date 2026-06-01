@@ -1641,18 +1641,10 @@ def _sales_sku_label(item: dict[str, Any], cat: Optional[SkuCatalogEntry]) -> st
 
 
 def _sales_money_fields(item: dict[str, Any]) -> tuple[Any, Any, Any, Any, Any]:
-    # Цена — sellerPrice/sellPrice; выручка 0 при возврате; net = выручка − комиссия − логистика.
+    """Цена — sellerPrice/sellPrice; выручка = цена × (количество − возвраты)."""
     price = item.get("sellerPrice")
     if price is None:
         price = item.get("sellPrice")
-
-    returns_raw = item.get("amountReturns")
-    try:
-        has_return = int(returns_raw or 0) > 0
-    except (TypeError, ValueError):
-        has_return = False
-
-    revenue: Any = 0 if has_return else price
 
     def _as_int(value: Any) -> int:
         if value is None or value == "":
@@ -1660,9 +1652,16 @@ def _sales_money_fields(item: dict[str, Any]) -> tuple[Any, Any, Any, Any, Any]:
         try:
             return int(value)
         except (TypeError, ValueError):
-            return 0
+            parsed = _safe_float(value)
+            return int(parsed) if parsed is not None else 0
 
-    revenue_net = _as_int(revenue) - _as_int(item.get("commission")) - _as_int(
+    qty = _as_int(item.get("amount"))
+    returns = _as_int(item.get("amountReturns"))
+    price_num = _as_int(price)
+    net_qty = max(qty - returns, 0)
+    revenue: Any = price_num * net_qty if price_num else 0
+
+    revenue_net = revenue - _as_int(item.get("commission")) - _as_int(
         item.get("logisticDeliveryFee")
     )
     return price, revenue, revenue_net, item.get("commission"), item.get("logisticDeliveryFee")
