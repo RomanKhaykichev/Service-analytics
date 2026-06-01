@@ -57,6 +57,31 @@ def parse_to_epoch_ms(value: Any) -> Optional[int]:
         return None
 
 
+def uz_calendar_day_start_ms(ts_ms: int) -> int:
+    """Midnight at the start of that calendar day in Asia/Tashkent."""
+    dt = ms_to_uz_datetime(ts_ms)
+    start = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    return int(start.timestamp() * 1000)
+
+
+def in_uz_calendar_range(
+    ts_ms: Optional[int],
+    date_from_ms: Optional[int],
+    date_to_ms: Optional[int],
+) -> bool:
+    """Inclusive filter by calendar day in Uzbekistan (not raw instant edges)."""
+    if date_from_ms is None and date_to_ms is None:
+        return True
+    if ts_ms is None:
+        return False
+    day = uz_calendar_day_start_ms(ts_ms)
+    if date_from_ms is not None and day < uz_calendar_day_start_ms(date_from_ms):
+        return False
+    if date_to_ms is not None and day > uz_calendar_day_start_ms(date_to_ms):
+        return False
+    return True
+
+
 def format_datetime(value: Any) -> str:
     """API timestamp → display string in Uzbekistan local time."""
     if value is None or value == "":
@@ -112,3 +137,53 @@ def timezone_metadata() -> dict[str, str]:
         "timezone": UZ_TIMEZONE_NAME,
         "utc_offset": UZ_UTC_OFFSET,
     }
+
+
+def expense_cabinet_date_ms(ts_ms: Optional[int]) -> Optional[int]:
+    """Сдвинуть dateService Open API на +1 календарный день (как «Дата списания» в Excel кабинета)."""
+    if ts_ms is None:
+        return None
+    dt = ms_to_uz_datetime(ts_ms) + timedelta(days=1)
+    return int(dt.timestamp() * 1000)
+
+
+def sql_uz_calendar_date(column_sql: str) -> str:
+    """PostgreSQL: timestamptz → calendar date in Asia/Tashkent (for GROUP BY / charts)."""
+    return f"(({column_sql}) AT TIME ZONE '{UZ_TIMEZONE_NAME}')::date"
+
+
+def sql_parse_expense_written_off_raw(column: str = "written_off_raw") -> str:
+    """PostgreSQL CASE: «Дата списания» raw → timestamptz (calendar day in Uzbekistan)."""
+    return f"""(
+        CASE
+            WHEN {column} ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}' THEN {column}::timestamptz
+            WHEN {column} ~ '^\\d{{2}}\\.\\d{{2}}\\.\\d{{4}}\\s+\\d{{1,2}}:\\d{{2}}'
+              THEN (to_timestamp(trim({column}), 'DD.MM.YYYY HH24:MI') AT TIME ZONE '{UZ_TIMEZONE_NAME}')
+            WHEN {column} ~ '^\\d{{2}}\\.\\d{{2}}\\.\\d{{4}}'
+              THEN (
+                to_timestamp(
+                  substring(trim({column}) from '^[0-9]{{2}}\\.[0-9]{{2}}\\.[0-9]{{4}}'),
+                  'DD.MM.YYYY'
+                ) AT TIME ZONE '{UZ_TIMEZONE_NAME}'
+              )
+            WHEN ({column} ~ '^\\d+(\\.\\d*)?$' OR {column} ~ '^\\d+,\\d*$')
+                 AND replace({column}, ',', '.')::numeric > 0
+              THEN (
+                CASE
+                  WHEN (
+                    timestamp '1899-12-30'
+                    + (replace({column}, ',', '.')::numeric * interval '1 day')
+                  )::date < '2024-01-01'::date
+                    THEN (
+                      timestamp '1904-01-01'
+                      + (replace({column}, ',', '.')::numeric * interval '1 day')
+                    )::timestamptz
+                  ELSE (
+                    timestamp '1899-12-30'
+                    + (replace({column}, ',', '.')::numeric * interval '1 day')
+                  )::timestamptz
+                END
+              )
+            ELSE NULL
+        END
+    )"""

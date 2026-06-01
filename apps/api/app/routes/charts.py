@@ -16,6 +16,7 @@ from app.utils.statuses import get_status_sql_condition
 _STATUS_COMPLETED_SQL = " (" + get_status_sql_condition("completed") + ") "
 _STATUS_REVENUE_SQL = " ((" + get_status_sql_condition("completed") + ") OR (" + get_status_sql_condition("processing") + ")) "
 from app.utils.metrics import get_status_conditions, get_sales_metrics_sql, get_profit_sql, get_avg_check_sql
+from app.services.uzum_time import sql_uz_calendar_date
 from app.utils.barcode import barcode_norm_sql
 from app.utils.shop_filter import normalize_shop, shop_filter_condition, storage_barcode_filter_sql
 from app.schemas import (
@@ -617,7 +618,7 @@ async def get_uzum_services_daily(
         # Штрафы: SUM(Сумма) Услуга LIKE '%Штраф%' и Оплата минус Возврат
         query_expenses = text(f"""
             SELECT 
-                date_written_off::date AS day,
+                {sql_uz_calendar_date("date_written_off")} AS day,
                 COALESCE(SUM(
                     CASE
                         WHEN upper(trim(COALESCE(source, ''))) = 'СКЛАД' AND upper(trim(COALESCE(operation_type, ''))) = 'ОПЛАТА' THEN COALESCE(cost_sum, 0)
@@ -643,7 +644,7 @@ async def get_uzum_services_daily(
             WHERE user_id = CAST(:user_id AS uuid)
                 AND date_written_off >= CAST(:exp_date_from AS date)
                 AND date_written_off < CAST(:exp_date_to AS date) + INTERVAL '1 day'
-            GROUP BY date_written_off::date
+            GROUP BY {sql_uz_calendar_date("date_written_off")}
             ORDER BY day ASC
         """)
         
@@ -1822,7 +1823,7 @@ async def get_daily_summary(
                 ),
                 services_by_day AS (
                     SELECT
-                        fe.date_written_off::date AS day,
+                        {sql_uz_calendar_date("fe.date_written_off")} AS day,
                         COALESCE(SUM(
                             CASE
                                 WHEN upper(trim(COALESCE(fe.source, ''))) = 'СКЛАД' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ОПЛАТА' THEN COALESCE(fe.cost_sum, 0)
@@ -1848,7 +1849,7 @@ async def get_daily_summary(
                     WHERE fe.user_id = CAST(:user_id AS uuid)
                         AND fe.date_written_off >= CAST(:date_from AS date)
                         AND fe.date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'
-                    GROUP BY fe.date_written_off::date
+                    GROUP BY {sql_uz_calendar_date("fe.date_written_off")}
                 )
                 SELECT
                     d.day AS date,
@@ -1903,7 +1904,7 @@ async def get_daily_summary(
                 ),
                 services_by_day AS (
                     SELECT
-                        fe.date_written_off::date AS day,
+                        {sql_uz_calendar_date("fe.date_written_off")} AS day,
                         COALESCE(SUM(
                             CASE
                                 WHEN upper(trim(COALESCE(fe.source, ''))) = 'СКЛАД' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ОПЛАТА' THEN COALESCE(fe.cost_sum, 0)
@@ -1929,7 +1930,7 @@ async def get_daily_summary(
                     WHERE fe.user_id = CAST(:user_id AS uuid)
                         AND fe.date_written_off >= CAST(:date_from AS date)
                         AND fe.date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'
-                    GROUP BY fe.date_written_off::date
+                    GROUP BY {sql_uz_calendar_date("fe.date_written_off")}
                 ),
                 daily_joined AS (
                     SELECT

@@ -23,6 +23,7 @@ from app.utils.column_mappings import (
     CANONICAL_BY_FILE_TYPE,
 )
 from app.utils.value_mappings import apply_value_mappings
+from app.services.uzum_time import sql_parse_expense_written_off_raw
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -902,30 +903,7 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                 trial_cutoff_date = db.execute(
                     text(
                         f"""
-                        SELECT MAX(
-                          CASE
-                            WHEN written_off_raw ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}'
-                              THEN written_off_raw::timestamptz
-                            WHEN written_off_raw ~ '^\\d{{2}}\\.\\d{{2}}\\.\\d{{4}}'
-                              THEN to_timestamp(
-                                substring(trim(written_off_raw) from '^[0-9]{{2}}\\.[0-9]{{2}}\\.[0-9]{{4}}'),
-                                'DD.MM.YYYY'
-                              )::timestamptz
-                            WHEN (written_off_raw ~ '^\\d+(\\.\\d*)?$' OR written_off_raw ~ '^\\d+,\\d*$')
-                                 AND replace(written_off_raw, ',', '.')::numeric > 0
-                              THEN (
-                                CASE
-                                  WHEN (timestamp '1899-12-30'
-                                        + (replace(written_off_raw, ',', '.')::numeric * interval '1 day'))::date < '2024-01-01'::date
-                                    THEN (timestamp '1904-01-01'
-                                          + (replace(written_off_raw, ',', '.')::numeric * interval '1 day'))::timestamptz
-                                    ELSE (timestamp '1899-12-30'
-                                          + (replace(written_off_raw, ',', '.')::numeric * interval '1 day'))::timestamptz
-                                END
-                              )
-                            ELSE NULL
-                          END
-                        )
+                        SELECT MAX({sql_parse_expense_written_off_raw("written_off_raw")})
                         FROM {qname('stg_expenses')}
                         WHERE user_id = CAST(:user_id AS uuid)
                           AND upload_batch_id = CAST(:batch_id AS uuid)
@@ -1269,16 +1247,7 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
             casted AS (
                 SELECT
                     user_id, upload_batch_id, source, service, status, operation_id,
-                    CASE
-                        WHEN written_off_raw ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}' THEN written_off_raw::timestamptz
-                        WHEN written_off_raw ~ '^\\d{{2}}\\.\\d{{2}}\\.\\d{{4}}' THEN to_timestamp(substring(trim(written_off_raw) from '^[0-9]{{2}}\\.[0-9]{{2}}\\.[0-9]{{4}}'), 'DD.MM.YYYY')::timestamptz
-                        WHEN (written_off_raw ~ '^\\d+(\\.\\d*)?$' OR written_off_raw ~ '^\\d+,\\d*$') AND replace(written_off_raw, ',', '.')::numeric > 0 THEN (
-                            CASE WHEN (timestamp '1899-12-30' + (replace(written_off_raw, ',', '.')::numeric * interval '1 day'))::date < '2024-01-01'::date
-                                THEN (timestamp '1904-01-01' + (replace(written_off_raw, ',', '.')::numeric * interval '1 day'))::timestamptz
-                                ELSE (timestamp '1899-12-30' + (replace(written_off_raw, ',', '.')::numeric * interval '1 day'))::timestamptz
-                            END)
-                        ELSE NULL
-                    END AS date_written_off,
+                    {sql_parse_expense_written_off_raw("written_off_raw")} AS date_written_off,
                     ({sql_parse_decimal('cost_raw')})::numeric AS cost_sum,
                     {sql_parse_int('qty_raw')} AS qty,
                     ({sql_parse_decimal('amount_raw')})::numeric AS amount_sum,

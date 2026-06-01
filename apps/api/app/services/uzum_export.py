@@ -14,7 +14,9 @@ from openpyxl.styles import Font
 
 from app.services.uzum_time import (
     calendar_date_to_epoch_ms,
+    expense_cabinet_date_ms,
     format_datetime,
+    in_uz_calendar_range,
     last_n_days_range_ms,
     normalize_epoch_ms,
     parse_to_epoch_ms,
@@ -196,19 +198,41 @@ def _order_item_timestamp_ms(item: dict[str, Any]) -> Optional[int]:
     return None
 
 
+def _warn_once(client: "UzumApiClient", message: str) -> None:
+    if message not in client.warnings:
+        client.warnings.append(message)
+
+
+def _expense_date_raw(payment: dict[str, Any]) -> Any:
+    """Дата списания: день оказания услуги (как в кабинете), не дата создания записи."""
+    raw = payment.get("dateService")
+    if raw not in (None, ""):
+        return raw
+    return payment.get("dateCreated")
+
+
 def _payment_timestamp_ms(payment: dict[str, Any]) -> Optional[int]:
-    for key in ("dateService", "dateCreated"):
-        ts = parse_to_epoch_ms(payment.get(key))
-        if ts is not None:
-            return ts
-    return None
+    """Календарный день списания как в Excel кабинета (dateService API + 1 день)."""
+    return expense_cabinet_date_ms(parse_to_epoch_ms(_expense_date_raw(payment)))
+
+
+def _expense_written_off_display(payment: dict[str, Any]) -> str:
+    ms = _payment_timestamp_ms(payment)
+    if ms is None:
+        raw = _expense_date_raw(payment)
+        return format_datetime(raw) if raw not in (None, "") else ""
+    return format_datetime(ms)
 
 
 def _in_date_range(
     ts_ms: Optional[int],
     date_from_ms: Optional[int],
     date_to_ms: Optional[int],
+    *,
+    by_uz_calendar_day: bool = False,
 ) -> bool:
+    if by_uz_calendar_day:
+        return in_uz_calendar_range(ts_ms, date_from_ms, date_to_ms)
     if date_from_ms is None and date_to_ms is None:
         return True
     if ts_ms is None:
@@ -225,13 +249,20 @@ def _filter_by_date_range(
     date_from_ms: Optional[int],
     date_to_ms: Optional[int],
     ts_getter: Callable[[dict[str, Any]], Optional[int]],
+    *,
+    by_uz_calendar_day: bool = False,
 ) -> list[dict[str, Any]]:
     if date_from_ms is None and date_to_ms is None:
         return records
     return [
         record
         for record in records
-        if _in_date_range(ts_getter(record), date_from_ms, date_to_ms)
+        if _in_date_range(
+            ts_getter(record),
+            date_from_ms,
+            date_to_ms,
+            by_uz_calendar_day=by_uz_calendar_day,
+        )
     ]
 
 
@@ -1313,16 +1344,27 @@ class UzumApiClient:
                 + (self.warnings[-1] if self.warnings else "")
             )
 
-        return self._fetch_dated_records(
+        items = self._fetch_dated_records(
             available,
             names,
             date_from_ms,
             date_to_ms,
             self._fetch_expenses_for_shops,
             lambda rows: _filter_by_date_range(
-                rows, date_from_ms, date_to_ms, _payment_timestamp_ms
+                rows,
+                date_from_ms,
+                date_to_ms,
+                _payment_timestamp_ms,
+                by_uz_calendar_day=True,
             ),
             "Услуги",
+        )
+        return _filter_by_date_range(
+            items,
+            date_from_ms,
+            date_to_ms,
+            _payment_timestamp_ms,
+            by_uz_calendar_day=True,
         )
 
     def fetch_sku_stocks(self) -> list[dict[str, Any]]:
@@ -1640,28 +1682,32 @@ def _sales_sku_label(item: dict[str, Any], cat: Optional[SkuCatalogEntry]) -> st
     return ""
 
 
+def _sales_int(value: Any) -> int:
+    if value is None or value == "":
+        return 0
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        parsed = _safe_float(value)
+        return int(parsed) if parsed is not None else 0
+
+
+def _sales_gross_qty(item: dict[str, Any]) -> int:
+    """Количество в sells-report API = amount + amountReturns (как в кабинете)."""
+    return _sales_int(item.get("amount")) + _sales_int(item.get("amountReturns"))
+
+
 def _sales_money_fields(item: dict[str, Any]) -> tuple[Any, Any, Any, Any, Any]:
-    """Цена — sellerPrice/sellPrice; выручка = цена × (количество − возвраты)."""
+    """Цена — sellerPrice/sellPrice; выручка = цена × amount (без вычета возвратов)."""
     price = item.get("sellerPrice")
     if price is None:
         price = item.get("sellPrice")
 
-    def _as_int(value: Any) -> int:
-        if value is None or value == "":
-            return 0
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            parsed = _safe_float(value)
-            return int(parsed) if parsed is not None else 0
+    qty = _sales_int(item.get("amount"))
+    price_num = _sales_int(price)
+    revenue: Any = price_num * qty if price_num else 0
 
-    qty = _as_int(item.get("amount"))
-    returns = _as_int(item.get("amountReturns"))
-    price_num = _as_int(price)
-    net_qty = max(qty - returns, 0)
-    revenue: Any = price_num * net_qty if price_num else 0
-
-    revenue_net = revenue - _as_int(item.get("commission")) - _as_int(
+    revenue_net = revenue - _sales_int(item.get("commission")) - _sales_int(
         item.get("logisticDeliveryFee")
     )
     return price, revenue, revenue_net, item.get("commission"), item.get("logisticDeliveryFee")
@@ -1714,7 +1760,7 @@ def _build_sales_rows(
                 "SKU": _sales_sku_label(item, cat),
                 "Наименование": item.get("productTitle") or item.get("skuTitle") or (cat.product_title if cat else ""),
                 "Категория": (cat.category if cat else ""),
-                "Количество": item.get("amount"),
+                "Количество": _sales_gross_qty(item),
                 "Возвраты": item.get("amountReturns"),
                 "Выручка (сумы)": revenue,
                 "Выручка с вычетом комиссии и логистики (сумы)": revenue_net,
@@ -1745,7 +1791,7 @@ def _build_expenses_rows(payments: list[dict[str, Any]], shop_names: dict[int, s
                 "Услуга": service_name,
                 "Статус": EXPENSE_STATUS_RU.get(str(p.get("status") or ""), p.get("status") or ""),
                 "ID операции": p.get("id") if p.get("id") is not None else p.get("externalId"),
-                "Дата списания": format_datetime(p.get("dateService") or p.get("dateCreated")),
+                "Дата списания": _expense_written_off_display(p),
                 "Стоимость (сумы)": p.get("paymentPrice"),
                 "Количество": p.get("amount"),
                 "Сумма (сумы)": p.get("paymentPrice"),
@@ -2077,6 +2123,20 @@ def _build_expenses(
     shops = _shops_name_map(client)
     resolved_ids = client.resolve_shop_ids(shop_ids)
     payments = client.fetch_finance_expenses(date_from_ms, date_to_ms, resolved_ids, shops)
+    without_service_date = sum(
+        1
+        for p in payments
+        if isinstance(p, dict) and p.get("dateService") in (None, "")
+    )
+    if without_service_date:
+        client.warnings.append(
+            "Дата списания: для части строк в API нет dateService; "
+            "использована dateCreated — дата может отличаться от выгрузки кабинета."
+        )
+    _warn_once(
+        client,
+        "Дата списания в API-файле: +1 день к dateService Open API (как в Excel кабинета).",
+    )
     return _build_expenses_rows(payments, shops)
 
 
