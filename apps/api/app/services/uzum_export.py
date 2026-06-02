@@ -198,6 +198,19 @@ def _order_item_timestamp_ms(item: dict[str, Any]) -> Optional[int]:
     return None
 
 
+def _sku_stocks_batch_from_response(data: Any) -> list[dict[str, Any]]:
+    """payload.skuAmountList из ответа v3 (и совместимого v2) FBS stocks."""
+    if not isinstance(data, dict):
+        return []
+    payload = data.get("payload")
+    if not isinstance(payload, dict):
+        return []
+    batch = payload.get("skuAmountList") or []
+    if not isinstance(batch, list):
+        return []
+    return [row for row in batch if isinstance(row, dict)]
+
+
 def _warn_once(client: "UzumApiClient", message: str) -> None:
     if message not in client.warnings:
         client.warnings.append(message)
@@ -1368,9 +1381,22 @@ class UzumApiClient:
         )
 
     def fetch_sku_stocks(self) -> list[dict[str, Any]]:
-        data = self.get("/v2/fbs/sku/stocks")
-        payload = (data or {}).get("payload") or {}
-        return payload.get("skuAmountList") or []
+        """FBS/DBS остатки: GET /v3/fbs/sku/stocks (постранично, до 100 SKU на страницу)."""
+        stocks: list[dict[str, Any]] = []
+        page = 0
+        while page < MAX_PAGES:
+            data = self.get(
+                "/v3/fbs/sku/stocks",
+                {"page": page, "size": PAGE_SIZE},
+            )
+            batch = _sku_stocks_batch_from_response(data)
+            if not batch:
+                break
+            stocks.extend(batch)
+            if len(batch) < PAGE_SIZE:
+                break
+            page += 1
+        return stocks
 
     def fetch_fbo_invoices(self, shop_ids: list[int]) -> list[dict[str, Any]]:
         """FBO-накладные с составом (для «К отправке» и себестоимости)."""
@@ -1931,7 +1957,7 @@ def _leftout_to_ship_qty(
     cat: SkuCatalogEntry,
     fbs_stock_row: Optional[dict[str, Any]] = None,
 ) -> int:
-    """К отправке: pending → FBS в каталоге → остаток FBS из /v2/fbs/sku/stocks."""
+    """К отправке: pending → FBS в каталоге → остаток FBS из /v3/fbs/sku/stocks."""
     for val in (
         cat.quantity_pending,
         cat.quantity_fbs,
