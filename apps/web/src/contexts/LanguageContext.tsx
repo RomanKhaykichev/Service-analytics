@@ -638,6 +638,9 @@ const translations: Record<Language, Record<string, string>> = {
     'analytics.revenueOrdersSubtitle': 'Динамика за период',
     // Sidebar
     'sidebar.toggle': 'Свернуть/развернуть меню',
+    // Admin panel tabs
+    'admin.tabs.overview': 'Обзор',
+    'admin.tabs.uzum': 'API',
     // Admin subscriptions and tooltips
     'admin.subscriptions.title': 'Аналитика подписок',
     'admin.subscriptions.revenue': 'Доход (сум)',
@@ -1268,6 +1271,9 @@ const translations: Record<Language, Record<string, string>> = {
     'analytics.revenueOrdersSubtitle': 'Davr bo‘yicha dinamikasi',
     // Sidebar
     'sidebar.toggle': 'Menyuni yopish/ochish',
+    // Admin panel tabs
+    'admin.tabs.overview': 'Umumiy ko‘rinish',
+    'admin.tabs.uzum': 'API',
     // Admin subscriptions and tooltips
     'admin.subscriptions.title': 'Obunalar tahlili',
     'admin.subscriptions.revenue': 'Daromad (so\'m)',

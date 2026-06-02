@@ -158,3 +158,8 @@ export function useDateRange(): DateRangeContextType {
   }
   return ctx;
 }
+
+/** Same as useDateRange but returns null outside DateRangeProvider (e.g. admin API tab). */
+export function useOptionalDateRange(): DateRangeContextType | null {
+  return useContext(DateRangeContext);
+}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { format, subDays } from "date-fns";
-import { useDateRange } from "@/contexts/DateRangeContext";
+import { useOptionalDateRange } from "@/contexts/DateRangeContext";
 import { Download, Eye, FileSpreadsheet, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -65,7 +65,9 @@ function formatApiError(err: unknown, fallback: string, rateLimitFallback?: stri
 
 export function UzumReportsExport({ apiKey, disabled }: UzumReportsExportProps) {
   const { t } = useLanguage();
-  const { dateFrom: dashboardFrom, dateTo: dashboardTo } = useDateRange();
+  const dashboardRange = useOptionalDateRange();
+  const dashboardFrom = dashboardRange?.dateFrom;
+  const dashboardTo = dashboardRange?.dateTo;
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
   const [dateFrom, setDateFrom] = useState(() =>
     dashboardFrom || format(subDays(new Date(), 30), "yyyy-MM-dd")
@@ -73,6 +75,7 @@ export function UzumReportsExport({ apiKey, disabled }: UzumReportsExportProps) 
   const [dateTo, setDateTo] = useState(() => dashboardTo || format(new Date(), "yyyy-MM-dd"));
 
   useEffect(() => {
+    if (!dashboardFrom && !dashboardTo) return;
     if (dashboardFrom) setDateFrom(dashboardFrom);
     if (dashboardTo) setDateTo(dashboardTo);
   }, [dashboardFrom, dashboardTo]);

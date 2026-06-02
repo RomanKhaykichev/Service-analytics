@@ -53,6 +53,8 @@ import { apiGet, apiPatch, apiPost, apiDelete, apiPut } from "@/lib/api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
+import { AdminPanelTabs, type AdminPanelTab } from "@/components/admin/AdminPanelTabs";
+import { ServicesView } from "@/components/dashboard/ServicesView";
 
 function adminNormShopKey(s: string): string {
   return s.trim().replace(/\s+/g, " ").toUpperCase();
@@ -139,6 +141,7 @@ export default function Admin() {
   const [loadingTenants, setLoadingTenants] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
+  const [adminTab, setAdminTab] = useState<AdminPanelTab>("overview");
   const [search, setSearch] = useState("");
   const [planFilter, setPlanFilter] = useState<string>("all");
   const API_PAGE_SIZE = 100;
@@ -663,6 +666,8 @@ export default function Admin() {
         </Button>
       </div>
 
+      <AdminPanelTabs activeTab={adminTab} onTabChange={setAdminTab} className="mb-6" />
+
       <AlertDialog
         open={confirmAction != null}
         onOpenChange={(open) => {
@@ -704,8 +709,10 @@ export default function Admin() {
         </Alert>
       )}
 
+      {!accessDenied && adminTab === "uzum" && <ServicesView />}
+
       {/* Метрики: воронка | всего + файлы | таблица по месяцам */}
-      {!accessDenied && (
+      {!accessDenied && adminTab === "overview" && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4 mb-6 items-stretch">
             {/* Колонка 1: Воронка пользователей */}
@@ -1004,8 +1011,6 @@ export default function Admin() {
               </CardContent>
             </Card>
           )}
-        </>
-      )}
 
       {/* Таблица Пользователи */}
       <Card>
@@ -1503,6 +1508,8 @@ export default function Admin() {
           ) : null}
         </CardContent>
       </Card>
+        </>
+      )}
 
       <Dialog open={!!notesModal} onOpenChange={(open) => !open && setNotesModal(null)}>
         <DialogContent>

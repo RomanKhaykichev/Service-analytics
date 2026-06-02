@@ -13,7 +13,6 @@ import { MonthlyTable } from "@/components/dashboard/MonthlyTable";
 import { DailyView } from "@/components/dashboard/DailyView";
 import { ExpensesView } from "@/components/dashboard/ExpensesView";
 import { ShipmentView } from "@/components/dashboard/ShipmentView";
-import { ServicesView } from "@/components/dashboard/ServicesView";
 import { HeaderActions } from "@/components/dashboard/HeaderActions";
 import type { ReportUploadDialogHandle } from "@/components/dashboard/ReportUploadDialog";
 import { ProductsView, type ProductsTableItemType } from "@/components/dashboard/ProductsView";
@@ -425,7 +424,7 @@ function Dashboard() {
       {/* Tabs и фильтры на одном уровне */}
       <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${isTrial10 ? "mt-6" : "mt-14"}`}>
         <SummaryTabs activeTab={activeTab} onTabChange={setActiveTab} />
-        {activeTab !== "expenses" && activeTab !== "monthly" && activeTab !== "services" ? (
+        {activeTab !== "expenses" && activeTab !== "monthly" ? (
           <SummaryFilters 
             dateFrom={dateFrom}
             dateTo={dateTo}
@@ -533,10 +532,6 @@ function Dashboard() {
       ) : activeTab === "expenses" ? (
         <div className="mt-6">
           <ExpensesView />
-        </div>
-      ) : activeTab === "services" ? (
-        <div className="mt-6">
-          <ServicesView />
         </div>
       ) : activeTab === "shipment" ? (
         <div className="mt-6">

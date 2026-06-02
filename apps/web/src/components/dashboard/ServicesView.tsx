@@ -219,7 +219,7 @@ export function ServicesView() {
               <CardDescription className="space-y-1">
                 {explore.info_title && <span className="block font-medium text-foreground">{explore.info_title}</span>}
                 <span>
-                  {explore.endpoints.length} {t("services.endpointsCount")}
+                  {explore.endpoints?.length ?? 0} {t("services.endpointsCount")}
                   {explore.openapi_version ? ` · OpenAPI ${explore.openapi_version}` : ""}
                 </span>
               </CardDescription>

@@ -140,10 +140,16 @@ def timezone_metadata() -> dict[str, str]:
 
 
 def expense_cabinet_date_ms(ts_ms: Optional[int]) -> Optional[int]:
-    """Сдвинуть dateService Open API на +1 календарный день (как «Дата списания» в Excel кабинета)."""
+    """Привести дату услуги Open API к «Дате списания» из Excel кабинета.
+
+    Хранение и часть строк приходят как 05:00 (полночь UTC) — в кабинете это следующий день.
+    Реклама и др. с 17:00 — календарный день dateService без сдвига.
+    """
     if ts_ms is None:
         return None
-    dt = ms_to_uz_datetime(ts_ms) + timedelta(days=1)
+    dt = ms_to_uz_datetime(ts_ms)
+    if dt.hour == 5 and dt.minute == 0:
+        dt = dt + timedelta(days=1)
     return int(dt.timestamp() * 1000)
 
 

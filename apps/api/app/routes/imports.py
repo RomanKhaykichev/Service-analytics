@@ -1234,7 +1234,11 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                     NULLIF(trim(se.source_raw), '') AS source,
                     NULLIF(trim(se.service_raw), '') AS service,
                     NULLIF(trim(se.status_raw), '') AS status,
-                    NULLIF(trim(se.operation_id_raw), '') AS operation_id,
+                    CASE
+                        WHEN NULLIF(trim(se.operation_id_raw), '') ~ '^[0-9]+(\\.[0-9]+)?$'
+                          THEN (NULLIF(trim(se.operation_id_raw), '')::numeric)::bigint::text
+                        ELSE NULLIF(trim(se.operation_id_raw), '')
+                    END AS operation_id,
                     NULLIF(trim(se.written_off_raw), '') AS written_off_raw,
                     NULLIF(trim(se.cost_raw), '') AS cost_raw,
                     NULLIF(trim(se.qty_raw), '') AS qty_raw,
@@ -1253,6 +1257,28 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                     ({sql_parse_decimal('amount_raw')})::numeric AS amount_sum,
                     operation_type
                 FROM src
+            ),
+            deduped AS (
+                SELECT DISTINCT ON (user_id, operation_id)
+                    user_id,
+                    upload_batch_id,
+                    source,
+                    service,
+                    status,
+                    operation_id,
+                    date_written_off,
+                    cost_sum,
+                    qty,
+                    amount_sum,
+                    operation_type
+                FROM casted
+                WHERE date_written_off IS NOT NULL
+                  AND (
+                    :is_trial_plan = false
+                    OR :trial_cutoff_date IS NULL
+                    OR date_written_off >= (CAST(:trial_cutoff_date AS timestamptz) - interval '59 days')
+                  )
+                ORDER BY user_id, operation_id, date_written_off DESC NULLS LAST
             )
             INSERT INTO {qname('fact_expenses')} (
                 user_id, upload_batch_id,
@@ -1263,13 +1289,7 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                 user_id, upload_batch_id,
                 source, service, status, operation_id, date_written_off,
                 COALESCE(cost_sum, 0), qty, COALESCE(amount_sum, 0), operation_type
-            FROM casted
-            WHERE date_written_off IS NOT NULL
-              AND (
-                :is_trial_plan = false
-                OR :trial_cutoff_date IS NULL
-                OR date_written_off >= (CAST(:trial_cutoff_date AS timestamptz) - interval '59 days')
-              )
+            FROM deduped
             ON CONFLICT (user_id, operation_id) DO UPDATE
             SET
                 upload_batch_id = EXCLUDED.upload_batch_id,

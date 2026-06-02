@@ -198,6 +198,35 @@ def _order_item_timestamp_ms(item: dict[str, Any]) -> Optional[int]:
     return None
 
 
+def _payment_operation_id(payment: dict[str, Any]) -> str:
+    """Стабильный ID операции для Excel и импорта (без дублей 123 и 123.0)."""
+    raw = payment.get("id")
+    if raw in (None, ""):
+        raw = payment.get("externalId")
+    if raw in (None, ""):
+        return ""
+    try:
+        return str(int(float(str(raw).replace(",", "."))))
+    except (TypeError, ValueError):
+        return str(raw).strip()
+
+
+def _dedupe_finance_payments(payments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Одна операция — одна строка (API при запросе по магазинам может вернуть дубли)."""
+    unique: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for payment in payments:
+        if not isinstance(payment, dict):
+            continue
+        key = _payment_operation_id(payment)
+        if not key:
+            continue
+        if key not in unique:
+            order.append(key)
+        unique[key] = payment
+    return [unique[key] for key in order]
+
+
 def _sku_stocks_batch_from_response(data: Any) -> list[dict[str, Any]]:
     """payload.skuAmountList из ответа v3 (и совместимого v2) FBS stocks."""
     if not isinstance(data, dict):
@@ -1372,13 +1401,20 @@ class UzumApiClient:
             ),
             "Услуги",
         )
-        return _filter_by_date_range(
+        filtered = _filter_by_date_range(
             items,
             date_from_ms,
             date_to_ms,
             _payment_timestamp_ms,
             by_uz_calendar_day=True,
         )
+        deduped = _dedupe_finance_payments(filtered)
+        if len(deduped) < len(filtered):
+            logger.info(
+                "Услуги: удалено %s дублей по ID операции",
+                len(filtered) - len(deduped),
+            )
+        return deduped
 
     def fetch_sku_stocks(self) -> list[dict[str, Any]]:
         """FBS/DBS остатки: GET /v3/fbs/sku/stocks (постранично, до 100 SKU на страницу)."""
@@ -1816,7 +1852,7 @@ def _build_expenses_rows(payments: list[dict[str, Any]], shop_names: dict[int, s
                 "Источник": _expense_source_label(p.get("source"), service_name),
                 "Услуга": service_name,
                 "Статус": EXPENSE_STATUS_RU.get(str(p.get("status") or ""), p.get("status") or ""),
-                "ID операции": p.get("id") if p.get("id") is not None else p.get("externalId"),
+                "ID операции": _payment_operation_id(p),
                 "Дата списания": _expense_written_off_display(p),
                 "Стоимость (сумы)": p.get("paymentPrice"),
                 "Количество": p.get("amount"),
@@ -2161,7 +2197,7 @@ def _build_expenses(
         )
     _warn_once(
         client,
-        "Дата списания в API-файле: +1 день к dateService Open API (как в Excel кабинета).",
+        "Дата списания: для строк 05:00 — +1 день к Open API; для 17:00 — день dateService как в кабинете.",
     )
     return _build_expenses_rows(payments, shops)
 
