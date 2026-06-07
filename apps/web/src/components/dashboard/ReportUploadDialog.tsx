@@ -66,6 +66,8 @@ const reportTypes = [
 
 interface ReportUploadDialogProps {
   disabled?: boolean;
+  /** Скрыть кнопку в шапке — открытие только через ref (например, вкладка «Архив» в админке). */
+  showTrigger?: boolean;
   /** Открыть окно «Продлить тариф» (при нажатии «Перейти на тариф Month 10» в диалоге лимита магазинов) */
   onOpenExtendTariff?: () => void;
 }
@@ -227,7 +229,7 @@ const LANDING_TESTIMONIAL_AVATAR_SRCS = [
 ] as const;
 
 export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUploadDialogProps>(
-  function ReportUploadDialog({ disabled, onOpenExtendTariff }, ref) {
+  function ReportUploadDialog({ disabled, showTrigger = true, onOpenExtendTariff }, ref) {
   const { t, language } = useLanguage();
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
@@ -638,6 +640,7 @@ export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUpl
   return (
     <>
     <Dialog open={open} onOpenChange={handleOpenChange}>
+      {showTrigger && (
       <DialogTrigger asChild>
         <div className="flex flex-col items-end">
           <Button
@@ -656,6 +659,7 @@ export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUpl
           )}
         </div>
       </DialogTrigger>
+      )}
       <DialogContent
         className={
           isGuided

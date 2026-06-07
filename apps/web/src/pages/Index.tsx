@@ -14,7 +14,7 @@ import { DailyView } from "@/components/dashboard/DailyView";
 import { ExpensesView } from "@/components/dashboard/ExpensesView";
 import { ShipmentView } from "@/components/dashboard/ShipmentView";
 import { HeaderActions } from "@/components/dashboard/HeaderActions";
-import type { ReportUploadDialogHandle } from "@/components/dashboard/ReportUploadDialog";
+import type { UzumApiConnectDialogHandle } from "@/components/dashboard/UzumApiConnectDialog";
 import { ProductsView, type ProductsTableItemType } from "@/components/dashboard/ProductsView";
 import type { WeeklyInsightProduct } from "@/hooks/useSummaryWeeklyInsights";
 import { useAuth } from "@/hooks/useAuth";
@@ -45,9 +45,9 @@ function Dashboard() {
   const [shipmentCalculatedByKey, setShipmentCalculatedByKey] = useState<Record<string, number>>({});
   const [productToOpen, setProductToOpen] = useState<ProductsTableItemType | null>(null);
   const handleOpenProductHandled = useCallback(() => setProductToOpen(null), []);
-  const reportUploadRef = useRef<ReportUploadDialogHandle>(null);
-  const openGuidedUpload = useCallback(() => {
-    reportUploadRef.current?.open("guided");
+  const apiConnectRef = useRef<UzumApiConnectDialogHandle>(null);
+  const openApiConnect = useCallback(() => {
+    apiConnectRef.current?.open();
   }, []);
   const setShipmentCalculatedRecommended = (map: Record<string, number>) => {
     setShipmentCalculatedByKey(map);
@@ -396,7 +396,7 @@ function Dashboard() {
           </div>
           
           <div className="flex items-center gap-2">
-            <HeaderActions reportUploadRef={reportUploadRef} />
+            <HeaderActions apiConnectRef={apiConnectRef} />
           </div>
         </div>
         
@@ -452,7 +452,7 @@ function Dashboard() {
         <SummaryWeeklyInsights
           referenceDate={salesMaxDate ?? maxDate ?? dateTo}
           shop={selectedShop}
-          onOpenUploadReports={openGuidedUpload}
+          onOpenUploadReports={openApiConnect}
           onOpenProduct={(entry: WeeklyInsightProduct) => {
             const referenceDate = salesMaxDate ?? maxDate ?? dateTo;
             if (referenceDate) {

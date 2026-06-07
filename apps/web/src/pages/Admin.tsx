@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { Shield, Users, UserPlus, AlertCircle, Pencil, Trash2, UserMinus, CalendarPlus, Banknote, Activity, BarChart3, ChevronUp, ChevronDown, Store, Inbox } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Shield, Users, UserPlus, AlertCircle, Pencil, Trash2, UserMinus, CalendarPlus, Banknote, Activity, BarChart3, ChevronUp, ChevronDown, Store, Inbox, Upload } from "lucide-react";
 import { Tooltip as UITooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -48,13 +48,14 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { apiGet, apiPatch, apiPost, apiDelete, apiPut } from "@/lib/api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AdminPanelTabs, type AdminPanelTab } from "@/components/admin/AdminPanelTabs";
 import { ServicesView } from "@/components/dashboard/ServicesView";
+import { ReportUploadDialog, type ReportUploadDialogHandle } from "@/components/dashboard/ReportUploadDialog";
 
 function adminNormShopKey(s: string): string {
   return s.trim().replace(/\s+/g, " ").toUpperCase();
@@ -137,6 +138,8 @@ export default function Admin() {
   const { t } = useLanguage();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const reportUploadRef = useRef<ReportUploadDialogHandle>(null);
   const [tenants, setTenants] = useState<TenantsResponse | null>(null);
   const [loadingTenants, setLoadingTenants] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -431,6 +434,16 @@ export default function Admin() {
   }, [exportingUsers, filteredTenants]);
 
   useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "overview" || tab === "uzum" || tab === "archive") {
+      setAdminTab(tab);
+    }
+    if (tab === "archive" && searchParams.get("upload") === "guided") {
+      queueMicrotask(() => reportUploadRef.current?.open("guided"));
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     if (!accessDenied) {
       fetchTenants();
       fetchDashboardMetrics();
@@ -710,6 +723,23 @@ export default function Admin() {
       )}
 
       {!accessDenied && adminTab === "uzum" && <ServicesView />}
+
+      {!accessDenied && adminTab === "archive" && (
+        <div className="space-y-4 max-w-lg">
+          <p className="text-sm text-muted-foreground">{t("admin.archive.description")}</p>
+          <div className="flex flex-col items-start gap-4">
+            <button
+              type="button"
+              onClick={() => reportUploadRef.current?.open("guided")}
+              className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline underline-offset-2"
+            >
+              <Upload className="h-4 w-4 shrink-0" aria-hidden />
+              {t("header.helpUploadReports")}
+            </button>
+            <ReportUploadDialog ref={reportUploadRef} showTrigger />
+          </div>
+        </div>
+      )}
 
       {/* Метрики: воронка | всего + файлы | таблица по месяцам */}
       {!accessDenied && adminTab === "overview" && (

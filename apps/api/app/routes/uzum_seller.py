@@ -8,12 +8,17 @@ import logging
 from typing import Any, Literal, Optional
 from uuid import UUID
 
+from datetime import date
+
 import requests
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
+from app.db import get_db
 from app.deps import require_user
+from app.routes.imports import import_uzum_api_sync
 from app.services.uzum_export import (
     UzumRateLimitError,
     build_report,
@@ -297,6 +302,77 @@ def preview_uzum_report(
         "row_count": len(rows),
         "columns": [{"name": c.name, "mapped": c.mapped} for c in columns],
         "rows": rows[:limit],
+        "warnings": warnings,
+        **timezone_metadata(),
+    }
+
+
+UZUM_SYNC_REPORT_TYPES = ("inventory_old", "sales", "expenses", "storage")
+
+
+class UzumSyncBody(BaseModel):
+    api_key: str = Field(min_length=1, max_length=512)
+    date_from: Optional[str] = Field(default=None, description="YYYY-MM-DD, default: Jan 1 current year")
+    date_to: Optional[str] = Field(default=None, description="YYYY-MM-DD, default: today")
+
+
+@router.post("/uzum-seller/reports/sync")
+def sync_uzum_reports_to_service(
+    body: UzumSyncBody,
+    user_id: UUID = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    """Fetch four Uzum reports (YTD by default) and import them into the service."""
+    api_key = _normalize_api_key(body.api_key)
+    today = date.today()
+    date_from = body.date_from or f"{today.year}-01-01"
+    date_to = body.date_to or today.isoformat()
+
+    key_valid, key_error, _ = _validate_api_key(api_key)
+    if not key_valid:
+        raise HTTPException(status_code=401, detail=key_error or "Invalid Uzum API key")
+
+    files: dict[str, bytes] = {}
+    file_names: dict[str, str] = {}
+    warnings: list[str] = []
+
+    for report_type in UZUM_SYNC_REPORT_TYPES:
+        try:
+            kwargs: dict[str, Any] = {}
+            if report_type in ("sales", "expenses"):
+                kwargs["date_from"] = date_from
+                kwargs["date_to"] = date_to
+            columns, rows, filename, report_warnings = build_report(
+                report_type,
+                api_key,
+                **kwargs,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except UzumRateLimitError as exc:
+            raise HTTPException(status_code=429, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        files[report_type] = build_xlsx_bytes(report_type, columns, rows)
+        file_names[report_type] = filename
+        warnings.extend(report_warnings)
+
+    try:
+        result = import_uzum_api_sync(db, user_id, files, file_names)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Uzum sync import failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    if warnings:
+        logger.info("Uzum sync warnings: %s", warnings)
+
+    return {
+        **result,
+        "date_from": date_from,
+        "date_to": date_to,
         "warnings": warnings,
         **timezone_metadata(),
     }

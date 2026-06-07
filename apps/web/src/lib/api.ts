@@ -366,7 +366,12 @@ export async function apiPostDownload(
   return [warnHeader];
 }
 
-export async function apiPost<T>(path: string, body: any): Promise<T> {
+export async function apiPost<T>(path: string, body: unknown, options?: { timeoutMs?: number }): Promise<T> {
+  const controller = new AbortController();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  if (options?.timeoutMs) {
+    timeoutId = setTimeout(() => controller.abort(), options.timeoutMs);
+  }
   try {
     const response = await handleWithRefresh(path, {
       method: "POST",
@@ -375,6 +380,7 @@ export async function apiPost<T>(path: string, body: any): Promise<T> {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
 
     if (!response.ok) {
@@ -384,6 +390,9 @@ export async function apiPost<T>(path: string, body: any): Promise<T> {
 
     return response.json();
   } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Превышено время ожидания. Попробуйте позже.");
+    }
     // Handle network errors (CORS, connection refused, etc.)
     if (error instanceof TypeError && error.message === "Failed to fetch") {
       const apiUrl = getApiBaseUrl() || "http://127.0.0.1:8000";
@@ -392,6 +401,8 @@ export async function apiPost<T>(path: string, body: any): Promise<T> {
       );
     }
     throw error;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
 }
 

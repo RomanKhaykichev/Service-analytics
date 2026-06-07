@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { HelpCircle, User, ChevronDown, LogOut, CreditCard, Globe, PlayCircle, MessageCircle, ShieldCheck, Upload } from "lucide-react";
+import { HelpCircle, User, ChevronDown, LogOut, CreditCard, Globe, PlayCircle, MessageCircle, ShieldCheck, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { ReportUploadDialog, type ReportUploadDialogHandle } from "./ReportUploadDialog";
+import { UzumApiConnectDialog, type UzumApiConnectDialogHandle } from "./UzumApiConnectDialog";
 import { PricingDialog } from "./PricingDialog";
 import { ProfileDialog } from "./ProfileDialog";
 import { useNavigate, Link } from "react-router-dom";
@@ -33,10 +33,10 @@ function getUserDisplayName(user: { full_name?: string; user_metadata?: { full_n
 }
 
 interface HeaderActionsProps {
-  reportUploadRef?: React.RefObject<ReportUploadDialogHandle | null>;
+  apiConnectRef?: React.RefObject<UzumApiConnectDialogHandle | null>;
 }
 
-export function HeaderActions({ reportUploadRef: reportUploadRefProp }: HeaderActionsProps = {}) {
+export function HeaderActions({ apiConnectRef: apiConnectRefProp }: HeaderActionsProps = {}) {
   const { t, language, setLanguage } = useLanguage();
   const { user, signOut } = useAuth();
   const { shops, loading: shopsLoading } = useStorageShops();
@@ -51,8 +51,8 @@ export function HeaderActions({ reportUploadRef: reportUploadRefProp }: HeaderAc
     navigate('/landing?auth=open');
   };
   const [profileOpen, setProfileOpen] = useState(false);
-  const reportUploadRefInternal = useRef<ReportUploadDialogHandle>(null);
-  const reportUploadRef = reportUploadRefProp ?? reportUploadRefInternal;
+  const apiConnectRefInternal = useRef<UzumApiConnectDialogHandle>(null);
+  const apiConnectRef = apiConnectRefProp ?? apiConnectRefInternal;
   /** Чтобы не открывать снова при каждом refetch при 0 магазинах; сбрасывается при появлении магазина или новом монтировании шапки (новый «вход» на главную). */
   const noShopsGuidedOpenedThisMountRef = useRef(false);
   const displayName = getUserDisplayName(user);
@@ -108,21 +108,14 @@ export function HeaderActions({ reportUploadRef: reportUploadRefProp }: HeaderAc
     if (noShopsGuidedOpenedThisMountRef.current) return;
     noShopsGuidedOpenedThisMountRef.current = true;
     queueMicrotask(() => {
-      reportUploadRef.current?.open("guided");
+      apiConnectRef.current?.open();
     });
   }, [user?.id, user?.is_admin, isTrialExpired, shopsLoading, shops.length]);
 
   return (
     <div className="flex items-center gap-4 sm:gap-5">
       {/* Report Upload */}
-      <ReportUploadDialog
-        ref={reportUploadRef}
-        disabled={isTrialExpired}
-        onOpenExtendTariff={() => {
-          setExtendVariant("extend");
-          setExtendTariffOpen(true);
-        }}
-      />
+      <UzumApiConnectDialog ref={apiConnectRef} disabled={isTrialExpired} />
 
       <div className="flex items-center gap-1 sm:gap-1.5">
       {/* Help — заметная кнопка, подпись на sm+, подсказка при наведении */}
@@ -153,11 +146,11 @@ export function HeaderActions({ reportUploadRef: reportUploadRefProp }: HeaderAc
             className="cursor-pointer"
             disabled={isTrialExpired}
             onSelect={() => {
-              reportUploadRef.current?.open("guided");
+              apiConnectRef.current?.open();
             }}
           >
-            <Upload className="w-4 h-4 mr-2" />
-            {t("header.helpUploadReports")}
+            <KeyRound className="w-4 h-4 mr-2" />
+            {t("header.connectApi")}
           </DropdownMenuItem>
           <DropdownMenuItem className="cursor-pointer" asChild>
             <Link to="/training">

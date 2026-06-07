@@ -2,7 +2,7 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from uuid import UUID
-from typing import Optional
+from typing import Optional, Any
 from pathlib import Path
 from datetime import datetime, timedelta
 import pandas as pd
@@ -2236,3 +2236,152 @@ async def import_xlsx_batch(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
         )
+
+
+def import_uzum_api_sync(
+    db: Session,
+    user_id: UUID,
+    files: dict[str, bytes],
+    file_names: Optional[dict[str, str]] = None,
+) -> dict[str, Any]:
+    """
+    Import four Uzum API report XLSX blobs in one transaction (overwrite all user data).
+    Expected keys: inventory_old, sales, expenses, storage.
+    """
+    required = ("inventory_old", "sales", "expenses", "storage")
+    missing = [k for k in required if k not in files or not files[k]]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing reports: {', '.join(missing)}")
+
+    default_names = {
+        "inventory_old": "left-out-report.xlsx",
+        "sales": "sells-report.xlsx",
+        "expenses": "expenses-report.xlsx",
+        "storage": "seller-storage-report.xlsx",
+    }
+    names = {**default_names, **(file_names or {})}
+
+    validate_leftout_old_xlsx(files["inventory_old"])
+
+    ensure_dev_user_exists(db, user_id)
+    require_phone_verified(user_id, db)
+    require_active_access(user_id, db)
+
+    try:
+        delete_all_user_data(db, user_id)
+        batch_id = create_batch(db, user_id)
+
+        project_root = Path(__file__).parent.parent.parent.parent
+        uploads_base = project_root / "apps" / "api" / "uploads"
+        user_dir = uploads_base / str(user_id)
+        batch_dir = user_dir / batch_id
+        batch_dir.mkdir(parents=True, exist_ok=True)
+
+        import_order = [
+            ("inventory_old", "leftout_old", LEFTOUT_OLD_MAP, "stg_leftout_old"),
+            ("sales", "sales", SALES_MAP, "stg_sales"),
+            ("expenses", "expenses", EXP_MAP, "stg_expenses"),
+            ("storage", "storage", STORAGE_MAP, "stg_storage"),
+        ]
+
+        imported_counts: dict[str, int] = {}
+        saved_paths: dict[str, str] = {}
+        batch_store_limit_exceeded = False
+        saved_shops = get_saved_shop_names(db, user_id)
+        max_shops = get_user_max_shops(db, user_id)
+
+        for report_type, file_type, mapping, staging_table in import_order:
+            file_content = files[report_type]
+            file_name = names[report_type]
+            sheet_name = SHEETS[file_type]
+
+            file_ext = Path(file_name).suffix or ".xlsx"
+            saved_filename = f"{report_type}{file_ext}"
+            saved_path = batch_dir / saved_filename
+            with open(saved_path, "wb") as f:
+                f.write(file_content)
+            saved_paths[report_type] = str(saved_path)
+
+            try:
+                df = read_excel_as_str(file_content, sheet_name, file_type)
+            except Exception as e:
+                logger.error("Error reading Excel for %s: %s", report_type, e, exc_info=True)
+                db.rollback()
+                raise HTTPException(status_code=400, detail=f"Error reading {report_type} Excel file: {str(e)}") from e
+
+            if df.empty:
+                db.rollback()
+                raise HTTPException(status_code=400, detail=f"{report_type} Excel file is empty or has no valid data")
+
+            try:
+                validate_required(df, file_type)
+            except ValueError as e:
+                db.rollback()
+                raise HTTPException(status_code=400, detail=f"{report_type}: {str(e)}") from e
+
+            if report_type in ("inventory", "storage") and "Магазин" in df.columns:
+                explicit_bt = get_user_allowed_shops_list(db, user_id)
+                file_shop_names = _file_shop_names_ordered(df, "Магазин")
+                if explicit_bt:
+                    allowed_norms = {_allow_norm_shop(s) for s in explicit_bt}
+                    file_norms = {_allow_norm_shop(s) for s in file_shop_names}
+                    exceeded = len(file_norms - allowed_norms) > 0
+                    batch_store_limit_exceeded = batch_store_limit_exceeded or exceeded
+                    skip_storage_filter = report_type == "storage" and max_shops == 1
+                    if not skip_storage_filter:
+                        df = filter_df_by_allowed_shops(df, list(explicit_bt), "Магазин")
+                elif max_shops is not None:
+                    allowed_shops, exceeded = compute_allowed_shops(saved_shops, file_shop_names, max_shops)
+                    df = filter_df_by_allowed_shops(df, allowed_shops, "Магазин")
+                    batch_store_limit_exceeded = batch_store_limit_exceeded or exceeded
+
+            try:
+                to_staging(df, mapping, str(user_id), batch_id, staging_table, db, file_type)
+            except Exception as e:
+                logger.error("Error loading %s to staging: %s", report_type, e, exc_info=True)
+                db.rollback()
+                raise HTTPException(status_code=500, detail=f"Error loading {report_type} to staging: {str(e)}") from e
+
+            try:
+                rows_imported = populate_facts(db, user_id, batch_id, report_type)
+                imported_counts[report_type] = rows_imported
+            except Exception as e:
+                logger.error("Error populating %s fact tables: %s", report_type, e, exc_info=True)
+                db.rollback()
+                raise HTTPException(status_code=500, detail=f"Error populating {report_type} fact tables: {str(e)}") from e
+
+            if report_type in ("inventory", "storage"):
+                saved_shops = get_saved_shop_names(db, user_id)
+
+            logger.info("Uzum sync imported %s: %s rows, batch_id=%s", report_type, rows_imported, batch_id)
+
+        db.commit()
+        try:
+            db.execute(
+                text(f"UPDATE {qname('upload_batch')} SET status = 'success' WHERE upload_batch_id = CAST(:bid AS uuid)"),
+                {"bid": batch_id},
+            )
+            db.commit()
+        except Exception as e:
+            logger.debug("upload_batch status update skipped: %s", e)
+            db.rollback()
+
+        out: dict[str, Any] = {
+            "ok": True,
+            "upload_batch_id": batch_id,
+            "imported": imported_counts,
+            "saved_as": saved_paths,
+            "store_limit_exceeded": batch_store_limit_exceeded,
+        }
+        if batch_store_limit_exceeded and max_shops is not None:
+            out["store_limit_max"] = max_shops
+            out["store_limit_current"] = min(max_shops, len(get_saved_shop_names(db, user_id)))
+        return out
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        logger.error("Unexpected error in import_uzum_api_sync: %s", e, exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}") from e

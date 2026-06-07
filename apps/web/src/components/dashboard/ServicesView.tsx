@@ -12,10 +12,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
 import { UzumReportsExport } from "@/components/dashboard/UzumReportsExport";
 
-const UZUM_API_KEY_STORAGE = "uzum_seller_api_key";
-const UZUM_AUTH_MODE_STORAGE = "uzum_seller_auth_mode";
-const SWAGGER_URL =
-  "https://api-seller.uzum.uz/api/seller-openapi/swagger/swagger-ui/webjars/swagger-ui/index.html#/";
+import { UZUM_API_KEY_STORAGE, UZUM_AUTH_MODE_STORAGE, UZUM_SWAGGER_URL } from "@/lib/uzumApiStorage";
 
 interface UzumEndpoint {
   method: string;
@@ -182,7 +179,7 @@ export function ServicesView() {
             </Button>
           </div>
           <a
-            href={SWAGGER_URL}
+            href={UZUM_SWAGGER_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-sm text-primary hover:underline"

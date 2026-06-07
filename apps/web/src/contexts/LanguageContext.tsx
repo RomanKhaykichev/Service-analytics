@@ -59,6 +59,7 @@ const translations: Record<Language, Record<string, string>> = {
     'services.keyWarningTitle': 'Проверьте API-ключ',
     'services.apiKeyRequired': 'Укажите API-ключ',
     'services.connect': 'Подключить',
+    'services.connectInProgress': 'Подключение и загрузка данных…',
     'services.connectFailed': 'Не удалось подключиться к Uzum API',
     'services.swaggerLink': 'Документация Swagger Uzum',
     'services.errorTitle': 'Ошибка',
@@ -85,6 +86,11 @@ const translations: Record<Language, Record<string, string>> = {
     'services.dateTo': 'по',
     'services.skippedShops': 'Часть магазинов пропущена — для них нет доступа в финансовом API Uzum.',
     'services.rateLimit': 'Uzum временно ограничил частоту запросов. Подождите 1–2 минуты и повторите.',
+    'services.loadData': 'Загрузить данные',
+    'services.loadDataInProgress': 'Загрузка данных…',
+    'services.loadDataHint': 'Выгружает 4 отчёта из Uzum API с начала года и импортирует их в сервис.',
+    'services.loadDataSuccess': 'Данные загружены',
+    'services.loadDataFailed': 'Не удалось загрузить данные',
     
     // Filters
     'filter.today': 'Сегодня',
@@ -161,6 +167,8 @@ const translations: Record<Language, Record<string, string>> = {
     'header.help': 'Помощь',
     'header.helpTooltip': 'Справка, обучение и связь с поддержкой',
     'header.helpUploadReports': 'Загрузка отчётов',
+    'header.connectApi': 'Подключить API',
+    'header.apiConnected': 'API подключён',
     'header.videoTutorials': 'Видео-уроки',
     'header.support': 'Связаться с поддержкой',
     'header.myAccount': 'Мой аккаунт',
@@ -350,7 +358,7 @@ const translations: Record<Language, Record<string, string>> = {
     'summary.weeklyInsights.minProfitAfterName': ' принёс меньше всего прибыли → ',
     'summary.weeklyInsights.maxProfitBeforeName': 'Товар ',
     'summary.weeklyInsights.maxProfitAfterName': ' принёс больше всего прибыли → ',
-    'summary.weeklyInsights.emptyIntroLink': 'Загрузите отчеты',
+    'summary.weeklyInsights.emptyIntroLink': 'Подключите API',
     'summary.weeklyInsights.emptyIntroSuffix': ' из личного кабинета Uzum и мы покажем:',
     'summary.weeklyInsights.emptyBullet1': 'какие товары приносят больше всего прибыли',
     'summary.weeklyInsights.emptyBullet2': 'где растут расходы и хранение',
@@ -641,6 +649,8 @@ const translations: Record<Language, Record<string, string>> = {
     // Admin panel tabs
     'admin.tabs.overview': 'Обзор',
     'admin.tabs.uzum': 'API',
+    'admin.tabs.archive': 'Архив',
+    'admin.archive.description': 'Ручная загрузка отчётов из личного кабинета Uzum (XLSX).',
     // Admin subscriptions and tooltips
     'admin.subscriptions.title': 'Аналитика подписок',
     'admin.subscriptions.revenue': 'Доход (сум)',
@@ -701,6 +711,7 @@ const translations: Record<Language, Record<string, string>> = {
     'services.keyWarningTitle': 'API kalitini tekshiring',
     'services.apiKeyRequired': 'API kalitini kiriting',
     'services.connect': 'Ulash',
+    'services.connectInProgress': 'Ulanish va maʼlumotlarni yuklash…',
     'services.connectFailed': 'Uzum API ga ulanib bo‘lmadi',
     'services.swaggerLink': 'Uzum Swagger hujjatlari',
     'services.errorTitle': 'Xato',
@@ -727,6 +738,11 @@ const translations: Record<Language, Record<string, string>> = {
     'services.dateTo': 'gacha',
     'services.skippedShops': "Ba'zi do'konlar o'tkazib yuborildi — Uzum moliyaviy API da ruxsat yo'q.",
     'services.rateLimit': "Uzum so'rovlar tezligini chekladi. 1–2 daqiqa kutib qayta urinib ko'ring.",
+    'services.loadData': 'Maʼlumotlarni yuklash',
+    'services.loadDataInProgress': 'Maʼlumotlar yuklanmoqda…',
+    'services.loadDataHint': "Yil boshidan 4 ta hisobotni Uzum API dan yuklab, xizmatga import qiladi.",
+    'services.loadDataSuccess': 'Maʼlumotlar yuklandi',
+    'services.loadDataFailed': 'Maʼlumotlarni yuklab bo‘lmadi',
     
     // Filters
     'filter.today': 'Bugun',
@@ -803,6 +819,8 @@ const translations: Record<Language, Record<string, string>> = {
     'header.help': 'Yordam',
     'header.helpTooltip': 'Qo‘llanma, video darslar va qo‘llab-quvvatlash',
     'header.helpUploadReports': 'Hisobotlarni yuklash',
+    'header.connectApi': 'API ulash',
+    'header.apiConnected': 'API ulandi',
     'header.videoTutorials': 'Video- darsliklar',
     'header.support': "Qo'llab-quvvatlash bilan bog'lanish",
     'header.myAccount': 'Mening akkauntim',
@@ -992,7 +1010,7 @@ const translations: Record<Language, Record<string, string>> = {
     'summary.weeklyInsights.minProfitAfterName': ' eng kam foyda keltirdi → ',
     'summary.weeklyInsights.maxProfitBeforeName': 'Tovar ',
     'summary.weeklyInsights.maxProfitAfterName': ' eng ko\'p foyda keltirdi → ',
-    'summary.weeklyInsights.emptyIntroLink': 'Hisobotlarni yuklang',
+    'summary.weeklyInsights.emptyIntroLink': 'API ulang',
     'summary.weeklyInsights.emptyIntroSuffix': ' Uzum shaxsiy kabinetidan va biz ko‘rsatamiz:',
     'summary.weeklyInsights.emptyBullet1': 'qaysi tovarlar eng ko‘p foyda keltiradi',
     'summary.weeklyInsights.emptyBullet2': 'qayerda xarajatlar va saqlash o‘sadi',
@@ -1274,6 +1292,8 @@ const translations: Record<Language, Record<string, string>> = {
     // Admin panel tabs
     'admin.tabs.overview': 'Umumiy ko‘rinish',
     'admin.tabs.uzum': 'API',
+    'admin.tabs.archive': 'Arxiv',
+    'admin.archive.description': 'Uzum kabinetidan qo‘lda hisobot yuklash (XLSX).',
     // Admin subscriptions and tooltips
     'admin.subscriptions.title': 'Obunalar tahlili',
     'admin.subscriptions.revenue': 'Daromad (so\'m)',
