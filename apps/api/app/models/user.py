@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, DateTime, func
+from sqlalchemy import Column, String, Boolean, DateTime, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import uuid
@@ -19,6 +19,7 @@ class User(Base):
     last_login_at = Column(DateTime(timezone=True), nullable=True)
     preferred_language = Column(String(10), nullable=True)  # 'ru' | 'uz' — язык интерфейса
     phone_verified_at = Column(DateTime(timezone=True), nullable=True)
+    uzum_seller_api_key = Column(Text, nullable=True)
 
     # Relationships
     auth_identities = relationship("AuthIdentity", back_populates="user", cascade="all, delete-orphan")

@@ -18,8 +18,10 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import require_user
+from app.models.user import User
 from app.routes.imports import import_uzum_api_sync
 from app.services.uzum_export import (
+    ShopUnavailableError,
     UzumRateLimitError,
     build_report,
     build_xlsx_bytes,
@@ -34,6 +36,25 @@ UZUM_HOST = "https://api-seller.uzum.uz"
 OPENAPI_SPEC_URL = f"{UZUM_HOST}/api/seller-openapi/swagger/api-docs"
 API_BASE_URL = f"{UZUM_HOST}/api/seller-openapi"
 REQUEST_TIMEOUT = 30
+INVALID_UZUM_API_KEY = "invalid_uzum_api_key"
+
+_INVALID_KEY_MARKERS = (
+    "forbidden-001",
+    "shop is not available",
+    "invalid_uzum_api_key",
+    "unauthorized",
+    "uzum api 401",
+    "uzum api 403",
+)
+
+
+def _uzum_error_means_invalid_key(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    return any(marker in msg for marker in _INVALID_KEY_MARKERS)
+
+
+def _invalid_key_http_exception() -> HTTPException:
+    return HTTPException(status_code=400, detail=INVALID_UZUM_API_KEY)
 
 # From Uzum OpenAPI: Authorization header, token WITHOUT "Bearer " prefix.
 DEFAULT_AUTH_MODE = "authorization_raw"
@@ -51,6 +72,22 @@ def _normalize_api_key(raw: str) -> str:
     if key.lower().startswith("bearer "):
         return key[7:].strip()
     return key
+
+
+def _get_user_uzum_api_key(db: Session, user_id: UUID) -> Optional[str]:
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return None
+    key = user.uzum_seller_api_key
+    return key.strip() if isinstance(key, str) and key.strip() else None
+
+
+def _save_user_uzum_api_key(db: Session, user_id: UUID, api_key: str) -> None:
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.uzum_seller_api_key = api_key
+    db.commit()
 
 
 def _headers_for_mode(api_key: str, mode: AuthMode) -> dict[str, str]:
@@ -154,6 +191,37 @@ class OpenApiExploreBody(BaseModel):
     api_key: str = Field(min_length=1, max_length=512)
 
 
+class UzumApiKeyBody(BaseModel):
+    api_key: str = Field(min_length=1, max_length=512)
+
+
+class UzumApiKeyResponse(BaseModel):
+    api_key: Optional[str] = None
+    has_key: bool = False
+
+
+@router.get("/uzum-seller/api-key", response_model=UzumApiKeyResponse)
+def get_uzum_api_key(
+    user_id: UUID = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    """Return saved Uzum Seller API key for the current user."""
+    key = _get_user_uzum_api_key(db, user_id)
+    return UzumApiKeyResponse(api_key=key, has_key=bool(key))
+
+
+@router.put("/uzum-seller/api-key", response_model=UzumApiKeyResponse)
+def save_uzum_api_key(
+    body: UzumApiKeyBody,
+    user_id: UUID = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    """Save Uzum Seller API key for the current user."""
+    api_key = _normalize_api_key(body.api_key)
+    _save_user_uzum_api_key(db, user_id, api_key)
+    return UzumApiKeyResponse(api_key=api_key, has_key=True)
+
+
 class UzumProxyBody(BaseModel):
     api_key: str = Field(min_length=1, max_length=512)
     auth_mode: AuthMode = DEFAULT_AUTH_MODE
@@ -255,9 +323,13 @@ def export_uzum_report(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ShopUnavailableError as exc:
+        raise _invalid_key_http_exception() from exc
     except UzumRateLimitError as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except RuntimeError as exc:
+        if _uzum_error_means_invalid_key(exc):
+            raise _invalid_key_http_exception() from exc
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     xlsx = build_xlsx_bytes(body.report_type, columns, rows)
@@ -292,9 +364,13 @@ def preview_uzum_report(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ShopUnavailableError as exc:
+        raise _invalid_key_http_exception() from exc
     except UzumRateLimitError as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except RuntimeError as exc:
+        if _uzum_error_means_invalid_key(exc):
+            raise _invalid_key_http_exception() from exc
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     return {
@@ -330,7 +406,9 @@ def sync_uzum_reports_to_service(
 
     key_valid, key_error, _ = _validate_api_key(api_key)
     if not key_valid:
-        raise HTTPException(status_code=401, detail=key_error or "Invalid Uzum API key")
+        raise HTTPException(status_code=400, detail=INVALID_UZUM_API_KEY)
+
+    _save_user_uzum_api_key(db, user_id, api_key)
 
     files: dict[str, bytes] = {}
     file_names: dict[str, str] = {}
@@ -349,9 +427,13 @@ def sync_uzum_reports_to_service(
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except ShopUnavailableError as exc:
+            raise _invalid_key_http_exception() from exc
         except UzumRateLimitError as exc:
             raise HTTPException(status_code=429, detail=str(exc)) from exc
         except RuntimeError as exc:
+            if _uzum_error_means_invalid_key(exc):
+                raise _invalid_key_http_exception() from exc
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
         files[report_type] = build_xlsx_bytes(report_type, columns, rows)
@@ -364,6 +446,8 @@ def sync_uzum_reports_to_service(
         raise
     except Exception as exc:
         logger.error("Uzum sync import failed: %s", exc, exc_info=True)
+        if _uzum_error_means_invalid_key(exc):
+            raise _invalid_key_http_exception() from exc
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     if warnings:

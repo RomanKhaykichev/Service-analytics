@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from "react";
-import { ExternalLink, KeyRound, Loader2, Play, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ExternalLink, Eye, EyeOff, KeyRound, Loader2, Play, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,9 +10,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiPost } from "@/lib/api";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { cn } from "@/lib/utils";
-import { UzumReportsExport } from "@/components/dashboard/UzumReportsExport";
 
-import { UZUM_API_KEY_STORAGE, UZUM_AUTH_MODE_STORAGE, UZUM_SWAGGER_URL } from "@/lib/uzumApiStorage";
+import { fetchUzumApiKey, saveUzumApiKey } from "@/lib/uzumApiCredentials";
+import { UZUM_AUTH_MODE_STORAGE, UZUM_SWAGGER_URL } from "@/lib/uzumApiStorage";
+import { UzumReportsExport } from "@/components/dashboard/UzumReportsExport";
 
 interface UzumEndpoint {
   method: string;
@@ -60,7 +61,8 @@ interface ProxyResult {
 
 export function ServicesView() {
   const { t } = useLanguage();
-  const [apiKey, setApiKey] = useState(() => sessionStorage.getItem(UZUM_API_KEY_STORAGE) ?? "");
+  const [apiKey, setApiKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
   const [authMode, setAuthMode] = useState(
     () => sessionStorage.getItem(UZUM_AUTH_MODE_STORAGE) ?? "authorization_raw"
   );
@@ -71,6 +73,14 @@ export function ServicesView() {
   const [activePath, setActivePath] = useState<string | null>(null);
   const [proxyResult, setProxyResult] = useState<ProxyResult | null>(null);
   const [proxyLoading, setProxyLoading] = useState(false);
+
+  useEffect(() => {
+    fetchUzumApiKey()
+      .then((data) => {
+        if (data.api_key) setApiKey(data.api_key);
+      })
+      .catch(() => {});
+  }, []);
 
   const grouped = useMemo(() => {
     if (!explore?.endpoints?.length) return [];
@@ -98,7 +108,7 @@ export function ServicesView() {
       const result = await apiPost<OpenApiExploreResult>("/api/uzum-seller/openapi", { api_key: key });
       setExplore(result);
       setAuthMode(result.auth_mode);
-      sessionStorage.setItem(UZUM_API_KEY_STORAGE, key);
+      await saveUzumApiKey(key);
       sessionStorage.setItem(UZUM_AUTH_MODE_STORAGE, result.auth_mode);
       if (result.key_valid === false) {
         const hint = result.auth_hint ? ` ${result.auth_hint}.` : "";
@@ -151,22 +161,40 @@ export function ServicesView() {
             <KeyRound className="h-5 w-5 text-primary" />
             {t("services.title")}
           </CardTitle>
-          <CardDescription>{t("services.description")}</CardDescription>
+          <CardDescription>{t("services.descriptionOpenApi")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
             <div className="flex-1 space-y-2">
               <Label htmlFor="uzum-api-key">{t("services.apiKeyLabel")}</Label>
-              <Input
-                id="uzum-api-key"
-                type="password"
-                autoComplete="off"
-                placeholder={t("services.apiKeyPlaceholder")}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && connect()}
-              />
-              <p className="text-xs text-muted-foreground">{t("services.apiKeyHint")}</p>
+              <div className="relative">
+                <Input
+                  id="uzum-api-key"
+                  type={showKey ? "text" : "password"}
+                  autoComplete="off"
+                  placeholder={t("services.apiKeyPlaceholder")}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && connect()}
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                  onClick={() => setShowKey((v) => !v)}
+                  disabled={!apiKey}
+                  aria-label={showKey ? t("profile.hidePassword") : t("profile.showPassword")}
+                >
+                  {showKey ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">{t("services.apiKeyHintSaved")}</p>
               <p className="text-xs text-muted-foreground">{t("services.apiKeyBearerHint")}</p>
             </div>
             <Button onClick={connect} disabled={loading} className="shrink-0">

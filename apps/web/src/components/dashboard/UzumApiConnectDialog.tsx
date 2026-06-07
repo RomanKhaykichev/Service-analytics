@@ -1,42 +1,23 @@
-import { forwardRef, useCallback, useImperativeHandle, useState } from "react";
-import { KeyRound, Loader2 } from "lucide-react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { Eye, EyeOff, KeyRound, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { UZUM_API_KEY_STORAGE } from "@/lib/uzumApiStorage";
+import { UzumApiInstructionPanel } from "@/components/dashboard/UzumApiInstructionPanel";
+import { fetchUzumApiKey } from "@/lib/uzumApiCredentials";
+import { formatUzumConnectError } from "@/lib/uzumApiErrors";
 import { syncUzumReportsToService } from "@/lib/uzumApiSync";
 import { toast } from "sonner";
-
-function formatApiError(err: unknown, fallback: string, rateLimitFallback?: string): string {
-  if (!(err instanceof Error)) return fallback;
-  const raw = err.message;
-  try {
-    const parsed = JSON.parse(raw) as { detail?: unknown };
-    const detail = parsed.detail;
-    if (typeof detail === "string") {
-      if (detail.includes("429") && rateLimitFallback) return rateLimitFallback;
-      return detail;
-    }
-    if (detail && typeof detail === "object" && "message" in detail) {
-      const d = detail as { message?: string; last_detail?: string };
-      return [d.message, d.last_detail].filter(Boolean).join(" — ") || fallback;
-    }
-  } catch {
-    /* plain text */
-  }
-  if (raw.includes("429") && rateLimitFallback) return rateLimitFallback;
-  return raw || fallback;
-}
 
 export interface UzumApiConnectDialogHandle {
   open: () => void;
@@ -47,14 +28,29 @@ interface UzumApiConnectDialogProps {
   showTrigger?: boolean;
 }
 
+const CONNECT_LOADING_STEP_KEYS = [
+  "services.connectStepApi",
+  "services.connectStepSales",
+  "services.connectStepProfit",
+  "services.connectStepDashboard",
+] as const;
+
+const CONNECT_STEP_DELAYS_MS = [0, 60_000, 120_000, 180_000];
+const CONNECT_PROGRESS_CAP = 95;
+
 export const UzumApiConnectDialog = forwardRef<UzumApiConnectDialogHandle, UzumApiConnectDialogProps>(
   function UzumApiConnectDialog({ disabled, showTrigger = true }, ref) {
     const { t } = useLanguage();
     const [open, setOpen] = useState(false);
-    const [apiKey, setApiKey] = useState(() => sessionStorage.getItem(UZUM_API_KEY_STORAGE) ?? "");
+    const [apiKey, setApiKey] = useState("");
+    const [showKey, setShowKey] = useState(false);
+    const [keyLoading, setKeyLoading] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [loadingStep, setLoadingStep] = useState(0);
+    const [loadingProgress, setLoadingProgress] = useState(0);
     const [error, setError] = useState<string | null>(null);
     const [warnings, setWarnings] = useState<string[]>([]);
+    const loadingStartedAtRef = useRef<number | null>(null);
 
     useImperativeHandle(
       ref,
@@ -67,6 +63,61 @@ export const UzumApiConnectDialog = forwardRef<UzumApiConnectDialogHandle, UzumA
       [disabled],
     );
 
+    useEffect(() => {
+      if (!open) return;
+      let cancelled = false;
+      setKeyLoading(true);
+      fetchUzumApiKey()
+        .then((data) => {
+          if (!cancelled && data.api_key) {
+            setApiKey(data.api_key);
+          }
+        })
+        .catch(() => {
+          /* no saved key yet */
+        })
+        .finally(() => {
+          if (!cancelled) setKeyLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [open]);
+
+    useEffect(() => {
+      if (!loading) {
+        loadingStartedAtRef.current = null;
+        setLoadingStep(0);
+        setLoadingProgress(0);
+        return;
+      }
+
+      loadingStartedAtRef.current = Date.now();
+      setLoadingStep(0);
+      setLoadingProgress(4);
+
+      const stepTimers = CONNECT_STEP_DELAYS_MS.slice(1).map((delay, index) =>
+        window.setTimeout(() => setLoadingStep(index + 1), delay),
+      );
+
+      const progressTimer = window.setInterval(() => {
+        setLoadingProgress((current) => {
+          if (current >= CONNECT_PROGRESS_CAP) return current;
+          const elapsed = Date.now() - (loadingStartedAtRef.current ?? Date.now());
+          const target = Math.min(
+            CONNECT_PROGRESS_CAP,
+            4 + (elapsed / 600_000) * (CONNECT_PROGRESS_CAP - 4),
+          );
+          return Math.max(current, target);
+        });
+      }, 400);
+
+      return () => {
+        stepTimers.forEach((timer) => window.clearTimeout(timer));
+        window.clearInterval(progressTimer);
+      };
+    }, [loading]);
+
     const connect = useCallback(async () => {
       const key = apiKey.trim();
       if (!key) {
@@ -76,9 +127,9 @@ export const UzumApiConnectDialog = forwardRef<UzumApiConnectDialogHandle, UzumA
       setLoading(true);
       setError(null);
       setWarnings([]);
-      sessionStorage.setItem(UZUM_API_KEY_STORAGE, key);
       try {
         const result = await syncUzumReportsToService(key);
+        setLoadingProgress(100);
         if (result.warnings?.length) {
           setWarnings(result.warnings);
         }
@@ -86,7 +137,12 @@ export const UzumApiConnectDialog = forwardRef<UzumApiConnectDialogHandle, UzumA
         setOpen(false);
         window.location.reload();
       } catch (e) {
-        setError(formatApiError(e, t("services.connectFailed"), t("services.rateLimit")));
+        setError(
+          formatUzumConnectError(e, t, {
+            generic: t("services.connectFailed"),
+            rateLimit: t("services.rateLimit"),
+          }),
+        );
       } finally {
         setLoading(false);
       }
@@ -98,8 +154,11 @@ export const UzumApiConnectDialog = forwardRef<UzumApiConnectDialogHandle, UzumA
       if (!value) {
         setError(null);
         setWarnings([]);
+        setShowKey(false);
       }
     };
+
+    const busy = loading || keyLoading;
 
     return (
       <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -123,27 +182,68 @@ export const UzumApiConnectDialog = forwardRef<UzumApiConnectDialogHandle, UzumA
               <KeyRound className="h-5 w-5 text-primary" />
               {t("services.title")}
             </DialogTitle>
-            <DialogDescription>{t("services.description")}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
+            <UzumApiInstructionPanel />
+
             <div className="space-y-2">
               <Label htmlFor="uzum-api-key-dialog">{t("services.apiKeyLabel")}</Label>
-              <Input
-                id="uzum-api-key-dialog"
-                type="password"
-                autoComplete="off"
-                placeholder={t("services.apiKeyPlaceholder")}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && !loading && connect()}
-                disabled={loading}
-              />
-              <p className="text-xs text-muted-foreground">{t("services.apiKeyHint")}</p>
-              <p className="text-xs text-muted-foreground">{t("services.apiKeyBearerHint")}</p>
+              <div className="relative">
+                <Input
+                  id="uzum-api-key-dialog"
+                  type={showKey ? "text" : "password"}
+                  autoComplete="off"
+                  placeholder={t("services.apiKeyPlaceholder")}
+                  value={apiKey}
+                  onChange={(e) => {
+                    setApiKey(e.target.value);
+                    if (error) setError(null);
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && !busy && connect()}
+                  disabled={busy}
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                  onClick={() => setShowKey((v) => !v)}
+                  disabled={busy || !apiKey}
+                  aria-label={showKey ? t("profile.hidePassword") : t("profile.showPassword")}
+                >
+                  {showKey ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+              </div>
+              {error && (
+                <p className="text-sm text-destructive" role="alert">
+                  {error}
+                </p>
+              )}
+              {loading && (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <span
+                      key={loadingStep}
+                      className="text-sm font-medium bg-[linear-gradient(90deg,hsl(var(--muted-foreground))_0%,hsl(var(--muted-foreground))_35%,hsl(var(--primary))_50%,hsl(var(--muted-foreground))_65%,hsl(var(--muted-foreground))_100%)] bg-[length:200%_100%] bg-clip-text text-transparent animate-text-shimmer-wave"
+                    >
+                      {t(CONNECT_LOADING_STEP_KEYS[loadingStep])}
+                    </span>
+                    <span className="text-sm font-medium tabular-nums shrink-0">
+                      {Math.round(loadingProgress)}%
+                    </span>
+                  </div>
+                  <Progress value={loadingProgress} className="h-2" />
+                </div>
+              )}
             </div>
 
-            <Button onClick={connect} disabled={loading || !apiKey.trim()} className="w-full sm:w-auto">
+            <Button onClick={connect} disabled={busy || !apiKey.trim()} className="w-full sm:w-auto">
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
               ) : (
@@ -151,15 +251,6 @@ export const UzumApiConnectDialog = forwardRef<UzumApiConnectDialogHandle, UzumA
               )}
               {loading ? t("services.connectInProgress") : t("services.connect")}
             </Button>
-
-            <p className="text-xs text-muted-foreground">{t("services.loadDataHint")}</p>
-
-            {error && (
-              <Alert variant="destructive">
-                <AlertTitle>{t("services.errorTitle")}</AlertTitle>
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
 
             {warnings.length > 0 && (
               <Alert>
