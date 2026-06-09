@@ -1,0 +1,6 @@
+count 5
+{'name': 'Комплект женских колец 5 шт', 'status': 'Возврат', 'is_archived': False, 'batch': 'fb55f6f3-27c7-44a4-99e8-7a8e1828b1c6'}
+{'name': 'Комплект женских колец 5 шт', 'status': 'Возврат', 'is_archived': False, 'batch': 'fb55f6f3-27c7-44a4-99e8-7a8e1828b1c6'}
+{'name': 'Комплект женских колец, 5 шт', 'status': None, 'is_archived': False, 'batch': 'f14cfa06-5e4d-4a41-bfc1-9b21566345d6'}
+{'name': 'Комплект женских колец, 5 шт', 'status': None, 'is_archived': False, 'batch': 'f14cfa06-5e4d-4a41-bfc1-9b21566345d6'}
+{'name': 'Комплект женских колец 5 шт', 'status': 'Возврат', 'is_archived': False, 'batch': 'edf0f040-c82d-4a08-af39-f1f935767b5a'}
