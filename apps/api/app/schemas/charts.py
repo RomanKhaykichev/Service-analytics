@@ -193,6 +193,7 @@ class ProductsTableItem(BaseModel):
     abc_profit: Optional[str] = None   # ABC прибыль
     abc_revenue: Optional[str] = None  # ABC выручка
     barcode: Optional[str] = None     # Штрихкод (leftout_old)
+    product_image_url: Optional[str] = None  # Превью товара (left-out-report, «Ссылка на товар»)
     storage_cost_per_day: Optional[float] = None  # Стоимость хранения 1 дня, сум
     shop: Optional[str] = None         # Магазин (sells_report)
 

@@ -21,6 +21,7 @@ from app.utils.column_mappings import (
     DuplicateCanonicalError,
     MissingRequiredColumnsError,
     CANONICAL_BY_FILE_TYPE,
+    CANONICAL_LEFTOUT_API,
 )
 from app.utils.value_mappings import apply_value_mappings
 from app.services.uzum_time import sql_parse_expense_written_off_raw
@@ -502,6 +503,9 @@ def read_excel_as_str(file_content: bytes, sheet: str, file_type: str = None) ->
             raise ValueError(str(e))
     # Оставляем только известные колонки: новые колонки в файле игнорируются (не попадают в staging)
     canonical_set = CANONICAL_BY_FILE_TYPE.get(file_type)
+    if file_type == "leftout_old":
+        # API-выгрузка left-out-report содержит расширенный набор колонок (в т.ч. превью товара).
+        canonical_set = (canonical_set or set()) | CANONICAL_LEFTOUT_API
     if canonical_set is not None:
         keep = [c for c in df.columns if c in canonical_set]
         if keep:

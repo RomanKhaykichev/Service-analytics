@@ -101,6 +101,21 @@ def test_leftout_old_ru_header_variants():
     assert rename["SKU"] == "SKU"
 
 
+def test_leftout_old_product_link_header():
+    """RU: «Ссылка на товар» from API left-out-report is kept in canonical mapping."""
+    headers = [
+        "Штрихкод",
+        "В продаже",
+        "Себест. (сумы)",
+        "Стоимость продажи (сумы)",
+        "Ссылка на товар",
+    ]
+    required = ["Штрихкод", "В продаже", "Себест. (сумы)", "Стоимость продажи (сумы)"]
+    rename, lang = map_headers_to_canonical("leftout_old", headers, required)
+    assert lang == "ru"
+    assert rename["Ссылка на товар"] == "Ссылка на товар"
+
+
 def test_leftout_old_ru_turnover_header_short():
     """RU: header 'Оборачиваемость' should map to canonical 'Оборачиваемость, дней'."""
     headers = ["Штрихкод", "В продаже", "Себест. (суммы)", "Стоимость продажи (суммы)", "Оборачиваемость"]

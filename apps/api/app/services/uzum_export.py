@@ -329,6 +329,32 @@ def _format_barcode(value: Any) -> str:
     return str(value).strip()
 
 
+def _extract_preview_image_url(sku: dict[str, Any], product: dict[str, Any]) -> str:
+    """URL превью: SKU previewImage, затем product previewImg / image / photo."""
+    candidates: list[Any] = [
+        sku.get("previewImage"),
+        product.get("previewImg"),
+        product.get("image"),
+        sku.get("photo"),
+        product.get("photo"),
+    ]
+    for raw in candidates:
+        if raw is None:
+            continue
+        if isinstance(raw, dict):
+            for key in ("high", "low", "url"):
+                nested = raw.get(key)
+                if nested:
+                    text = str(nested).strip()
+                    if text and text.lower() not in {"none", "nan", "null"}:
+                        return text
+            continue
+        text = str(raw).strip()
+        if text and text.lower() not in {"none", "nan", "null"}:
+            return text
+    return ""
+
+
 def _barcode_keys(barcode: str) -> list[str]:
     if not barcode:
         return []
@@ -826,7 +852,7 @@ class ProductCatalogIndex:
                     commission=sku.get("commission"),
                     product_status=product_status,
                     shop_name="",
-                    preview_image=str(sku.get("previewImage") or ""),
+                    preview_image=_extract_preview_image_url(sku, product),
                     quantity_on_photo_studio=sku.get("quantityOnPhotoStudio"),
                 )
                 if sku_id is not None:

@@ -34,7 +34,7 @@ const App = () => (
         <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
+        <BrowserRouter future={{ v7_relativeSplatPath: true }}>
           <ScrollToTop />
           <Routes>
             <Route path="/landing" element={<Landing />} />

@@ -105,6 +105,7 @@ CANONICAL_LEFTOUT_OLD = {
     "Стоимость хранения 1 дня, сум",
     "Среднесуточные продажи", "Среднесуточные продажи FBO за 15 дней, шт",
     "К отправке", "Общий остаток",
+    "Ссылка на товар",
 }
 
 # Uzum left-out-report (старый формат / загрузка в сервис) — порядок как в кабинете.
@@ -370,6 +371,8 @@ UZ_TO_RU_LEFTOUT_OLD: Dict[str, str] = {
     _n("Saqlash narxi 1 kun, soʻm"): "Стоимость хранения 1 дня, сум",
     _n("1 ta birlikni 1 kun saqlash evaziga, so'm"): "Стоимость хранения 1 дня, сум",
     _n("1 ta birlikni 1 kun saqlash evaziga, so‘m"): "Стоимость хранения 1 дня, сум",
+    _n("Mahsulot havolasi"): "Ссылка на товар",
+    _n("Tovar havolasi"): "Ссылка на товар",
     _n("1 ta birlikni 1 kun saqlash evaziga, soʻm"): "Стоимость хранения 1 дня, сум",
     # Оборачиваемость (дней) — для рекомендаций по отгрузке и расчётов
     _n("Aylanib turish"): "Оборачиваемость, дней",
@@ -541,6 +544,8 @@ def map_headers_to_canonical(
                     canonical = "SKU"
                 elif "id" in lower and "товар" in lower:
                     canonical = "ID товара"
+                elif "ссылка" in lower and "товар" in lower:
+                    canonical = "Ссылка на товар"
         if canonical:
             # Если несколько заголовков маппятся в одну каноническую колонку — берём первый
             # (например Sotuv qiymati (soʻm) и Sotuv qiymati (summa) (soʻm) → одна Стоимость продажи)

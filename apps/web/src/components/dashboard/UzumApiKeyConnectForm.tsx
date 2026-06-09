@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useUzumApiConnect } from "@/contexts/UzumApiConnectContext";
 import { fetchUzumApiKey } from "@/lib/uzumApiCredentials";
@@ -38,15 +37,8 @@ export function UzumApiKeyConnectForm({
   showLabel = true,
 }: UzumApiKeyConnectFormProps) {
   const { t } = useLanguage();
-  const {
-    loading,
-    loadingStep,
-    loadingProgress,
-    error,
-    warnings,
-    startConnect,
-    clearError,
-  } = useUzumApiConnect();
+  const { loading, loadingStep, loadingProgress, error, startConnect, clearError } =
+    useUzumApiConnect();
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [keyLoading, setKeyLoading] = useState(false);
@@ -163,12 +155,6 @@ export function UzumApiKeyConnectForm({
         )}
         {loading ? t("services.connectInProgress") : t("services.connect")}
       </Button>
-
-      {warnings.length > 0 && (
-        <Alert>
-          <AlertDescription>{warnings.join(" ")}</AlertDescription>
-        </Alert>
-      )}
     </div>
   );
 }

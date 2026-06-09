@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Query, Depends, HTTPException
+from fastapi.responses import Response
+from urllib.parse import urlparse
+import requests
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 from datetime import datetime, timedelta
 import logging
@@ -872,6 +875,73 @@ async def get_shipment_recommendations(
         )
 
 
+_PRODUCT_IMAGE_HOST_SUFFIXES = (".uzum.uz", ".uzummarket.uz")
+_UZUM_CDN_IMAGE_VARIANTS = (
+    "t_product_240_high.jpg",
+    "original.jpg",
+)
+
+
+def _is_bare_uzum_cdn_path(path: str) -> bool:
+    """images.uzum.uz/{hash} без расширения — нужен суффикс /t_product_240_high.jpg."""
+    cleaned = (path or "").strip("/")
+    if not cleaned or "/" in cleaned:
+        return False
+    return "." not in cleaned.split("/")[-1]
+
+
+def _uzum_cdn_fetch_candidates(url: str) -> list[str]:
+    normalized = _normalize_product_image_url(url)
+    if not normalized:
+        return []
+    parsed = urlparse(normalized)
+    host = (parsed.hostname or "").lower()
+    if not host.endswith("images.uzum.uz"):
+        return [normalized]
+    if _is_bare_uzum_cdn_path(parsed.path or ""):
+        base = normalized.rstrip("/")
+        return [f"{base}/{variant}" for variant in _UZUM_CDN_IMAGE_VARIANTS]
+    return [normalized]
+
+
+def _normalize_product_image_url(raw: Any) -> Optional[str]:
+    """Нормализует URL превью из left-out-report («Ссылка на товар» / previewImage)."""
+    url = _str_val(raw)
+    if not url or url.lower() in {"nan", "none", "null", "-"}:
+        return None
+    if url.startswith("//"):
+        return f"https:{url}"
+    if url.startswith("/"):
+        return f"https://images.uzum.uz{url}"
+    if url.lower().startswith(("http://", "https://")):
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        if host.startswith("seller.") or host == "seller.uzum.uz":
+            return None
+        return url
+    return None
+
+
+def _extract_product_image_url_from_data(data: dict) -> Optional[str]:
+    raw = _get_data_ru_uz(
+        data,
+        ["Ссылка на товар"],
+        ["Mahsulot havolasi", "Tovar havolasi"],
+    )
+    normalized = _normalize_product_image_url(raw)
+    if not normalized:
+        return None
+    candidates = _uzum_cdn_fetch_candidates(normalized)
+    return candidates[0] if candidates else normalized
+
+
+def _is_allowed_product_image_host(hostname: Optional[str]) -> bool:
+    if not hostname:
+        return False
+    host = hostname.lower()
+    return any(host == suffix[1:] or host.endswith(suffix) for suffix in _PRODUCT_IMAGE_HOST_SUFFIXES)
+
+
 def _parse_num(v) -> Optional[float]:
     """Parse number from data cell (int/float/string with comma)."""
     if v is None:
@@ -889,6 +959,61 @@ def _parse_int(v) -> Optional[int]:
     """Parse integer (e.g. В продаже, Остаток)."""
     n = _parse_num(v)
     return int(n) if n is not None and not (isinstance(n, float) and n != int(n)) else (int(n) if n is not None else None)
+
+
+@router.get("/charts/product-image")
+def proxy_product_image(
+    url: str = Query(..., min_length=8, max_length=2048),
+):
+    """
+    Прокси превью товаров Uzum для <img> (тег img не передаёт Authorization).
+    Разрешены только хосты *.uzum.uz / *.uzummarket.uz.
+    """
+    normalized = _normalize_product_image_url(url)
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Invalid image URL")
+    parsed = urlparse(normalized)
+    if not _is_allowed_product_image_host(parsed.hostname):
+        raise HTTPException(status_code=400, detail="Image host not allowed")
+    candidates = _uzum_cdn_fetch_candidates(url)
+    upstream = None
+    last_error: Optional[Exception] = None
+    for candidate in candidates:
+        try:
+            response = requests.get(
+                candidate,
+                timeout=12,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (compatible; PROFiboard/1.0)",
+                    "Accept": "image/avif,image/webp,image/*,*/*;q=0.8",
+                },
+            )
+            response.raise_for_status()
+            content_type = response.headers.get("Content-Type") or "image/jpeg"
+            if not str(content_type).lower().startswith("image/"):
+                last_error = ValueError(f"Not an image: {content_type}")
+                continue
+            upstream = response
+            break
+        except (requests.RequestException, ValueError) as exc:
+            last_error = exc
+            logger.debug("product-image candidate failed %s: %s", candidate, exc)
+
+    if upstream is None:
+        logger.warning(
+            "product-image proxy failed for %s (tried %s): %s",
+            normalized,
+            candidates,
+            last_error,
+        )
+        raise HTTPException(status_code=502, detail="Failed to fetch product image") from last_error
+
+    content_type = upstream.headers.get("Content-Type") or "image/jpeg"
+    return Response(
+        content=upstream.content,
+        media_type=content_type,
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
 
 
 @router.get("/charts/products-table", response_model=ProductsTableResponse)
@@ -1273,6 +1398,7 @@ async def get_products_table(
             stock = _parse_int(data.get("Общий остаток") or data.get("В продаже") or in_sale_raw)
             storage_cost = _parse_num(data.get("Стоимость хранения 1 дня, сум") or data.get("Стоимость хранения 1 дня"))
             barcode = _str_val(data.get("Штрихкод")) or barcode_raw
+            product_image_url = _extract_product_image_url_from_data(data)
 
             # Габаритная группа и Магазин — только из seller-storage (fact_storage_snapshot), колонка Магазин = shop_raw
             shop = None
@@ -1334,6 +1460,7 @@ async def get_products_table(
                 abc_profit=abc_profit_by_barcode.get(barcode_norm),
                 abc_revenue=abc_revenue_by_barcode.get(barcode_norm),
                 barcode=barcode,
+                product_image_url=product_image_url,
                 storage_cost_per_day=storage_cost,
                 shop=shop,
             ))

@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -82,6 +83,7 @@ function UzumApiConnectProgressBanner() {
 
 export function UzumApiConnectProvider({ children }: { children: ReactNode }) {
   const { t } = useLanguage();
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -144,7 +146,7 @@ export function UzumApiConnectProvider({ children }: { children: ReactNode }) {
         }
         toast.success(t("services.loadDataSuccess"));
         options?.onSuccess?.();
-        window.location.reload();
+        await queryClient.invalidateQueries();
       } catch (e) {
         const message = formatUzumConnectError(e, t, {
           generic: t("services.connectFailed"),
@@ -157,7 +159,7 @@ export function UzumApiConnectProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     },
-    [t],
+    [queryClient, t],
   );
 
   const refreshData = useCallback(
