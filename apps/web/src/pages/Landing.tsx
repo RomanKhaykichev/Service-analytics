@@ -57,7 +57,7 @@ export default function Landing() {
         <Hero onOpenAuth={openAuth} onOpenPromo={openPromo} />
         <ChartPreviewBlock />
         <Features />
-        <HowItWorks />
+        <HowItWorks onOpenAuth={openAuth} onOpenPromo={openPromo} />
         <Testimonials />
         <FAQ />
         <LandingClosingTagline onOpenAuth={openAuth} onOpenPromo={openPromo} />

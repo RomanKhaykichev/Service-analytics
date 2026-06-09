@@ -34,7 +34,7 @@ const copy = {
     headlineHighlight1: "убыточные товары",
     headlineMiddle: " и ",
     headlineHighlight2: "скрытые расходы",
-    subtitle: "Получите готовую аналитику вашего магазина на Uzum за 2 минуты",
+    subtitle: "Получите готовую аналитику вашего магазина на Uzum.",
     features: [
       {
         line1: "Реальная прибыль",

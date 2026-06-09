@@ -1,17 +1,6 @@
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { createPortal } from "react-dom";
-import {
-  Info,
-  X,
-  BarChart3,
-  Trophy,
-  PieChart,
-  Package,
-  LineChart,
-  ShieldCheck,
-  KeyRound,
-  Star,
-} from "lucide-react";
+import { Info, X, ShieldCheck, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -59,21 +48,11 @@ function StepZoomImage({
   );
 }
 
-const LANDING_TESTIMONIAL_AVATAR_SRCS = [
-  "/testimonial-1.png",
-  "/testimonial-2.png",
-  "/testimonial-3.png",
-  "/testimonial-4.png",
-] as const;
-
 const HELP_CONNECT_API_STEP1_IMAGE_URLS = [
   "/images/help-connect-api-uzum-profile-menu.png",
   "/images/help-connect-api-uzum-api-keys.png",
   "/images/help-connect-api-uzum-create-key.png",
 ] as const;
-
-/** Ширина блока «Что вы получите…» как при max-w-6xl (3.5/12 колонки). */
-const HELP_CONNECT_BENEFITS_WIDTH = "19.75rem";
 
 export const HelpConnectApiDialog = forwardRef<HelpConnectApiDialogHandle, HelpConnectApiDialogProps>(
   function HelpConnectApiDialog({ disabled }, ref) {
@@ -117,68 +96,7 @@ export const HelpConnectApiDialog = forwardRef<HelpConnectApiDialogHandle, HelpC
 
             <div className="flex-1 overflow-y-auto pr-1 -mr-1 min-h-0 sm:pr-2 sm:-mr-2">
               <div className="mt-4 space-y-6">
-                <div
-                  className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-[var(--help-connect-benefits-width)_minmax(0,1fr)] lg:items-stretch lg:gap-5"
-                  style={{ ["--help-connect-benefits-width" as string]: HELP_CONNECT_BENEFITS_WIDTH }}
-                >
-                  <div className="flex min-w-0 flex-col rounded-xl border border-slate-200/90 bg-primary/5 p-4 shadow-sm dark:border-zinc-700/90 dark:bg-primary/10 lg:shrink-0">
-                    <h3 className="text-sm font-bold leading-snug tracking-tight text-primary sm:text-[15px]">
-                      {t("helpConnectApi.benefitsHeading")}
-                    </h3>
-                    <ul className="mt-3 space-y-2 text-left">
-                      {(
-                        [
-                          [BarChart3, "text-primary", "bg-violet-100 dark:bg-violet-950/50"],
-                          [Trophy, "text-emerald-600", "bg-emerald-100 dark:bg-emerald-950/40"],
-                          [PieChart, "text-blue-600", "bg-blue-100 dark:bg-blue-950/40"],
-                          [Package, "text-orange-600", "bg-orange-100 dark:bg-orange-950/40"],
-                          [LineChart, "text-sky-600", "bg-sky-100 dark:bg-sky-950/40"],
-                        ] as const
-                      ).map(([Icon, color, tile], i) => {
-                        const pairs = [
-                          ["helpConnectApi.benefit1Title", "helpConnectApi.benefit1Desc"],
-                          ["helpConnectApi.benefit2Title", "helpConnectApi.benefit2Desc"],
-                          ["helpConnectApi.benefit3Title", "helpConnectApi.benefit3Desc"],
-                          ["helpConnectApi.benefit4Title", "helpConnectApi.benefit4Desc"],
-                          ["helpConnectApi.benefit5Title", "helpConnectApi.benefit5Desc"],
-                        ] as const;
-                        const [titleKey, descKey] = pairs[i];
-                        return (
-                          <li key={titleKey} className="flex items-start gap-3">
-                            <span
-                              className={`mt-px flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${tile}`}
-                              aria-hidden
-                            >
-                              <Icon className={`h-5 w-5 ${color}`} strokeWidth={2.35} />
-                            </span>
-                            <div className="min-w-0 flex flex-col gap-0">
-                              <span className="text-sm font-bold leading-tight text-slate-900 dark:text-foreground">
-                                {t(titleKey)}
-                              </span>
-                              <span className="text-[13px] font-normal leading-tight text-slate-600 dark:text-muted-foreground">
-                                {t(descKey)}
-                              </span>
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                    <div className="mt-4 grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-1.5 rounded-lg border border-emerald-200 bg-emerald-50/95 p-3 text-left dark:border-emerald-800/60 dark:bg-emerald-950/35">
-                      <ShieldCheck
-                        className="row-start-1 h-7 w-7 shrink-0 self-start text-emerald-700 dark:text-emerald-300"
-                        strokeWidth={2.25}
-                        aria-hidden
-                      />
-                      <span className="row-start-1 min-w-0 self-start pt-0.5 text-xs font-bold leading-snug text-emerald-950 dark:text-emerald-50">
-                        {t("helpConnectApi.dataSafetyTitle")}
-                      </span>
-                      <span className="col-span-2 row-start-2 w-full text-xs font-normal leading-relaxed text-slate-600 dark:text-muted-foreground">
-                        {t("helpConnectApi.dataSafetyBody")}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-sm dark:border-zinc-700/90 dark:bg-zinc-950/60">
+                <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-sm dark:border-zinc-700/90 dark:bg-zinc-950/60">
                     <div className="flex min-h-0 min-w-0 flex-1 flex-col content-start">
                       <div className="flex shrink-0 items-center gap-2.5 border-b border-slate-200/90 bg-violet-50/90 px-3 py-2.5 dark:border-zinc-700/80 dark:bg-violet-950/25">
                         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
@@ -224,6 +142,19 @@ export const HelpConnectApiDialog = forwardRef<HelpConnectApiDialogHandle, HelpC
                           }
                         />
                         <p className={stepInstructionClassName}>{t("helpConnectApi.step1Line3")}</p>
+                        <div className="mx-3 grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-1.5 rounded-lg border border-emerald-200 bg-emerald-50/95 p-3 text-left dark:border-emerald-800/60 dark:bg-emerald-950/35">
+                          <ShieldCheck
+                            className="row-start-1 h-7 w-7 shrink-0 self-start text-emerald-700 dark:text-emerald-300"
+                            strokeWidth={2.25}
+                            aria-hidden
+                          />
+                          <span className="row-start-1 min-w-0 self-start pt-0.5 text-xs font-bold leading-snug text-emerald-950 dark:text-emerald-50">
+                            {t("helpConnectApi.dataSafetyTitle")}
+                          </span>
+                          <span className="col-span-2 row-start-2 w-full text-xs font-normal leading-relaxed text-slate-600 dark:text-muted-foreground">
+                            {t("helpConnectApi.dataSafetyBody")}
+                          </span>
+                        </div>
                         <UzumApiKeyConnectForm
                           inputId="help-connect-api-key"
                           active={open}
@@ -268,79 +199,8 @@ export const HelpConnectApiDialog = forwardRef<HelpConnectApiDialogHandle, HelpC
                       </span>
                     </div>
                   </div>
-                </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-12">
-                  <div className="flex flex-col gap-2.5 rounded-xl border border-violet-200/80 bg-violet-50/95 p-3 shadow-sm dark:border-violet-900/40 dark:bg-violet-950/25 sm:gap-3 sm:p-4 lg:col-span-8 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
-                    <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
-                      <div className="flex shrink-0 items-center gap-2 pl-0.5">
-                        <div className="flex items-center" aria-hidden>
-                          {LANDING_TESTIMONIAL_AVATAR_SRCS.map((src) => (
-                            <img
-                              key={src}
-                              src={src}
-                              alt=""
-                              width={36}
-                              height={36}
-                              loading="lazy"
-                              decoding="async"
-                              className="-ml-2 h-9 w-9 shrink-0 rounded-full border-[3px] border-white object-cover shadow-sm first:ml-0 dark:border-violet-950"
-                            />
-                          ))}
-                        </div>
-                        <div className="flex shrink-0 gap-0.5 text-amber-400" aria-hidden>
-                          {[0, 1, 2, 3, 4].map((i) => (
-                            <Star
-                              key={i}
-                              className="h-3.5 w-3.5 fill-amber-400 text-amber-400 sm:h-4 sm:w-4"
-                            />
-                          ))}
-                        </div>
-                      </div>
-                      <p className="min-w-0 text-xs font-medium leading-tight text-slate-700 dark:text-slate-200 sm:text-[13px] sm:leading-snug">
-                        <span className="font-bold text-slate-900 dark:text-foreground">
-                          {t("helpConnectApi.socialProofBold")}{" "}
-                        </span>
-                        {t("helpConnectApi.socialProofRest")}
-                      </p>
-                    </div>
-
-                    <div className="w-full shrink-0 rounded-xl border border-slate-200/90 bg-white p-3 shadow-sm dark:border-zinc-700/90 dark:bg-zinc-950/80 lg:max-w-none lg:min-w-[21rem] lg:basis-[48%] lg:shrink-0">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3">
-                        <div className="mx-auto shrink-0 overflow-hidden rounded-lg border border-slate-200/90 bg-slate-50 shadow-sm ring-1 ring-slate-200/50 dark:border-zinc-600 dark:bg-zinc-900 dark:ring-zinc-700/80 sm:mx-0">
-                          <img
-                            src="/images/guided-demo-dashboard-preview.png"
-                            alt={t("helpConnectApi.demoPreviewAlt")}
-                            width={160}
-                            height={100}
-                            loading="lazy"
-                            decoding="async"
-                            className="block h-auto max-h-[3.5rem] w-[6.5rem] max-w-full object-contain object-top sm:max-h-[4rem] sm:w-[7.25rem]"
-                          />
-                        </div>
-                        <div className="flex min-w-0 flex-1 flex-col gap-1.5 text-center sm:text-left">
-                          <p className="text-xs font-bold leading-tight text-emerald-950 dark:text-emerald-50 lg:whitespace-nowrap">
-                            {t("helpConnectApi.demoHeading")}
-                          </p>
-                          <p className="text-xs font-normal leading-snug text-slate-600 dark:text-muted-foreground">
-                            {t("helpConnectApi.demoSubtitle")}
-                          </p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-9 w-full border-2 border-primary text-sm font-bold text-primary shadow-sm hover:bg-primary/10 sm:max-w-none"
-                            asChild
-                          >
-                            <Link to="/training" onClick={() => setOpen(false)}>
-                              {t("helpConnectApi.demoButton")}
-                            </Link>
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-center rounded-xl border border-emerald-200/90 bg-emerald-50/95 p-3 shadow-sm dark:border-emerald-800/50 dark:bg-emerald-950/35 lg:col-span-4">
+                <div className="flex justify-center rounded-xl border border-emerald-200/90 bg-emerald-50/95 p-3 shadow-sm dark:border-emerald-800/50 dark:bg-emerald-950/35">
                     <div className="flex max-w-full flex-row items-center gap-3">
                       <a
                         href="https://t.me/PROFiboard"
@@ -367,7 +227,6 @@ export const HelpConnectApiDialog = forwardRef<HelpConnectApiDialogHandle, HelpC
                       </div>
                     </div>
                   </div>
-                </div>
               </div>
             </div>
 
