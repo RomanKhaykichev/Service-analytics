@@ -10,6 +10,7 @@ import {
 import { Loader2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { fetchUzumApiKey } from "@/lib/uzumApiCredentials";
 import { formatUzumConnectError } from "@/lib/uzumApiErrors";
 import { syncUzumReportsToService } from "@/lib/uzumApiSync";
 import { toast } from "sonner";
@@ -28,6 +29,10 @@ interface StartConnectOptions {
   onSuccess?: () => void;
 }
 
+interface RefreshDataOptions {
+  onNoKey?: () => void;
+}
+
 interface UzumApiConnectContextValue {
   loading: boolean;
   loadingStep: number;
@@ -35,6 +40,7 @@ interface UzumApiConnectContextValue {
   error: string | null;
   warnings: string[];
   startConnect: (apiKey: string, options?: StartConnectOptions) => Promise<void>;
+  refreshData: (options?: RefreshDataOptions) => Promise<void>;
   clearError: () => void;
 }
 
@@ -140,18 +146,42 @@ export function UzumApiConnectProvider({ children }: { children: ReactNode }) {
         options?.onSuccess?.();
         window.location.reload();
       } catch (e) {
-        setError(
-          formatUzumConnectError(e, t, {
-            generic: t("services.connectFailed"),
-            rateLimit: t("services.rateLimit"),
-          }),
-        );
+        const message = formatUzumConnectError(e, t, {
+          generic: t("services.connectFailed"),
+          rateLimit: t("services.rateLimit"),
+        });
+        setError(message);
+        toast.error(message);
       } finally {
         connectInFlightRef.current = false;
         setLoading(false);
       }
     },
     [t],
+  );
+
+  const refreshData = useCallback(
+    async (options?: RefreshDataOptions) => {
+      if (connectInFlightRef.current) return;
+
+      let savedKey: string | null = null;
+      try {
+        const data = await fetchUzumApiKey();
+        savedKey = data.api_key;
+      } catch {
+        toast.error(t("services.refreshFailed"));
+        return;
+      }
+
+      if (!savedKey?.trim()) {
+        toast.error(t("services.noSavedApiKey"));
+        options?.onNoKey?.();
+        return;
+      }
+
+      await startConnect(savedKey);
+    },
+    [startConnect, t],
   );
 
   return (
@@ -163,6 +193,7 @@ export function UzumApiConnectProvider({ children }: { children: ReactNode }) {
         error,
         warnings,
         startConnect,
+        refreshData,
         clearError,
       }}
     >
