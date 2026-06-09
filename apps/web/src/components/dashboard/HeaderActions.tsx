@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { UzumApiConnectDialog, type UzumApiConnectDialogHandle } from "./UzumApiConnectDialog";
+import { HelpConnectApiDialog, type HelpConnectApiDialogHandle } from "./HelpConnectApiDialog";
 import { PricingDialog } from "./PricingDialog";
 import { ProfileDialog } from "./ProfileDialog";
 import { useNavigate, Link } from "react-router-dom";
@@ -53,6 +54,7 @@ export function HeaderActions({ apiConnectRef: apiConnectRefProp }: HeaderAction
   const [profileOpen, setProfileOpen] = useState(false);
   const apiConnectRefInternal = useRef<UzumApiConnectDialogHandle>(null);
   const apiConnectRef = apiConnectRefProp ?? apiConnectRefInternal;
+  const helpConnectApiRef = useRef<HelpConnectApiDialogHandle>(null);
   /** Чтобы не открывать снова при каждом refetch при 0 магазинах; сбрасывается при появлении магазина или новом монтировании шапки (новый «вход» на главную). */
   const noShopsGuidedOpenedThisMountRef = useRef(false);
   const displayName = getUserDisplayName(user);
@@ -116,6 +118,7 @@ export function HeaderActions({ apiConnectRef: apiConnectRefProp }: HeaderAction
     <div className="flex items-center gap-4 sm:gap-5">
       {/* Report Upload */}
       <UzumApiConnectDialog ref={apiConnectRef} disabled={isTrialExpired} />
+      <HelpConnectApiDialog ref={helpConnectApiRef} disabled={isTrialExpired} />
 
       <div className="flex items-center gap-1 sm:gap-1.5">
       {/* Help — заметная кнопка, подпись на sm+, подсказка при наведении */}
@@ -146,7 +149,7 @@ export function HeaderActions({ apiConnectRef: apiConnectRefProp }: HeaderAction
             className="cursor-pointer"
             disabled={isTrialExpired}
             onSelect={() => {
-              apiConnectRef.current?.open();
+              helpConnectApiRef.current?.open();
             }}
           >
             <KeyRound className="w-4 h-4 mr-2" />

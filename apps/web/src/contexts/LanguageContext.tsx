@@ -106,7 +106,47 @@ const translations: Record<Language, Record<string, string>> = {
     'services.loadDataHint': 'Выгружает 4 отчёта из Uzum API с начала года и импортирует их в сервис.',
     'services.loadDataSuccess': 'Данные загружены',
     'services.loadDataFailed': 'Не удалось загрузить данные',
-    
+
+    // Help → Подключить API (отдельная копия окна из архива)
+    'helpConnectApi.heroTitle': 'Получите аналитику продаж и прибыли за 2 минуты',
+    'helpConnectApi.heroSubtitle':
+      'Подключите UZUM Seller API из личного кабинета — и мы покажем, что приносит прибыль, а что тянет ваш бизнес вниз.',
+    'helpConnectApi.watchVideo': 'Смотреть видео (~2 мин)',
+    'helpConnectApi.benefitsHeading': 'Что вы получите после загрузки',
+    'helpConnectApi.benefit1Title': 'Прибыль и реальные',
+    'helpConnectApi.benefit1Desc': 'показатели по дням',
+    'helpConnectApi.benefit2Title': 'Топ прибыльные',
+    'helpConnectApi.benefit2Desc': 'и убыточные товары',
+    'helpConnectApi.benefit3Title': 'Все расходы',
+    'helpConnectApi.benefit3Desc': 'и комиссии Uzum',
+    'helpConnectApi.benefit4Title': 'Остатки и хранение',
+    'helpConnectApi.benefit4Desc': 'товаров',
+    'helpConnectApi.benefit5Title': 'Тренды и динамика',
+    'helpConnectApi.benefit5Desc': 'продаж',
+    'helpConnectApi.dataSafetyTitle': 'Ваши данные в безопасности',
+    'helpConnectApi.dataSafetyBody':
+      'Мы не передаем данные третьим лицам. Вы можете удалить их в любой момент.',
+    'helpConnectApi.step1Title': 'Подключение UZUM Seller API',
+    'helpConnectApi.step1Line2': '2. Создайте ключ.',
+    'helpConnectApi.step1Line3': '3. Скопируйте ключ в окно подключения в сервисе PROFiboard.',
+    'helpConnectApi.step1Footnote': 'Подключение займет от 4 до 10 минут.',
+    'helpConnectApi.whileConnectingText':
+      '✨ Уже через несколько минут вы сможете видеть аналитику своего магазина в реальном времени. Пока идет подключение, посмотрите обзор дашборда и узнайте, какие товары приносят прибыль, где растут расходы и на что стоит обратить внимание в первую очередь.',
+    'helpConnectApi.dashboardOverviewButton': 'Смотреть обзор дашборда',
+    'helpConnectApi.step2Title': 'Загрузите 4 отчета в PROFiboard',
+    'helpConnectApi.step2Body':
+      '1. Нажмите на кнопку «Загрузить отчеты» в шапке сервиса PROFiboard.\n2. Перетащите файлы или нажмите на окно загрузки.',
+    'helpConnectApi.socialProofBold': '98% продавцов',
+    'helpConnectApi.socialProofRest':
+      'уже получают аналитику через 2 минуты после первой загрузки отчетов',
+    'helpConnectApi.demoHeading': 'Не хотите загружать сейчас?',
+    'helpConnectApi.demoSubtitle': 'Посмотрите демо-дашборд с примерами реальных данных.',
+    'helpConnectApi.demoButton': 'Посмотреть демо',
+    'helpConnectApi.demoPreviewAlt': 'Превью демо-дашборда PROFiboard',
+    'helpConnectApi.telegramHelpTitle': 'Нужна помощь с первой загрузкой?',
+    'helpConnectApi.telegramHelpBody':
+      'Ответим в течение 5 минут в Telegram и поможем шаг за шагом.',
+
     // Filters
     'filter.today': 'Сегодня',
     'filter.yesterday': 'Вчера',
@@ -773,7 +813,47 @@ const translations: Record<Language, Record<string, string>> = {
     'services.loadDataHint': "Yil boshidan 4 ta hisobotni Uzum API dan yuklab, xizmatga import qiladi.",
     'services.loadDataSuccess': 'Maʼlumotlar yuklandi',
     'services.loadDataFailed': 'Maʼlumotlarni yuklab bo‘lmadi',
-    
+
+    // Help → API ulash (arxivdan alohida nusxa)
+    'helpConnectApi.heroTitle': '2 daqiqada savdo va foyda tahlilini oling',
+    'helpConnectApi.heroSubtitle':
+      'Uzum shaxsiy kabinetidan UZUM Seller API ni ulang — nima foyda keltirishi va biznesingizni pastga tortishini ko‘rsatamiz.',
+    'helpConnectApi.watchVideo': 'Videoni tomosha qilish (~2 daqiqa)',
+    'helpConnectApi.benefitsHeading': 'Yuklashdan keyin nima olasiz',
+    'helpConnectApi.benefit1Title': 'Foyda va haqiqiy',
+    'helpConnectApi.benefit1Desc': 'kunlar bo‘yicha ko‘rsatkichlar',
+    'helpConnectApi.benefit2Title': 'Eng foydali',
+    'helpConnectApi.benefit2Desc': 'va zararli tovarlar',
+    'helpConnectApi.benefit3Title': 'Barcha xarajatlar',
+    'helpConnectApi.benefit3Desc': 'va Uzum komissiyalari',
+    'helpConnectApi.benefit4Title': 'Qoldiqlar va saqlash',
+    'helpConnectApi.benefit4Desc': 'tovarlari',
+    'helpConnectApi.benefit5Title': 'Trendlar va dinamika',
+    'helpConnectApi.benefit5Desc': 'savdosi',
+    'helpConnectApi.dataSafetyTitle': 'Ma’lumotlaringiz xavfsiz',
+    'helpConnectApi.dataSafetyBody':
+      'Uchinchi shaxslarga bermaymiz. Istalgan vaqtda o‘chirib tashlashingiz mumkin.',
+    'helpConnectApi.step1Title': 'UZUM Seller API ulanishi',
+    'helpConnectApi.step1Line2': '2. Kalit yarating.',
+    'helpConnectApi.step1Line3': '3. Kalitni PROFiboard xizmatidagi ulanish oynasiga nusxalang.',
+    'helpConnectApi.step1Footnote': 'Ulanish 4 dan 10 daqiqagacha vaqt oladi.',
+    'helpConnectApi.whileConnectingText':
+      '✨ Bir necha daqiqadan so‘ng do‘koningiz tahlilini real vaqt rejimida ko‘ra olasiz. Ulanish davomida dashbord sharhini ko‘ring: qaysi tovarlar foyda keltirishi, xarajatlar qayerda o‘sishi va birinchi navbatda nimalarga e’tibor berish kerakligini bilib oling.',
+    'helpConnectApi.dashboardOverviewButton': 'Dashbord sharhini ko‘rish',
+    'helpConnectApi.step2Title': 'PROFiboard’ga 4 ta hisobotni yuklang',
+    'helpConnectApi.step2Body':
+      '1. PROFiboard sarlavhasidagi «Hisobotlarni yuklash» tugmasini bosing.\n2. Fayllarni sudrab tashlang yoki yuklash oynasini bosing.',
+    'helpConnectApi.socialProofBold': 'Sotuvchilarning 98%',
+    'helpConnectApi.socialProofRest':
+      'hisobotlarni birinchi marta yuklaganidan keyin 2 daqiqada tahlil oladi.',
+    'helpConnectApi.demoHeading': 'Hozir yuklamoqchi emasmisiz?',
+    'helpConnectApi.demoSubtitle': 'Haqiqiy ma’lumotlar bilan demo-dashbordni ko‘ring.',
+    'helpConnectApi.demoButton': 'Demoni ko‘rish',
+    'helpConnectApi.demoPreviewAlt': 'PROFiboard demo-dashbord ko‘rinishi',
+    'helpConnectApi.telegramHelpTitle': 'Birinchi yuklashda yordam kerakmi?',
+    'helpConnectApi.telegramHelpBody':
+      'Telegramda 5 daqiqa ichida javob beramiz va qadam-baqadam yordam beramiz.',
+
     // Filters
     'filter.today': 'Bugun',
     'filter.yesterday': 'Kecha',
