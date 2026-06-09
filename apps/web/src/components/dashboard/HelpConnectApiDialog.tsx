@@ -88,9 +88,6 @@ export const HelpConnectApiDialog = forwardRef<HelpConnectApiDialogHandle, HelpC
                 <DialogTitle className="text-balance text-left text-xl font-bold leading-tight tracking-tight text-slate-900 dark:text-foreground sm:text-2xl">
                   {t("helpConnectApi.heroTitle")}
                 </DialogTitle>
-                <p className="max-w-full text-balance text-sm font-medium leading-snug text-slate-600 dark:text-muted-foreground sm:text-[15px] sm:leading-relaxed">
-                  {t("helpConnectApi.heroSubtitle")}
-                </p>
               </div>
             </DialogHeader>
 
@@ -142,19 +139,6 @@ export const HelpConnectApiDialog = forwardRef<HelpConnectApiDialogHandle, HelpC
                           }
                         />
                         <p className={stepInstructionClassName}>{t("helpConnectApi.step1Line3")}</p>
-                        <div className="mx-3 grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-1.5 rounded-lg border border-emerald-200 bg-emerald-50/95 p-3 text-left dark:border-emerald-800/60 dark:bg-emerald-950/35">
-                          <ShieldCheck
-                            className="row-start-1 h-7 w-7 shrink-0 self-start text-emerald-700 dark:text-emerald-300"
-                            strokeWidth={2.25}
-                            aria-hidden
-                          />
-                          <span className="row-start-1 min-w-0 self-start pt-0.5 text-xs font-bold leading-snug text-emerald-950 dark:text-emerald-50">
-                            {t("helpConnectApi.dataSafetyTitle")}
-                          </span>
-                          <span className="col-span-2 row-start-2 w-full text-xs font-normal leading-relaxed text-slate-600 dark:text-muted-foreground">
-                            {t("helpConnectApi.dataSafetyBody")}
-                          </span>
-                        </div>
                         <UzumApiKeyConnectForm
                           inputId="help-connect-api-key"
                           active={open}
@@ -162,10 +146,7 @@ export const HelpConnectApiDialog = forwardRef<HelpConnectApiDialogHandle, HelpC
                           showLabel={false}
                           className="px-3 pb-1"
                           buttonClassName="w-full"
-                          onSuccess={() => {
-                            setOpen(false);
-                            window.location.reload();
-                          }}
+                          onSuccess={() => setOpen(false)}
                         />
                         <div className="space-y-3 px-3 pb-2">
                           <p className="text-xs font-medium leading-relaxed text-slate-600 dark:text-muted-foreground sm:text-[13px]">
@@ -200,7 +181,8 @@ export const HelpConnectApiDialog = forwardRef<HelpConnectApiDialogHandle, HelpC
                     </div>
                   </div>
 
-                <div className="flex justify-center rounded-xl border border-emerald-200/90 bg-emerald-50/95 p-3 shadow-sm dark:border-emerald-800/50 dark:bg-emerald-950/35">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+                  <div className="flex h-full items-center justify-center rounded-xl border border-emerald-200/90 bg-emerald-50/95 p-3 shadow-sm dark:border-emerald-800/50 dark:bg-emerald-950/35">
                     <div className="flex max-w-full flex-row items-center gap-3">
                       <a
                         href="https://t.me/PROFiboard"
@@ -227,6 +209,23 @@ export const HelpConnectApiDialog = forwardRef<HelpConnectApiDialogHandle, HelpC
                       </div>
                     </div>
                   </div>
+
+                  <div className="flex h-full flex-col justify-center rounded-xl border border-emerald-200/90 bg-emerald-50/95 p-3 text-left shadow-sm dark:border-emerald-800/50 dark:bg-emerald-950/35">
+                    <div className="grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-1.5">
+                      <ShieldCheck
+                        className="row-start-1 h-7 w-7 shrink-0 self-start text-emerald-700 dark:text-emerald-300"
+                        strokeWidth={2.25}
+                        aria-hidden
+                      />
+                      <span className="row-start-1 min-w-0 self-start pt-0.5 text-xs font-bold leading-snug text-emerald-950 dark:text-emerald-50 sm:text-[13px]">
+                        {t("helpConnectApi.dataSafetyTitle")}
+                      </span>
+                      <span className="col-span-2 row-start-2 w-full text-xs font-normal leading-relaxed text-slate-600 dark:text-muted-foreground sm:text-[13px]">
+                        {t("helpConnectApi.dataSafetyBody")}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 

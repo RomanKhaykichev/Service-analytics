@@ -57,6 +57,7 @@ const translations: Record<Language, Record<string, string>> = {
     'services.instructionStep1Link': 'Настройки → API ключи',
     'services.instructionStep1Suffix': '.',
     'services.instructionStep2': 'Создайте ключ.',
+    'services.instructionStep2GuideLink': 'Подключение за 3 шага',
     'services.instructionStep3': 'Скопируйте ключ в окно подключения в сервисе PROFiboard.',
     'services.instructionImportant': 'ВАЖНО: Подключение займет от 4 до 10 минут.',
     'services.descriptionOpenApi': 'Исследуйте официальный OpenAPI продавца Uzum Market. Ключ создаётся в личном кабинете seller.uzum.uz.',
@@ -108,9 +109,7 @@ const translations: Record<Language, Record<string, string>> = {
     'services.loadDataFailed': 'Не удалось загрузить данные',
 
     // Help → Подключить API (отдельная копия окна из архива)
-    'helpConnectApi.heroTitle': 'Получите аналитику продаж и прибыли за 2 минуты',
-    'helpConnectApi.heroSubtitle':
-      'Подключите UZUM Seller API из личного кабинета — и мы покажем, что приносит прибыль, а что тянет ваш бизнес вниз.',
+    'helpConnectApi.heroTitle': 'Подключение API за 3 шага',
     'helpConnectApi.watchVideo': 'Смотреть видео (~2 мин)',
     'helpConnectApi.benefitsHeading': 'Что вы получите после загрузки',
     'helpConnectApi.benefit1Title': 'Прибыль и реальные',
@@ -222,6 +221,7 @@ const translations: Record<Language, Record<string, string>> = {
     'header.help': 'Помощь',
     'header.helpTooltip': 'Справка, обучение и связь с поддержкой',
     'header.helpUploadReports': 'Загрузка отчётов',
+    'header.helpConnectApi': 'Подключение API за 3 шага',
     'header.connectApi': 'Подключить API',
     'header.apiConnected': 'API подключён',
     'header.videoTutorials': 'Видео-уроки',
@@ -764,6 +764,7 @@ const translations: Record<Language, Record<string, string>> = {
     'services.instructionStep1Link': 'Sozlamalar → API kalitlari',
     'services.instructionStep1Suffix': '.',
     'services.instructionStep2': 'Kalit yarating.',
+    'services.instructionStep2GuideLink': 'API ulash: 3 qadamda',
     'services.instructionStep3': 'Kalitni PROFiboard xizmatidagi ulanish oynasiga nusxalang.',
     'services.instructionImportant': 'MUHIM: Ulanish 4 dan 10 daqiqagacha vaqt oladi.',
     'services.descriptionOpenApi': 'Uzum Market rasmiy sotuvchi OpenAPIʼsini o‘rganing. Kalit seller.uzum.uz kabinetida yaratiladi.',
@@ -815,9 +816,7 @@ const translations: Record<Language, Record<string, string>> = {
     'services.loadDataFailed': 'Maʼlumotlarni yuklab bo‘lmadi',
 
     // Help → API ulash (arxivdan alohida nusxa)
-    'helpConnectApi.heroTitle': '2 daqiqada savdo va foyda tahlilini oling',
-    'helpConnectApi.heroSubtitle':
-      'Uzum shaxsiy kabinetidan UZUM Seller API ni ulang — nima foyda keltirishi va biznesingizni pastga tortishini ko‘rsatamiz.',
+    'helpConnectApi.heroTitle': 'API ulash: 3 qadamda',
     'helpConnectApi.watchVideo': 'Videoni tomosha qilish (~2 daqiqa)',
     'helpConnectApi.benefitsHeading': 'Yuklashdan keyin nima olasiz',
     'helpConnectApi.benefit1Title': 'Foyda va haqiqiy',
@@ -929,6 +928,7 @@ const translations: Record<Language, Record<string, string>> = {
     'header.help': 'Yordam',
     'header.helpTooltip': 'Qo‘llanma, video darslar va qo‘llab-quvvatlash',
     'header.helpUploadReports': 'Hisobotlarni yuklash',
+    'header.helpConnectApi': 'API ulash: 3 qadamda',
     'header.connectApi': 'API ulash',
     'header.apiConnected': 'API ulandi',
     'header.videoTutorials': 'Video- darsliklar',

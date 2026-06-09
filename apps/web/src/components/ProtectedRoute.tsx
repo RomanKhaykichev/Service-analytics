@@ -1,13 +1,10 @@
-import { ReactNode } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Loader2 } from 'lucide-react';
+import { UzumApiConnectProvider } from '@/contexts/UzumApiConnectContext';
 
-interface ProtectedRouteProps {
-  children: ReactNode;
-}
-
-export function ProtectedRoute({ children }: ProtectedRouteProps) {
+/** Защищённый layout: одна сессия подключения API на все страницы дашборда. */
+export function ProtectedRoute() {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -22,5 +19,9 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <Navigate to="/landing" replace />;
   }
 
-  return <>{children}</>;
+  return (
+    <UzumApiConnectProvider>
+      <Outlet />
+    </UzumApiConnectProvider>
+  );
 }

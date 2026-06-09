@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Eye, EyeOff, KeyRound, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,10 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useUzumApiConnect } from "@/contexts/UzumApiConnectContext";
 import { fetchUzumApiKey } from "@/lib/uzumApiCredentials";
-import { formatUzumConnectError } from "@/lib/uzumApiErrors";
-import { syncUzumReportsToService } from "@/lib/uzumApiSync";
-import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const CONNECT_LOADING_STEP_KEYS = [
@@ -18,9 +16,6 @@ const CONNECT_LOADING_STEP_KEYS = [
   "services.connectStepProfit",
   "services.connectStepDashboard",
 ] as const;
-
-const CONNECT_STEP_DELAYS_MS = [0, 60_000, 120_000, 180_000];
-const CONNECT_PROGRESS_CAP = 95;
 
 interface UzumApiKeyConnectFormProps {
   inputId?: string;
@@ -43,21 +38,26 @@ export function UzumApiKeyConnectForm({
   showLabel = true,
 }: UzumApiKeyConnectFormProps) {
   const { t } = useLanguage();
+  const {
+    loading,
+    loadingStep,
+    loadingProgress,
+    error,
+    warnings,
+    startConnect,
+    clearError,
+  } = useUzumApiConnect();
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [keyLoading, setKeyLoading] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [loadingStep, setLoadingStep] = useState(0);
-  const [loadingProgress, setLoadingProgress] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [warnings, setWarnings] = useState<string[]>([]);
-  const loadingStartedAtRef = useRef<number | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!active) {
-      setError(null);
-      setWarnings([]);
-      setShowKey(false);
+      if (!loading) {
+        setShowKey(false);
+        setLocalError(null);
+      }
       return;
     }
     let cancelled = false;
@@ -77,75 +77,19 @@ export function UzumApiKeyConnectForm({
     return () => {
       cancelled = true;
     };
-  }, [active]);
-
-  useEffect(() => {
-    if (!loading) {
-      loadingStartedAtRef.current = null;
-      setLoadingStep(0);
-      setLoadingProgress(0);
-      return;
-    }
-
-    loadingStartedAtRef.current = Date.now();
-    setLoadingStep(0);
-    setLoadingProgress(4);
-
-    const stepTimers = CONNECT_STEP_DELAYS_MS.slice(1).map((delay, index) =>
-      window.setTimeout(() => setLoadingStep(index + 1), delay),
-    );
-
-    const progressTimer = window.setInterval(() => {
-      setLoadingProgress((current) => {
-        if (current >= CONNECT_PROGRESS_CAP) return current;
-        const elapsed = Date.now() - (loadingStartedAtRef.current ?? Date.now());
-        const target = Math.min(
-          CONNECT_PROGRESS_CAP,
-          4 + (elapsed / 600_000) * (CONNECT_PROGRESS_CAP - 4),
-        );
-        return Math.max(current, target);
-      });
-    }, 400);
-
-    return () => {
-      stepTimers.forEach((timer) => window.clearTimeout(timer));
-      window.clearInterval(progressTimer);
-    };
-  }, [loading]);
+  }, [active, loading]);
 
   const connect = useCallback(async () => {
     const key = apiKey.trim();
     if (!key) {
-      setError(t("services.apiKeyRequired"));
+      setLocalError(t("services.apiKeyRequired"));
       return;
     }
-    setLoading(true);
-    setError(null);
-    setWarnings([]);
-    try {
-      const result = await syncUzumReportsToService(key);
-      setLoadingProgress(100);
-      if (result.warnings?.length) {
-        setWarnings(result.warnings);
-      }
-      toast.success(t("services.loadDataSuccess"));
-      if (onSuccess) {
-        onSuccess();
-      } else {
-        window.location.reload();
-      }
-    } catch (e) {
-      setError(
-        formatUzumConnectError(e, t, {
-          generic: t("services.connectFailed"),
-          rateLimit: t("services.rateLimit"),
-        }),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [apiKey, onSuccess, t]);
+    setLocalError(null);
+    await startConnect(key, { onSuccess });
+  }, [apiKey, onSuccess, startConnect, t]);
 
+  const displayError = localError ?? error;
   const busy = loading || keyLoading || disabled;
 
   return (
@@ -161,7 +105,8 @@ export function UzumApiKeyConnectForm({
             value={apiKey}
             onChange={(e) => {
               setApiKey(e.target.value);
-              if (error) setError(null);
+              if (localError) setLocalError(null);
+              if (error) clearError();
             }}
             onKeyDown={(e) => e.key === "Enter" && !busy && connect()}
             disabled={busy}
@@ -183,12 +128,12 @@ export function UzumApiKeyConnectForm({
             )}
           </Button>
         </div>
-        {error && (
+        {displayError && (
           <p className="text-sm text-destructive" role="alert">
-            {error}
+            {displayError}
           </p>
         )}
-        {loading && (
+        {loading && active && (
           <div className="space-y-2 pt-1">
             <div className="flex items-center justify-between gap-3">
               <span

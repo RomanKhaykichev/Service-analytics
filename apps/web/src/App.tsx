@@ -42,61 +42,19 @@ const App = () => (
             <Route path="/offer" element={<Offer />} />
             <Route path="/user-agreement" element={<UserAgreement />} />
             <Route path="/auth" element={<Auth />} />
-            <Route path="/" element={
-              <ProtectedRoute>
-                <Index />
-              </ProtectedRoute>
-            } />
-            <Route path="/analytics" element={
-              <ProtectedRoute>
-                <Analytics />
-              </ProtectedRoute>
-            } />
-            <Route path="/products" element={
-              <ProtectedRoute>
-                <Products />
-              </ProtectedRoute>
-            } />
-            <Route path="/trends" element={
-              <ProtectedRoute>
-                <Trends />
-              </ProtectedRoute>
-            } />
-            <Route path="/competitors" element={
-              <ProtectedRoute>
-                <Competitors />
-              </ProtectedRoute>
-            } />
-            <Route path="/reports" element={
-              <ProtectedRoute>
-                <Reports />
-              </ProtectedRoute>
-            } />
-            <Route path="/settings" element={
-              <ProtectedRoute>
-                <Settings />
-              </ProtectedRoute>
-            } />
-            <Route path="/support" element={
-              <ProtectedRoute>
-                <Support />
-              </ProtectedRoute>
-            } />
-            <Route path="/training" element={
-              <ProtectedRoute>
-                <Training />
-              </ProtectedRoute>
-            } />
-            <Route path="/admin" element={
-              <ProtectedRoute>
-                <Admin />
-              </ProtectedRoute>
-            } />
-            <Route path="/admin/appeals" element={
-              <ProtectedRoute>
-                <AdminAppeals />
-              </ProtectedRoute>
-            } />
+            <Route element={<ProtectedRoute />}>
+              <Route path="/" element={<Index />} />
+              <Route path="/analytics" element={<Analytics />} />
+              <Route path="/products" element={<Products />} />
+              <Route path="/trends" element={<Trends />} />
+              <Route path="/competitors" element={<Competitors />} />
+              <Route path="/reports" element={<Reports />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/support" element={<Support />} />
+              <Route path="/training" element={<Training />} />
+              <Route path="/admin" element={<Admin />} />
+              <Route path="/admin/appeals" element={<AdminAppeals />} />
+            </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

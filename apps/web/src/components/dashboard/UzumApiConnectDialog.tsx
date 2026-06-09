@@ -19,10 +19,11 @@ export interface UzumApiConnectDialogHandle {
 interface UzumApiConnectDialogProps {
   disabled?: boolean;
   showTrigger?: boolean;
+  onOpenHelpGuide?: () => void;
 }
 
 export const UzumApiConnectDialog = forwardRef<UzumApiConnectDialogHandle, UzumApiConnectDialogProps>(
-  function UzumApiConnectDialog({ disabled, showTrigger = true }, ref) {
+  function UzumApiConnectDialog({ disabled, showTrigger = true, onOpenHelpGuide }, ref) {
     const { t } = useLanguage();
     const [open, setOpen] = useState(false);
 
@@ -67,15 +68,21 @@ export const UzumApiConnectDialog = forwardRef<UzumApiConnectDialogHandle, UzumA
           </DialogHeader>
 
           <div className="space-y-4">
-            <UzumApiInstructionPanel />
+            <UzumApiInstructionPanel
+              onOpenDetailedGuide={
+                onOpenHelpGuide
+                  ? () => {
+                      setOpen(false);
+                      onOpenHelpGuide();
+                    }
+                  : undefined
+              }
+            />
             <UzumApiKeyConnectForm
               inputId="uzum-api-key-dialog"
               active={open}
               disabled={disabled}
-              onSuccess={() => {
-                setOpen(false);
-                window.location.reload();
-              }}
+              onSuccess={() => setOpen(false)}
             />
           </div>
         </DialogContent>

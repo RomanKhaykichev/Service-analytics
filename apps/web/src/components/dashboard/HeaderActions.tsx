@@ -117,7 +117,11 @@ export function HeaderActions({ apiConnectRef: apiConnectRefProp }: HeaderAction
   return (
     <div className="flex items-center gap-4 sm:gap-5">
       {/* Report Upload */}
-      <UzumApiConnectDialog ref={apiConnectRef} disabled={isTrialExpired} />
+      <UzumApiConnectDialog
+        ref={apiConnectRef}
+        disabled={isTrialExpired}
+        onOpenHelpGuide={() => helpConnectApiRef.current?.open()}
+      />
       <HelpConnectApiDialog ref={helpConnectApiRef} disabled={isTrialExpired} />
 
       <div className="flex items-center gap-1 sm:gap-1.5">
@@ -153,7 +157,7 @@ export function HeaderActions({ apiConnectRef: apiConnectRefProp }: HeaderAction
             }}
           >
             <KeyRound className="w-4 h-4 mr-2" />
-            {t("header.connectApi")}
+            {t("header.helpConnectApi")}
           </DropdownMenuItem>
           <DropdownMenuItem className="cursor-pointer" asChild>
             <Link to="/training">

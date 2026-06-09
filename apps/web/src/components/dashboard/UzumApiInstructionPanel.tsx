@@ -2,7 +2,11 @@ import { Info } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { UZUM_API_KEYS_URL } from "@/lib/uzumApiStorage";
 
-export function UzumApiInstructionPanel() {
+interface UzumApiInstructionPanelProps {
+  onOpenDetailedGuide?: () => void;
+}
+
+export function UzumApiInstructionPanel({ onOpenDetailedGuide }: UzumApiInstructionPanelProps) {
   const { t } = useLanguage();
 
   return (
@@ -24,7 +28,21 @@ export function UzumApiInstructionPanel() {
               </a>
               {t("services.instructionStep1Suffix")}
             </li>
-            <li>{t("services.instructionStep2")}</li>
+            <li>
+              {t("services.instructionStep2")}
+              {onOpenDetailedGuide ? (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    onClick={onOpenDetailedGuide}
+                    className="text-primary hover:underline font-medium"
+                  >
+                    ({t("services.instructionStep2GuideLink")})
+                  </button>
+                </>
+              ) : null}
+            </li>
             <li>{t("services.instructionStep3")}</li>
             <li className="text-warning font-medium">{t("services.instructionImportant")}</li>
           </ul>

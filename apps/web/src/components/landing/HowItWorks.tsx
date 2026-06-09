@@ -21,7 +21,7 @@ interface HowItWorksProps {
 const contentRu = {
   title: "Как это работает",
   subtitle:
-    "Подключите API Uzum Seller один раз и получайте актуальную аналитику автоматически.",
+    "Подключите API Uzum Seller один раз и получайте актуальную аналитику.",
   flow: ["Подключение", "Синхронизация", "Аналитика"],
   cards: [
     {
@@ -54,7 +54,7 @@ const contentRu = {
 const contentUz = {
   title: "Bu qanday ishlaydi",
   subtitle:
-    "Uzum Seller API ni bir marta ulang va dolzarb tahlilni avtomatik oling.",
+    "Uzum Seller API ni bir marta ulang va dolzarb tahlilni oling.",
   flow: ["Ulanish", "Sinxronizatsiya", "Tahlil"],
   cards: [
     {
