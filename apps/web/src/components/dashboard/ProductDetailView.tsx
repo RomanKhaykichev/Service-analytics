@@ -13,6 +13,7 @@ import { formatCurrency, formatQuantity, formatPercent, formatTrend, formatMoney
 import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getSizeGroupColorClass } from "@/lib/utils";
+import { ProductThumbnail } from "@/components/dashboard/ProductThumbnail";
 interface ProductVariant {
   char1: string; // Хар-ка 1 = 3 часть из SKU
   char2: string; // Хар-ка 2 = 4 часть из SKU
@@ -49,6 +50,7 @@ interface Product {
   brand: string;
   category: string;
   status: string;
+  product_image_url?: string | null;
 }
 interface ProductDetailViewProps {
   product: Product;
@@ -388,19 +390,31 @@ export function ProductDetailView({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left Part - Product Details */}
           <div className="space-y-4">
-            <div>
-              <span className="text-sm text-muted-foreground">{t('product.name')}</span>
-              <p className="text-foreground font-medium">{product.name}</p>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="col-span-2 space-y-4">
+                <div>
+                  <span className="text-sm text-muted-foreground">{t('product.name')}</span>
+                  <p className="text-foreground font-medium">{product.name}</p>
+                </div>
+                <div>
+                  <span className="text-sm text-muted-foreground">{t('product.productType')}</span>
+                  <p className="text-foreground font-medium">{getProductType()}</p>
+                </div>
+                <div>
+                  <span className="text-sm text-muted-foreground">{t('product.productId')}</span>
+                  <p className="text-foreground font-medium font-mono">{product.id}</p>
+                </div>
+              </div>
+              <div className="col-span-1 flex items-start justify-center sm:justify-end">
+                <ProductThumbnail
+                  imageUrl={product.product_image_url}
+                  alt={product.name}
+                  className="h-28 w-full max-w-[9rem] rounded-lg object-cover sm:h-32 sm:max-w-[10rem]"
+                  placeholderClassName="h-28 w-full max-w-[9rem] sm:h-32 sm:max-w-[10rem]"
+                />
+              </div>
             </div>
-            <div>
-              <span className="text-sm text-muted-foreground">{t('product.productType')}</span>
-              <p className="text-foreground font-medium">{getProductType()}</p>
-            </div>
-            <div>
-              <span className="text-sm text-muted-foreground">{t('product.productId')}</span>
-              <p className="text-foreground font-medium font-mono">{product.id}</p>
-            </div>
-            
+
             {/* Comment Block */}
             <div className="pt-4 border-t border-border">
               <div className="flex items-center justify-between mb-2">

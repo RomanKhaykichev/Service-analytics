@@ -28,7 +28,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { ProductDetailView } from "./ProductDetailView";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, buildQueryParams } from "@/lib/api";
-import { getProductImageSrc, getProxiedProductImageSrc } from "@/lib/productImage";
+import { ProductThumbnail } from "@/components/dashboard/ProductThumbnail";
 
 /** Элемент таблицы товаров: left-out-report_old + sells_report по штрихкоду */
 export interface ProductsTableItemType {
@@ -54,50 +54,6 @@ export interface ProductsTableItemType {
   product_image_url: string | null;
   storage_cost_per_day: number | null;
   shop: string | null;
-}
-
-function ProductThumbnail({
-  imageUrl,
-  alt,
-}: {
-  imageUrl: string | null | undefined;
-  alt: string;
-}) {
-  const [failed, setFailed] = useState(false);
-  const [src, setSrc] = useState(() => getProductImageSrc(imageUrl));
-
-  useEffect(() => {
-    setFailed(false);
-    setSrc(getProductImageSrc(imageUrl));
-  }, [imageUrl]);
-
-  if (!src || failed) {
-    return (
-      <span
-        className="h-10 w-10 shrink-0 rounded-md border-2 border-purple-500/35 bg-muted/30"
-        aria-hidden
-      />
-    );
-  }
-
-  return (
-    <img
-      src={src}
-      alt={alt}
-      loading="lazy"
-      decoding="async"
-      referrerPolicy="no-referrer"
-      onError={() => {
-        const trimmed = imageUrl?.trim();
-        if (trimmed && !src.includes("/api/charts/product-image")) {
-          setSrc(getProxiedProductImageSrc(trimmed));
-          return;
-        }
-        setFailed(true);
-      }}
-      className="h-10 w-10 shrink-0 rounded-md border border-border bg-muted object-cover"
-    />
-  );
 }
 
 interface ProductsTableResponse {
@@ -409,6 +365,7 @@ export function ProductsView({
     brand: "",
     category: p.size_group ?? "",
     status: "active",
+    product_image_url: p.product_image_url ?? null,
   });
 
   // Отдельный запрос для карточки товара без фильтрации по магазину
@@ -477,6 +434,8 @@ export function ProductsView({
             ? sum((r) => r.stock ?? 0)
             : null,
           cogs: first.cogs,
+          product_image_url:
+            productVariants.map((r) => r.product_image_url?.trim()).find((url) => url) ?? null,
         }
       : selectedProduct;
     
