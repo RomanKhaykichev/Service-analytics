@@ -405,12 +405,14 @@ export function ProductDetailView({
                   <p className="text-foreground font-medium font-mono">{product.id}</p>
                 </div>
               </div>
-              <div className="col-span-1 flex items-start justify-center sm:justify-end">
+              <div className="col-span-1 flex items-center justify-center">
                 <ProductThumbnail
                   imageUrl={product.product_image_url}
                   alt={product.name}
-                  className="h-28 w-full max-w-[9rem] rounded-lg object-cover sm:h-32 sm:max-w-[10rem]"
-                  placeholderClassName="h-28 w-full max-w-[9rem] sm:h-32 sm:max-w-[10rem]"
+                  fit="contain"
+                  frame={false}
+                  className="h-auto max-h-40 w-auto max-w-[10rem] rounded-lg"
+                  placeholderClassName="h-28 w-28"
                 />
               </div>
             </div>

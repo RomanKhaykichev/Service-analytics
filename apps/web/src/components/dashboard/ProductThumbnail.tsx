@@ -7,6 +7,8 @@ interface ProductThumbnailProps {
   alt: string;
   className?: string;
   placeholderClassName?: string;
+  fit?: "cover" | "contain";
+  frame?: boolean;
 }
 
 export function ProductThumbnail({
@@ -14,6 +16,8 @@ export function ProductThumbnail({
   alt,
   className,
   placeholderClassName,
+  fit = "cover",
+  frame = true,
 }: ProductThumbnailProps) {
   const [failed, setFailed] = useState(false);
   const [src, setSrc] = useState(() => getProductImageSrc(imageUrl));
@@ -24,7 +28,9 @@ export function ProductThumbnail({
   }, [imageUrl]);
 
   const imgClassName = cn(
-    "shrink-0 rounded-md border border-border bg-muted object-cover",
+    "shrink-0",
+    frame && "rounded-md border border-border bg-muted",
+    fit === "contain" ? "object-contain" : "object-cover",
     className ?? "h-10 w-10",
   );
   const emptyClassName = cn(

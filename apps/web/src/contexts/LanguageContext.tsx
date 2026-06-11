@@ -144,7 +144,7 @@ const translations: Record<Language, Record<string, string>> = {
     'helpConnectApi.demoSubtitle': 'Посмотрите демо-дашборд с примерами реальных данных.',
     'helpConnectApi.demoButton': 'Посмотреть демо',
     'helpConnectApi.demoPreviewAlt': 'Превью демо-дашборда PROFiboard',
-    'helpConnectApi.telegramHelpTitle': 'Нужна помощь с первой загрузкой?',
+    'helpConnectApi.telegramHelpTitle': 'Нужна помощь с подключением?',
     'helpConnectApi.telegramHelpBody':
       'Ответим в течение 5 минут в Telegram и поможем шаг за шагом.',
 
