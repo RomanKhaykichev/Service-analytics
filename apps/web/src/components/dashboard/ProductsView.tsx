@@ -142,7 +142,7 @@ export function ProductsView({
     if (!products.length) return products;
     return products.map((p) => {
       const revenue = p.revenue ?? 0;
-      const cogs_total = p.cogs_total ?? 0; // Используем общую себестоимость (сумма cogs_sum * qty по завершённым)
+      const cogs_total = p.cogs_total ?? 0; // SUM(cogs_sum × (qty − returns_qty)) по завершённым
       const commission = p.commission ?? 0;
       const logistics = p.logistics ?? 0;
       const tax = revenue * (taxPercent / 100);
@@ -390,7 +390,7 @@ export function ProductsView({
     if (!allProducts.length) return allProducts;
     return allProducts.map((p) => {
       const revenue = p.revenue ?? 0;
-      const cogs_total = p.cogs_total ?? 0; // Используем общую себестоимость (сумма cogs_sum * qty по завершённым)
+      const cogs_total = p.cogs_total ?? 0; // SUM(cogs_sum × (qty − returns_qty)) по завершённым
       const commission = p.commission ?? 0;
       const logistics = p.logistics ?? 0;
       const tax = revenue * (taxPercent / 100);

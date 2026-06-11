@@ -186,7 +186,7 @@ class ProductsTableItem(BaseModel):
     stock: Optional[int] = None         # Остаток = Общий остаток (leftout_old)
     size_group: Optional[str] = None   # Габаритная группа; «Неопределенная» → «-»
     cogs: float = 0.0                   # Себестоимость (сумы) (sells_report) - удельная себестоимость для отображения
-    cogs_total: float = 0.0             # Общая себестоимость = сумма (cogs_sum * qty) по завершённым продажам, для расчёта прибыли
+    cogs_total: float = 0.0             # Общая себестоимость = сумма (cogs_sum × (qty − returns_qty)) по завершённым продажам
     commission: float = 0.0             # Комиссия маркетплейса, статус «Завершен»
     logistics: float = 0.0             # Логистический сбор, статус «Завершен»
     abc_orders: Optional[str] = None   # ABC заказы (оставить как есть)

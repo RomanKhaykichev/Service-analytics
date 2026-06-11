@@ -5,6 +5,27 @@ Shared between KPI and Charts endpoints to ensure consistency.
 from typing import Dict
 
 
+def sql_net_qty(alias: str = "") -> str:
+    """Чистое количество по строке: Количество − Возвраты (sells_report), не ниже 0."""
+    p = f"{alias}." if alias else ""
+    return f"GREATEST(COALESCE({p}qty, 0) - COALESCE({p}returns_qty, 0), 0)"
+
+
+def sql_cogs_line_amount(alias: str = "") -> str:
+    """Себестоимость по строке: Себестоимость (сумы) × (Количество − Возвраты)."""
+    p = f"{alias}." if alias else ""
+    return f"COALESCE({p}cogs_sum, 0) * {sql_net_qty(alias)}"
+
+
+def sql_unit_price_from_rows(revenue_col: str, qty_col: str, returns_col: str) -> str:
+    """Цена: SUM(Выручка) / SUM(Количество − Возвраты)."""
+    net = f"GREATEST(COALESCE({qty_col}, 0) - COALESCE({returns_col}, 0), 0)"
+    return f"""CASE WHEN COALESCE(SUM({net}), 0) > 0
+                     THEN SUM(COALESCE({revenue_col}, 0)) / NULLIF(SUM({net}), 0)
+                     ELSE 0
+                END"""
+
+
 def get_status_conditions() -> Dict[str, str]:
     """
     Get SQL status conditions used in KPI calculations.
@@ -44,8 +65,8 @@ def get_sales_metrics_sql(
           Комиссия UZUM = файл sells_report из колонки Комиссия маркетплейса (сумы) со статусом из колонки Статус «Завершен» и «В обработке»
         - logistics_sum: SUM(logistics_sum) WHERE status='завершен' OR status='в обработке' (same as KPI uzumLogistics)
           Логистика UZUM = файл sells_report из колонки Логистический сбор со статусом «Завершен» и «В обработке»
-        - cogs_sum: SUM(cogs_sum * qty) WHERE status='завершен' OR status='в обработке' (same as KPI productCostTotal/productCostCompleted)
-          Себест. прод. тов. = файл sells_report (из колонки Себестоимость (сумы) * из колонки Количество) со статусом из колонки Статус «Завершен» и «В обработке»
+        - cogs_sum: SUM(cogs_sum * (qty - returns_qty)) WHERE status='завершен' OR status='в обработке' (same as KPI productCostTotal/productCostCompleted)
+          Себест. прод. тов. = файл sells_report (Себестоимость (сумы) × (Количество − Возвраты)) со статусом «Завершен» и «В обработке»
     """
     conditions = get_status_conditions()
     alias = f"{table_alias}." if table_alias else ""
@@ -57,7 +78,7 @@ def get_sales_metrics_sql(
         'revenue_sum': f"COALESCE(SUM(CASE WHEN ({conditions['revenue']}) THEN {alias}revenue_sum ELSE 0 END), 0)",
         'commission_sum': f"COALESCE(SUM(CASE WHEN ({conditions['revenue']}) THEN {alias}commission_sum ELSE 0 END), 0)",
         'logistics_sum': f"COALESCE(SUM(CASE WHEN ({conditions['revenue']}) THEN {alias}logistics_sum ELSE 0 END), 0)",
-        'cogs_sum': f"COALESCE(SUM(CASE WHEN ({conditions['revenue']}) THEN {alias}cogs_sum * {alias}qty ELSE 0 END), 0)",
+        'cogs_sum': f"COALESCE(SUM(CASE WHEN ({conditions['revenue']}) THEN {sql_cogs_line_amount(table_alias)} ELSE 0 END), 0)",
     }
 
 

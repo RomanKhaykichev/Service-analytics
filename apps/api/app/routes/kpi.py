@@ -9,7 +9,7 @@ from app.db import get_db, qname
 from app.deps import require_user, is_user_admin
 from app.utils.statuses import get_status_sql_condition
 from app.utils.barcode import barcode_norm_sql
-from app.utils.metrics import get_status_conditions
+from app.utils.metrics import get_status_conditions, sql_cogs_line_amount
 from app.utils.shop_filter import normalize_shop, shop_filter_condition, storage_barcode_filter_sql, storage_barcode_filter_by_shop_id_sql
 from app.settings import get_settings
 from app.schemas import CumulativeRevenueResponse
@@ -311,9 +311,9 @@ def kpi_summary(
                 COALESCE(SUM(CASE WHEN ({completed_status_condition} OR {processing_status_condition}) THEN commission_sum ELSE 0 END), 0) as uzum_commission,
                 -- Логистика UZUM = файл sells_report из колонки Логистический сбор со статусом «Завершен» и «В обработке»
                 COALESCE(SUM(CASE WHEN ({completed_status_condition} OR {processing_status_condition}) THEN logistics_sum ELSE 0 END), 0) as uzum_logistics,
-                -- Себест. прод. тов. = файл sells_report (из колонки Себестоимость (сумы) * из колонки Количество) со статусом из колонки Статус «Завершен» и «В обработке»
-                COALESCE(SUM(CASE WHEN ({completed_status_condition} OR {processing_status_condition}) THEN cogs_sum * qty ELSE 0 END), 0) as product_cost_total,
-                COALESCE(SUM(CASE WHEN ({completed_status_condition} OR {processing_status_condition}) THEN cogs_sum * qty ELSE 0 END), 0) as product_cost_completed
+                -- Себест. прод. тов. = sells_report: Себестоимость (сумы) × (Количество − Возвраты), статус «Завершен» и «В обработке»
+                COALESCE(SUM(CASE WHEN ({completed_status_condition} OR {processing_status_condition}) THEN {sql_cogs_line_amount()} ELSE 0 END), 0) as product_cost_total,
+                COALESCE(SUM(CASE WHEN ({completed_status_condition} OR {processing_status_condition}) THEN {sql_cogs_line_amount()} ELSE 0 END), 0) as product_cost_completed
             FROM {qname("fact_sales")}
             WHERE {sales_where_clause}
         """)

@@ -18,7 +18,14 @@ from app.utils.statuses import get_status_sql_condition
 # Условия по статусу: RU + UZ (Yetkazilgan=Завершен, Qayta ishlanmoqda=В обработке) — из get_status_sql_condition
 _STATUS_COMPLETED_SQL = " (" + get_status_sql_condition("completed") + ") "
 _STATUS_REVENUE_SQL = " ((" + get_status_sql_condition("completed") + ") OR (" + get_status_sql_condition("processing") + ")) "
-from app.utils.metrics import get_status_conditions, get_sales_metrics_sql, get_profit_sql, get_avg_check_sql
+from app.utils.metrics import (
+    get_status_conditions,
+    get_sales_metrics_sql,
+    get_profit_sql,
+    get_avg_check_sql,
+    sql_cogs_line_amount,
+    sql_unit_price_from_rows,
+)
 from app.services.uzum_time import sql_uz_calendar_date
 from app.utils.barcode import barcode_norm_sql
 from app.utils.shop_filter import normalize_shop, shop_filter_condition, storage_barcode_filter_sql
@@ -162,14 +169,14 @@ async def get_revenue_daily(
             # Возвраты = SUM(returns_qty); Прибыль = выручка − cogs − commission − logistics − 1% с выручки
             extra_select = f"""
                 , COALESCE(SUM(COALESCE(fact_sales.returns_qty, 0)), 0) AS returns_qty,
-                COALESCE(SUM(CASE WHEN ({revenue_condition}) THEN fact_sales.cogs_sum * fact_sales.qty ELSE 0 END), 0) AS cogs,
+                COALESCE(SUM(CASE WHEN ({revenue_condition}) THEN {sql_cogs_line_amount("fact_sales")} ELSE 0 END), 0) AS cogs,
                 COALESCE(SUM(CASE WHEN ({revenue_condition}) THEN fact_sales.commission_sum ELSE 0 END), 0) AS commission,
                 COALESCE(SUM(CASE WHEN ({revenue_condition}) THEN fact_sales.logistics_sum ELSE 0 END), 0) AS logistics
             """
         else:
             # Для сводки: добавляем расходы для расчета прибыли (cogs, commission, logistics)
             extra_select = f"""
-                , COALESCE(SUM(CASE WHEN ({revenue_condition}) THEN fact_sales.cogs_sum * fact_sales.qty ELSE 0 END), 0) AS cogs,
+                , COALESCE(SUM(CASE WHEN ({revenue_condition}) THEN {sql_cogs_line_amount("fact_sales")} ELSE 0 END), 0) AS cogs,
                 COALESCE(SUM(CASE WHEN ({revenue_condition}) THEN fact_sales.commission_sum ELSE 0 END), 0) AS commission,
                 COALESCE(SUM(CASE WHEN ({revenue_condition}) THEN fact_sales.logistics_sum ELSE 0 END), 0) AS logistics
             """
@@ -1157,7 +1164,7 @@ async def get_products_table(
                 SUM(COALESCE(fs.qty, 0))::int AS sales_qty,
                 SUM(COALESCE(fs.returns_qty, 0))::int AS returns_qty,
                 SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.revenue_sum, 0) ELSE 0 END)::double precision AS revenue,
-                SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.cogs_sum * fs.qty, 0) ELSE 0 END)::double precision AS cogs,
+                SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE({sql_cogs_line_amount("fs")}, 0) ELSE 0 END)::double precision AS cogs,
                 SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.commission_sum, 0) ELSE 0 END)::double precision AS commission,
                 SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.logistics_sum, 0) ELSE 0 END)::double precision AS logistics
             FROM {qname("fact_sales")} fs
@@ -1195,7 +1202,7 @@ async def get_products_table(
                 }
 
         # Цена и Себестоимость для таблицы: по последней дате продаж для каждого штрихкода в выбранном периоде.
-        # Цена = revenue_sum / qty на последнюю дату.
+        # Цена = SUM(Выручка) / SUM(Количество − Возвраты) на последнюю дату.
         # Себестоимость = последнее значение cogs_sum за период (без деления на qty).
         last_price_cogs_by_barcode: dict[str, dict[str, float]] = {}
         
@@ -1227,7 +1234,8 @@ async def get_products_table(
                     {fs_barcode_norm_expr} AS barcode_norm,
                     fs.revenue_sum,
                     fs.cogs_sum,
-                    fs.qty
+                    fs.qty,
+                    fs.returns_qty
                 FROM {qname("fact_sales")} fs
                 JOIN last_dates ld
                   ON ld.barcode_norm = {fs_barcode_norm_expr}
@@ -1237,10 +1245,7 @@ async def get_products_table(
             )
             SELECT
                 barcode_norm,
-                CASE WHEN COALESCE(SUM(qty), 0) > 0
-                     THEN SUM(COALESCE(revenue_sum, 0)) / NULLIF(SUM(qty), 0)
-                     ELSE 0
-                END AS unit_price,
+                {sql_unit_price_from_rows("revenue_sum", "qty", "returns_qty")} AS unit_price,
                 COALESCE(MAX(cogs_sum), 0) AS unit_cogs
             FROM last_rows
             GROUP BY barcode_norm
@@ -1267,7 +1272,7 @@ async def get_products_table(
                 {fs_barcode_norm_expr} AS barcode_norm,
                 SUM(COALESCE(fs.qty, 0))::int AS sales_qty,
                 SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.revenue_sum, 0) ELSE 0 END)::double precision AS revenue,
-                SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.cogs_sum * fs.qty, 0) ELSE 0 END)::double precision AS cogs,
+                SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE({sql_cogs_line_amount("fs")}, 0) ELSE 0 END)::double precision AS cogs,
                 SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.commission_sum, 0) ELSE 0 END)::double precision AS commission,
                 SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.logistics_sum, 0) ELSE 0 END)::double precision AS logistics
             FROM {qname("fact_sales")} fs
@@ -1517,7 +1522,7 @@ async def get_product_card_all_time_metrics(
         product_query = text(f"""
             SELECT
                 COALESCE(SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fact_sales.revenue_sum, 0) ELSE 0 END), 0) AS revenue,
-                COALESCE(SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fact_sales.cogs_sum * fact_sales.qty, 0) ELSE 0 END), 0) AS cogs,
+                COALESCE(SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE({sql_cogs_line_amount("fact_sales")}, 0) ELSE 0 END), 0) AS cogs,
                 COALESCE(SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fact_sales.commission_sum, 0) ELSE 0 END), 0) AS commission,
                 COALESCE(SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fact_sales.logistics_sum, 0) ELSE 0 END), 0) AS logistics
             FROM {qname("fact_sales")} fact_sales

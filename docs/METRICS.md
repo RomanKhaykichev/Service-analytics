@@ -63,7 +63,7 @@
 ### 4. Рентабельность продаж (salesProfitability)
 - **Формула**: `(revenue / product_cost_completed) * 100`
 - **Источник**: `fact_sales` (только завершённые заказы)
-- **Примечание**: `product_cost_completed` = `SUM(cogs_sum * qty)` где `lower(trim(status)) IN ('завершен', 'завершён') OR lower(trim(status)) = 'в обработке'`
+- **Примечание**: `product_cost_completed` = `SUM(cogs_sum × (qty − returns_qty))` где `lower(trim(status)) IN ('завершен', 'завершён') OR lower(trim(status)) = 'в обработке'`
 - **Важно**: В `fact_sales` поле `cogs_sum` уже является итоговой себестоимостью по строке (не единичной)
 - **Безопасное деление**: Если `product_cost_completed = 0`, возвращается `0`
 
@@ -125,10 +125,10 @@
 - **ТЗ**: `sum(Сумма (сумы))` где `Услуга ILIKE '%Штраф%'`
 
 ### 6. Себестоимость проданных товаров (productCost)
-- **productCostTotal** и **productCostCompleted**: `SUM(cogs_sum * qty)` где `lower(trim(status)) IN ('завершен', 'завершён') OR lower(trim(status)) = 'в обработке'`
+- **productCostTotal** и **productCostCompleted**: `SUM(cogs_sum × (qty − returns_qty))` где `lower(trim(status)) IN ('завершен', 'завершён') OR lower(trim(status)) = 'в обработке'`
 - **Источник**: `sells_report` → `fact_sales`
 - **Фильтры**: `period`, `shop_id`, `user_id`
-- **ТЗ**: файл sells_report (из колонки Себестоимость (сумы) * из колонки Количество) со статусом из колонки Статус «Завершен» и «В обработке»
+- **ТЗ**: файл sells_report (Себестоимость (сумы) × (Количество − Возвраты)) со статусом «Завершен» и «В обработке»
 
 ## Блок "Склад"
 
