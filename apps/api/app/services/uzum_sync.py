@@ -358,6 +358,70 @@ def list_users_with_api_key(db: Session) -> list[dict[str, Any]]:
     ]
 
 
+def _scheduled_sync_one_user(
+    db: Session,
+    user: dict[str, Any],
+    stats: dict[str, int],
+) -> str:
+    """
+    Run scheduled sync for one user with eligibility checks.
+    Returns status: success, failed, or skipped.
+    """
+    user_id = user["id"]
+    if not isinstance(user_id, UUID):
+        user_id = UUID(str(user_id))
+
+    sub_ok, sub_reason = is_subscription_active(
+        user_id,
+        db,
+        is_active=bool(user["is_active"]),
+        trial_ends_at=user["trial_ends_at"],
+    )
+    if not sub_ok:
+        _insert_sync_log(
+            db,
+            user_id=user_id,
+            started_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(timezone.utc),
+            status="skipped",
+            trigger="scheduled",
+            error_message=sub_reason,
+        )
+        stats["skipped"] += 1
+        logger.info("Uzum sync skipped user %s: %s", user_id, sub_reason)
+        return "skipped"
+
+    phone_ok, phone_reason = is_phone_verified_for_sync(
+        user_id, db, user["phone"], user["phone_verified_at"]
+    )
+    if not phone_ok:
+        _insert_sync_log(
+            db,
+            user_id=user_id,
+            started_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(timezone.utc),
+            status="skipped",
+            trigger="scheduled",
+            error_message=phone_reason,
+        )
+        stats["skipped"] += 1
+        logger.info("Uzum sync skipped user %s: %s", user_id, phone_reason)
+        return "skipped"
+
+    result = run_uzum_sync_for_user(
+        db,
+        user_id,
+        api_key=user["api_key"],
+        trigger="scheduled",
+        skip_access_checks=True,
+    )
+    status = str(result.get("status", "failed"))
+    if status in stats:
+        stats[status] += 1
+    logger.info("Uzum sync user %s finished: %s", user_id, status)
+    return status
+
+
 def run_scheduled_sync_cycle() -> None:
     """Sync all eligible users sequentially. Safe to call from background scheduler."""
     settings = get_settings()
@@ -378,62 +442,42 @@ def run_scheduled_sync_cycle() -> None:
         logger.info("Uzum scheduled sync cycle started: %s users with API key", len(users))
 
         stats = {"success": 0, "failed": 0, "skipped": 0}
+        failed_for_retry: list[dict[str, Any]] = []
+
         for user in users:
-            user_id = user["id"]
-            if not isinstance(user_id, UUID):
-                user_id = UUID(str(user_id))
+            status = _scheduled_sync_one_user(db, user, stats)
+            if status == "failed":
+                failed_for_retry.append(user)
 
-            sub_ok, sub_reason = is_subscription_active(
-                user_id,
-                db,
-                is_active=bool(user["is_active"]),
-                trial_ends_at=user["trial_ends_at"],
-            )
-            if not sub_ok:
-                _insert_sync_log(
-                    db,
-                    user_id=user_id,
-                    started_at=datetime.now(timezone.utc),
-                    finished_at=datetime.now(timezone.utc),
-                    status="skipped",
-                    trigger="scheduled",
-                    error_message=sub_reason,
-                )
-                stats["skipped"] += 1
-                logger.info("Uzum sync skipped user %s: %s", user_id, sub_reason)
-                continue
-
-            phone_ok, phone_reason = is_phone_verified_for_sync(
-                user_id, db, user["phone"], user["phone_verified_at"]
-            )
-            if not phone_ok:
-                _insert_sync_log(
-                    db,
-                    user_id=user_id,
-                    started_at=datetime.now(timezone.utc),
-                    finished_at=datetime.now(timezone.utc),
-                    status="skipped",
-                    trigger="scheduled",
-                    error_message=phone_reason,
-                )
-                stats["skipped"] += 1
-                logger.info("Uzum sync skipped user %s: %s", user_id, phone_reason)
-                continue
-
-            result = run_uzum_sync_for_user(
-                db,
-                user_id,
-                api_key=user["api_key"],
-                trigger="scheduled",
-                skip_access_checks=True,
-            )
-            status = str(result.get("status", "failed"))
-            if status in stats:
-                stats[status] += 1
+        if failed_for_retry:
             logger.info(
-                "Uzum sync user %s finished: %s",
-                user_id,
-                result.get("status"),
+                "Uzum scheduled sync retry pass started: %s users after failed first pass",
+                len(failed_for_retry),
+            )
+            retry_recovered = 0
+            retry_still_failed = 0
+            for user in failed_for_retry:
+                result = run_uzum_sync_for_user(
+                    db,
+                    user["id"] if isinstance(user["id"], UUID) else UUID(str(user["id"])),
+                    api_key=user["api_key"],
+                    trigger="scheduled",
+                    skip_access_checks=True,
+                )
+                status = str(result.get("status", "failed"))
+                user_id = user["id"]
+                if status == "success":
+                    retry_recovered += 1
+                    stats["success"] += 1
+                    stats["failed"] -= 1
+                    logger.info("Uzum sync retry succeeded for user %s", user_id)
+                else:
+                    retry_still_failed += 1
+                    logger.info("Uzum sync retry still failed for user %s: %s", user_id, status)
+            logger.info(
+                "Uzum scheduled sync retry pass finished: recovered=%s still_failed=%s",
+                retry_recovered,
+                retry_still_failed,
             )
 
         logger.info(
