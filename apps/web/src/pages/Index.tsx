@@ -28,9 +28,11 @@ import { useSalesDateRange } from "@/hooks/useSalesDateRange";
 import { formatCurrency, formatQuantity, formatPercent, formatTrend, formatMoneyNoDecimals } from "@/lib/formatters";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DateRangeProvider, useDateRange } from "@/contexts/DateRangeContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getWeeklyInsightRanges } from "@/lib/weekRanges";
+import { getNextUzumSyncSchedule } from "@/lib/uzumSyncSchedule";
 
 function Dashboard() {
   const { t, language } = useLanguage();
@@ -369,9 +371,9 @@ function Dashboard() {
                 </h1>
               </div>
             </div>
-            {salesMinDate && salesMaxDate && (() => {
+            {(salesMinDate && salesMaxDate) || lastUpdatedAt ? (() => {
               const formatShortDate = (dateStr: string) => {
-                const [year, month, day] = dateStr.split("-");
+                const [, month, day] = dateStr.split("-");
                 return `${day}.${month}`;
               };
               const formatDateTime = (iso: string) => {
@@ -382,23 +384,36 @@ function Dashboard() {
                 const minutes = String(date.getMinutes()).padStart(2, "0");
                 return `${day}.${month}, ${hours}:${minutes}`;
               };
+              const next = getNextUzumSyncSchedule();
               return (
-                <div className="flex flex-col gap-0.5 pl-1 text-xs text-muted-foreground/80">
-                  <div>
-                    {t("common.dataPeriod")}{" "}
-                    <span className="font-medium">
-                      {formatShortDate(salesMinDate)}–{formatShortDate(salesMaxDate)}
-                    </span>
-                  </div>
-                  {lastUpdatedAt && (
-                    <div>
-                      {t("common.lastUpdate")}{" "}
-                      <span className="font-medium">{formatDateTime(lastUpdatedAt)}</span>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex flex-col gap-0.5 pl-1 text-xs text-muted-foreground/80 cursor-default">
+                      {salesMinDate && salesMaxDate && (
+                        <div>
+                          {t("common.dataPeriod")}{" "}
+                          <span className="font-medium">
+                            {formatShortDate(salesMinDate)}–{formatShortDate(salesMaxDate)}
+                          </span>
+                        </div>
+                      )}
+                      {lastUpdatedAt && (
+                        <div>
+                          {t("common.lastUpdate")}{" "}
+                          <span className="font-medium">{formatDateTime(lastUpdatedAt)}</span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" align="start" className="text-sm">
+                    {t("common.nextUpdate")}{" "}
+                    <span className="font-medium">
+                      {next.dateLabel}, {next.timeLabel}
+                    </span>
+                  </TooltipContent>
+                </Tooltip>
               );
-            })()}
+            })() : null}
           </div>
           
           {/* Center - Compact Revenue Progress Bar (all tabs) */}

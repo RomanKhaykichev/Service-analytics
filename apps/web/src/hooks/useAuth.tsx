@@ -105,7 +105,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     (async () => {
       try {
-        const data = await apiGet<{ id: string; email?: string | null; full_name?: string | null; phone?: string | null; is_admin?: boolean; preferred_language?: string | null; phone_verified_at?: string | null }>('/api/auth/me');
+        const data = await apiGet<{ id: string; email?: string | null; full_name?: string | null; phone?: string | null; is_admin?: boolean; preferred_language?: string | null; phone_verified_at?: string | null }>(
+          '/api/auth/me',
+          undefined,
+          { timeoutMs: 15_000 },
+        );
         if (!cancelled) {
           const u: User = mapUser(data);
           setUser(u);

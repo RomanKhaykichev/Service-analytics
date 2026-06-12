@@ -296,24 +296,44 @@ export async function apiPostNoAuth<T>(path: string, body: any): Promise<T> {
 /**
  * Make GET request to API
  */
-export async function apiGet<T>(path: string, params?: Record<string, any>): Promise<T> {
-  const headers = {
-    ...getAuthHeaders(),
-  };
-
-  const response = await handleWithRefresh(path, {
-    method: "GET",
-    headers,
-    // params пробрасываем только для buildUrl внутри handleWithRefresh
-    ...(params ? { params } as any : {}),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || `HTTP ${response.status}`);
+export async function apiGet<T>(
+  path: string,
+  params?: Record<string, any>,
+  options?: { timeoutMs?: number },
+): Promise<T> {
+  const controller = new AbortController();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  if (options?.timeoutMs) {
+    timeoutId = setTimeout(() => controller.abort(), options.timeoutMs);
   }
+  try {
+    const headers = {
+      ...getAuthHeaders(),
+    };
 
-  return response.json();
+    const response = await handleWithRefresh(path, {
+      method: "GET",
+      headers,
+      signal: controller.signal,
+      ...(params ? { params } as any : {}),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(
+        "Не удалось подключиться к API. Убедитесь, что сервер запущен (uvicorn на порту 8000).",
+      );
+    }
+    throw err;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 }
 
 /**

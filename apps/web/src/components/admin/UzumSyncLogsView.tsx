@@ -94,6 +94,7 @@ export function UzumSyncLogsView() {
   const [stats, setStats] = useState<UzumSyncLogsStats | null>(null);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detailRow, setDetailRow] = useState<UzumSyncLogRow | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -173,8 +174,8 @@ export function UzumSyncLogsView() {
   }, [exporting, fetchAllLogs, t]);
 
   const fetchLogs = useCallback(async () => {
-    setLoading(true);
     setError(null);
+    setRefreshing(true);
     try {
       const data = await apiGet<UzumSyncLogsResponse>(
         `/api/admin/uzum-sync-logs?limit=${PAGE_SIZE}&offset=${offset}`,
@@ -185,6 +186,7 @@ export function UzumSyncLogsView() {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
+      setRefreshing(false);
       setLoading(false);
     }
   }, [offset]);
@@ -275,7 +277,7 @@ export function UzumSyncLogsView() {
             variant="outline"
             size="sm"
             onClick={() => void deleteSelected()}
-            disabled={deleting || loading || selectedIds.size === 0}
+            disabled={deleting || refreshing || selectedIds.size === 0}
           >
             <Trash2 className={cn("h-4 w-4", deleting && "opacity-50")} />
             {deleting ? t("admin.uzumSyncLogs.deleting") : t("admin.uzumSyncLogs.deleteSelected")}
@@ -285,13 +287,13 @@ export function UzumSyncLogsView() {
             variant="outline"
             size="sm"
             onClick={() => void exportToExcel()}
-            disabled={exporting || loading}
+            disabled={exporting || refreshing}
           >
             <FileSpreadsheet className={cn("h-4 w-4", exporting && "opacity-50")} />
             {exporting ? t("admin.uzumSyncLogs.exporting") : t("admin.uzumSyncLogs.exportExcel")}
           </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => void fetchLogs()} disabled={loading}>
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+          <Button type="button" variant="outline" size="sm" onClick={() => void fetchLogs()} disabled={refreshing}>
+            <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
             {t("admin.uzumSyncLogs.refresh")}
           </Button>
         </div>
@@ -411,7 +413,7 @@ export function UzumSyncLogsView() {
               type="button"
               variant="outline"
               size="sm"
-              disabled={offset <= 0 || loading}
+              disabled={offset <= 0 || refreshing}
               onClick={() => setOffset((v) => Math.max(0, v - PAGE_SIZE))}
             >
               {t("admin.uzumSyncLogs.prev")}
@@ -420,7 +422,7 @@ export function UzumSyncLogsView() {
               type="button"
               variant="outline"
               size="sm"
-              disabled={offset + PAGE_SIZE >= total || loading}
+              disabled={offset + PAGE_SIZE >= total || refreshing}
               onClick={() => setOffset((v) => v + PAGE_SIZE)}
             >
               {t("admin.uzumSyncLogs.next")}

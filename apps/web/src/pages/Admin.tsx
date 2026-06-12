@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Shield, Users, UserPlus, AlertCircle, Pencil, Trash2, UserMinus, CalendarPlus, Banknote, Activity, BarChart3, ChevronUp, ChevronDown, Store, Inbox, Upload } from "lucide-react";
+import { Shield, Users, UserPlus, AlertCircle, Pencil, Trash2, UserMinus, CalendarPlus, Banknote, Activity, BarChart3, ChevronUp, ChevronDown, Store, Inbox, Upload, RefreshCw } from "lucide-react";
 import { Tooltip as UITooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -89,6 +89,7 @@ interface TenantRow {
   paid_amount?: number | null; // Оплачено — сумма, которую оплатил клиент
   last_login_at?: string | null;
   login_count?: number;
+  has_uzum_api_key?: boolean;
 }
 
 interface TenantsResponse {
@@ -169,6 +170,7 @@ export default function Admin() {
     uses_override: boolean;
   } | null>(null);
   const [confirmAction, setConfirmAction] = useState<null | { type: "disable" | "delete"; tenantId: string }>(null);
+  const [syncingTenantId, setSyncingTenantId] = useState<string | null>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [dashboardMetrics, setDashboardMetrics] = useState<DashboardMetrics | null>(null);
   const [loadingMetrics, setLoadingMetrics] = useState(true);
@@ -618,6 +620,23 @@ export default function Admin() {
 
   const handleDeleteTenant = async (tenantId: string) => {
     setConfirmAction({ type: "delete", tenantId });
+  };
+
+  const handleUzumSync = async (tenantId: string) => {
+    setSyncingTenantId(tenantId);
+    try {
+      const res = await apiPost<{ ok: boolean; started?: boolean; message?: string }>(
+        `/api/admin/tenants/${tenantId}/uzum-sync`,
+        {},
+      );
+      toast.success(res.message ?? "Синхронизация запущена. Результат — во вкладке «Логи Uzum API».");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(msg || "Ошибка запуска синхронизации Uzum API");
+      setError(msg);
+    } finally {
+      setSyncingTenantId(null);
+    }
   };
 
   if (accessDenied) {
@@ -1222,7 +1241,7 @@ export default function Admin() {
                       </button>
                     </TableHead>
                     <TableHead className="text-center w-[4.5rem]">Notes</TableHead>
-                    <TableHead className="text-center w-[11.5rem]">Действия</TableHead>
+                    <TableHead className="text-center w-[13rem]">Действия</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="[&_tr]:bg-card">
@@ -1472,6 +1491,29 @@ export default function Admin() {
                                 </TooltipTrigger>
                                 <TooltipContent>Разрешённые магазины</TooltipContent>
                               </UITooltip>
+                              {row.has_uzum_api_key ? (
+                                <UITooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-7 w-7"
+                                      disabled={syncingTenantId === row.tenant_id}
+                                      onClick={() => void handleUzumSync(row.tenant_id)}
+                                    >
+                                      <RefreshCw
+                                        className={cn(
+                                          "h-4 w-4",
+                                          syncingTenantId === row.tenant_id && "animate-spin",
+                                        )}
+                                      />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {t("admin.tooltip.uzumSync")}
+                                  </TooltipContent>
+                                </UITooltip>
+                              ) : null}
                               <UITooltip>
                                 <TooltipTrigger asChild>
                                   <Button

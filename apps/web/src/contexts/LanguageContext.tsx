@@ -310,7 +310,7 @@ const translations: Record<Language, Record<string, string>> = {
     'pricing.forGrowingBusiness': 'Для растущего бизнеса',
     'pricing.upTo5Stores': 'До 5 магазинов',
     'pricing.upTo10Stores': 'До 10 магазинов',
-    'pricing.dataAnyPeriod': 'Данные за любой период',
+    'pricing.dataAnyPeriod': 'Данные с начала года',
     'pricing.allFeatures': 'Все функции сервиса',
     'pricing.perMonth': 'сум / месяц',
     'pricing.selectTariff': 'Выбрать тариф',
@@ -381,6 +381,7 @@ const translations: Record<Language, Record<string, string>> = {
     'common.to': 'до',
     'common.dataPeriod': 'Данные:',
     'common.lastUpdate': 'Обновлено:',
+    'common.nextUpdate': 'Следующее обновление:',
     'common.total': 'Итого',
     'common.pieces': 'шт',
     'common.sum': 'сум',
@@ -787,6 +788,7 @@ const translations: Record<Language, Record<string, string>> = {
     'admin.tooltip.recordPayment': 'Записать платёж',
     'admin.tooltip.changePassword': 'Изменить / сбросить пароль',
     'admin.tooltip.deleteTenant': 'Удалить аккаунт и данные',
+    'admin.tooltip.uzumSync': 'Обновить подключение к Uzum API',
   },
   uz: {
     // Navigation
@@ -1087,7 +1089,7 @@ const translations: Record<Language, Record<string, string>> = {
     'pricing.forGrowingBusiness': "O'sib borayotgan biznes uchun",
     'pricing.upTo5Stores': "5 ta do'kongacha",
     'pricing.upTo10Stores': "10 ta do'kongacha",
-    'pricing.dataAnyPeriod': "Istalgan davr uchun ma'lumotlar",
+    'pricing.dataAnyPeriod': "Yil boshidan ma'lumotlar",
     'pricing.allFeatures': 'Xizmatning barcha funksiyalari',
     'pricing.perMonth': "so'm / oy",
     'pricing.selectTariff': 'Tarifni tanlash',
@@ -1158,6 +1160,7 @@ const translations: Record<Language, Record<string, string>> = {
     'common.to': 'gacha',
     'common.dataPeriod': "Ma'lumotlar:",
     'common.lastUpdate': 'Yangilandi:',
+    'common.nextUpdate': 'Keyingi yangilanish:',
     'common.total': 'Jami',
     'common.pieces': 'dona',
     'common.sum': "so'm",
@@ -1555,6 +1558,7 @@ const translations: Record<Language, Record<string, string>> = {
     'admin.tooltip.recordPayment': 'To‘lovni qayd etish',
     'admin.tooltip.changePassword': 'Parolni o‘zgartirish / tiklash',
     'admin.tooltip.deleteTenant': 'Akkaunt va maʼlumotlarni o‘chirish',
+    'admin.tooltip.uzumSync': 'Uzum API ulanishini yangilash',
   },
 };
 

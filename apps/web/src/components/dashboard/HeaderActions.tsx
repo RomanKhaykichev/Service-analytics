@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { HelpCircle, User, ChevronDown, LogOut, CreditCard, Globe, PlayCircle, MessageCircle, ShieldCheck, KeyRound, Loader2, RefreshCw } from "lucide-react";
+import { HelpCircle, User, ChevronDown, LogOut, CreditCard, Globe, PlayCircle, MessageCircle, ShieldCheck, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -18,7 +18,6 @@ import { useNavigate, Link } from "react-router-dom";
 import { useLanguage, type Language } from "@/contexts/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useStorageShops } from "@/hooks/useStorageShops";
-import { useUzumApiConnect } from "@/contexts/UzumApiConnectContext";
 import { toast } from "sonner";
 
 const headerLanguages: { code: Language; label: string }[] = [
@@ -56,7 +55,6 @@ export function HeaderActions({ apiConnectRef: apiConnectRefProp }: HeaderAction
   const apiConnectRefInternal = useRef<UzumApiConnectDialogHandle>(null);
   const apiConnectRef = apiConnectRefProp ?? apiConnectRefInternal;
   const helpConnectApiRef = useRef<HelpConnectApiDialogHandle>(null);
-  const { loading: apiSyncLoading, refreshData } = useUzumApiConnect();
   /** Чтобы не открывать снова при каждом refetch при 0 магазинах; сбрасывается при появлении магазина или новом монтировании шапки (новый «вход» на главную). */
   const noShopsGuidedOpenedThisMountRef = useRef(false);
   const displayName = getUserDisplayName(user);
@@ -124,34 +122,6 @@ export function HeaderActions({ apiConnectRef: apiConnectRefProp }: HeaderAction
         disabled={isTrialExpired}
         onOpenHelpGuide={() => helpConnectApiRef.current?.open()}
       />
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              aria-label={t("header.refreshApi")}
-              disabled={isTrialExpired || apiSyncLoading}
-              onClick={() =>
-                refreshData({
-                  onNoKey: () => apiConnectRef.current?.open(),
-                })
-              }
-              className="h-9 w-9 shrink-0 border-primary/25 bg-primary/5 hover:bg-primary/10 sm:h-10 sm:w-10"
-            >
-              {apiSyncLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin text-primary" aria-hidden />
-              ) : (
-                <RefreshCw className="h-4 w-4 text-primary" aria-hidden />
-              )}
-            </Button>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" align="end" className="max-w-xs text-center">
-          {t("header.refreshApiTooltip")}
-        </TooltipContent>
-      </Tooltip>
       <HelpConnectApiDialog ref={helpConnectApiRef} disabled={isTrialExpired} />
 
       <div className="flex items-center gap-1 sm:gap-1.5">

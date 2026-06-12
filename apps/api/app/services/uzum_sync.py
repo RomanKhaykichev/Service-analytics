@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 from uuid import UUID
+import threading
 
 from fastapi import HTTPException
 from sqlalchemy import text
@@ -420,6 +421,82 @@ def _scheduled_sync_one_user(
         stats[status] += 1
     logger.info("Uzum sync user %s finished: %s", user_id, status)
     return status
+
+
+def run_admin_uzum_sync_for_tenant(tenant_id: UUID) -> None:
+    """Background job: admin-triggered Uzum sync for one tenant."""
+    db = SessionLocal()
+    try:
+        db.execute(text(f"SET search_path TO {get_settings().DB_SCHEMA}, public"))
+        row = db.execute(
+            text(f"""
+                SELECT uzum_seller_api_key
+                FROM {qname("users")}
+                WHERE id = CAST(:uid AS uuid)
+            """),
+            {"uid": str(tenant_id)},
+        ).fetchone()
+        if not row:
+            logger.warning("Admin uzum sync: tenant %s not found", tenant_id)
+            return
+
+        api_key = normalize_api_key(row[0] or "")
+        if not api_key:
+            logger.warning("Admin uzum sync: tenant %s has no API key", tenant_id)
+            return
+
+        sync_result = run_uzum_sync_for_user(
+            db,
+            tenant_id,
+            api_key=api_key,
+            trigger="manual",
+            skip_access_checks=True,
+        )
+        logger.info(
+            "Admin uzum sync finished for tenant %s: %s",
+            tenant_id,
+            sync_result.get("status"),
+        )
+    except Exception as exc:
+        logger.error(
+            "Admin uzum sync failed for tenant %s: %s",
+            tenant_id,
+            exc,
+            exc_info=True,
+        )
+    finally:
+        db.close()
+
+
+_admin_uzum_sync_lock = threading.Lock()
+
+
+def schedule_admin_uzum_sync_for_tenant(tenant_id: UUID) -> tuple[bool, str]:
+    """
+    Run admin uzum sync in a daemon thread so the API worker stays responsive.
+    Only one admin sync at a time.
+    """
+    if not _admin_uzum_sync_lock.acquire(blocking=False):
+        return (
+            False,
+            "Другая синхронизация Uzum уже выполняется. Подождите несколько минут и попробуйте снова.",
+        )
+
+    def _job() -> None:
+        try:
+            run_admin_uzum_sync_for_tenant(tenant_id)
+        finally:
+            _admin_uzum_sync_lock.release()
+
+    threading.Thread(
+        target=_job,
+        name=f"admin-uzum-sync-{tenant_id}",
+        daemon=True,
+    ).start()
+    return (
+        True,
+        "Синхронизация запущена. Результат появится в логах через несколько минут.",
+    )
 
 
 def run_scheduled_sync_cycle() -> None:

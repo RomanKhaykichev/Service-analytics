@@ -115,6 +115,7 @@ class TenantRow(BaseModel):
     paid_amount: Optional[float] = None  # Оплачено — сумма, которую оплатил клиент
     last_login_at: Optional[str] = None  # дата последнего входа
     login_count: int = 0  # Вход — сколько раз клиент зашёл на сервис (login_events)
+    has_uzum_api_key: bool = False  # сохранённый ключ Uzum Seller API
 
 
 class TenantShopsResponse(BaseModel):
@@ -1044,6 +1045,20 @@ async def admin_tenants_list(
     else:
         cols += ", NULL::numeric AS paid_amount"
 
+    has_uzum_api_key_col = False
+    try:
+        r = db.execute(text("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = :s AND table_name = 'users' AND column_name = 'uzum_seller_api_key'
+        """), {"s": schema}).fetchone()
+        has_uzum_api_key_col = r is not None
+    except Exception:
+        pass
+    if has_uzum_api_key_col:
+        cols += ", (u.uzum_seller_api_key IS NOT NULL AND trim(u.uzum_seller_api_key) <> '') AS has_uzum_api_key"
+    else:
+        cols += ", false AS has_uzum_api_key"
+
     list_sql = f"""
         SELECT {cols} FROM {qname('users')} u
         WHERE 1=1 {search_cond} {plan_cond}
@@ -1086,6 +1101,7 @@ async def admin_tenants_list(
         trial_ends_at = _safe_ts(row, 8) if len(row) > 8 else None
         notes = row[9] if len(row) > 9 else None
         paid_amount_val = float(row[10]) if len(row) > 10 and row[10] is not None else None
+        has_uzum_api_key = bool(row[11]) if len(row) > 11 else False
 
         last_import_at = None
         last_import_status = None
@@ -1224,6 +1240,7 @@ async def admin_tenants_list(
             paid_amount=paid_amount_val,
             last_login_at=last_login_at_val[:10] if last_login_at_val else None,
             login_count=login_counts.get(uid, 0),
+            has_uzum_api_key=has_uzum_api_key,
         ))
 
     return TenantsListResponse(tenants=tenants_out, total_count=total)
@@ -1898,6 +1915,46 @@ async def admin_tenant_set_password(
         logger.exception("set-password failed for tenant_id=%s: %s", tenant_id, e)
         raise HTTPException(status_code=500, detail=str(e))
     return {"ok": True, "tenant_id": str(tenant_id), "message": "Пароль изменён. Вход только с новым паролем."}
+
+
+@router.post("/admin/tenants/{tenant_id}/uzum-sync")
+async def admin_tenant_uzum_sync(
+    tenant_id: UUID,
+    _: UUID = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Start Uzum API sync for a tenant in a background thread (uses stored API key)."""
+    from app.services.uzum_api_helpers import normalize_api_key
+    from app.services.uzum_sync import schedule_admin_uzum_sync_for_tenant
+
+    if is_user_admin(tenant_id, db):
+        raise HTTPException(status_code=400, detail="Синхронизация недоступна для администраторов")
+
+    row = db.execute(
+        text(f"""
+            SELECT uzum_seller_api_key
+            FROM {qname('users')}
+            WHERE id = CAST(:uid AS uuid)
+        """),
+        {"uid": str(tenant_id)},
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    api_key = normalize_api_key(row[0] or "")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="У пользователя не настроен API-ключ Uzum")
+
+    started, message = schedule_admin_uzum_sync_for_tenant(tenant_id)
+    if not started:
+        raise HTTPException(status_code=409, detail=message)
+
+    return {
+        "ok": True,
+        "started": True,
+        "tenant_id": str(tenant_id),
+        "message": message,
+    }
 
 
 def _table_missing(exc: Exception) -> bool:
