@@ -74,7 +74,7 @@ function Dashboard() {
   const shopId = null;  // Не используем shop_id для seller-storage метрик
   
   // Диапазон дат из fact_sales (sells_report "Дата создания")
-  const { minDate: salesMinDate, maxDate: salesMaxDate } = useSalesDateRange();
+  const { minDate: salesMinDate, maxDate: salesMaxDate, lastUpdatedAt } = useSalesDateRange();
   const [monthlyYear, setMonthlyYear] = useState<number | null>(null);
 
   // Пользовательский процент для налога (по умолчанию 1%)
@@ -370,16 +370,32 @@ function Dashboard() {
               </div>
             </div>
             {salesMinDate && salesMaxDate && (() => {
-              const formatDate = (dateStr: string) => {
-                const date = new Date(dateStr);
+              const formatShortDate = (dateStr: string) => {
+                const [year, month, day] = dateStr.split("-");
+                return `${day}.${month}`;
+              };
+              const formatDateTime = (iso: string) => {
+                const date = new Date(iso);
                 const day = String(date.getDate()).padStart(2, "0");
                 const month = String(date.getMonth() + 1).padStart(2, "0");
-                const year = date.getFullYear();
-                return `${day}.${month}.${year}`;
+                const hours = String(date.getHours()).padStart(2, "0");
+                const minutes = String(date.getMinutes()).padStart(2, "0");
+                return `${day}.${month}, ${hours}:${minutes}`;
               };
               return (
-                <div className="text-xs text-muted-foreground/80 pl-1">
-                  {t('common.from')} <span className="font-medium">{formatDate(salesMinDate)}</span> {t('common.to')} <span className="font-medium">{formatDate(salesMaxDate)}</span>
+                <div className="flex flex-col gap-0.5 pl-1 text-xs text-muted-foreground/80">
+                  <div>
+                    {t("common.dataPeriod")}{" "}
+                    <span className="font-medium">
+                      {formatShortDate(salesMinDate)}–{formatShortDate(salesMaxDate)}
+                    </span>
+                  </div>
+                  {lastUpdatedAt && (
+                    <div>
+                      {t("common.lastUpdate")}{" "}
+                      <span className="font-medium">{formatDateTime(lastUpdatedAt)}</span>
+                    </div>
+                  )}
                 </div>
               );
             })()}

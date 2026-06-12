@@ -1946,3 +1946,188 @@ async def admin_tenant_delete(
         logger.exception("admin_tenant_delete failed for %s", uid)
         raise HTTPException(status_code=500, detail=str(e))
     return {"ok": True, "tenant_id": uid, "message": "Аккаунт и данные удалены"}
+
+
+class UzumSyncLogRow(BaseModel):
+    id: str
+    user_id: str
+    user_email: Optional[str] = None
+    started_at: str
+    finished_at: Optional[str] = None
+    status: str
+    error_message: Optional[str] = None
+    error_detail: Optional[str] = None
+    upload_batch_id: Optional[str] = None
+    trigger: str
+    last_api_sync_at: Optional[str] = None
+
+
+class UzumSyncLogsStats(BaseModel):
+    active_count: int = 0
+    days_count: int = 0
+    success_count: int = 0
+    failed_count: int = 0
+    success_rate_percent: Optional[float] = None
+    manual_count: int = 0
+    scheduled_count: int = 0
+
+
+class UzumSyncLogsResponse(BaseModel):
+    items: list[UzumSyncLogRow]
+    total_count: int
+    stats: UzumSyncLogsStats
+
+
+def _safe_iso(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+@router.get("/admin/uzum-sync-logs", response_model=UzumSyncLogsResponse)
+async def admin_uzum_sync_logs(
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    user_id: Optional[str] = Query(None),
+    _: UUID = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Scheduled/manual Uzum API sync audit log."""
+    params: dict[str, Any] = {"limit": limit, "offset": offset}
+    user_filter = ""
+    if user_id:
+        user_filter = "AND l.user_id = CAST(:user_id AS uuid)"
+        params["user_id"] = user_id
+
+    count_row = db.execute(
+        text(f"""
+            SELECT COUNT(*)
+            FROM {qname("uzum_sync_log")} l
+            WHERE 1=1 {user_filter}
+        """),
+        params,
+    ).fetchone()
+    total = int(count_row[0] or 0) if count_row else 0
+
+    stats_row = db.execute(
+        text(f"""
+            SELECT
+                COUNT(*) FILTER (WHERE l.status = 'success') AS success_count,
+                COUNT(*) FILTER (WHERE l.status = 'failed') AS failed_count,
+                COUNT(*) FILTER (WHERE l.trigger = 'manual') AS manual_count,
+                COUNT(*) FILTER (WHERE l.trigger = 'scheduled') AS scheduled_count,
+                MIN(l.started_at::date) AS min_day,
+                MAX(l.started_at::date) AS max_day
+            FROM {qname("uzum_sync_log")} l
+            WHERE 1=1 {user_filter}
+        """),
+        params,
+    ).fetchone()
+    success_count = int(stats_row[0] or 0) if stats_row else 0
+    failed_count = int(stats_row[1] or 0) if stats_row else 0
+    manual_count = int(stats_row[2] or 0) if stats_row else 0
+    scheduled_count = int(stats_row[3] or 0) if stats_row else 0
+    min_day = stats_row[4] if stats_row else None
+    max_day = stats_row[5] if stats_row else None
+    days_count = 0
+    if min_day is not None and max_day is not None:
+        days_count = (max_day - min_day).days + 1
+    finished = success_count + failed_count
+    success_rate_percent = round(success_count / finished * 100, 1) if finished > 0 else None
+
+    active_row = db.execute(
+        text(f"""
+            SELECT COUNT(*)
+            FROM {qname("users")} u
+            WHERE u.is_active = true
+              AND u.uzum_seller_api_key IS NOT NULL
+              AND trim(u.uzum_seller_api_key) <> ''
+        """),
+    ).fetchone()
+    active_count = int(active_row[0] or 0) if active_row else 0
+
+    rows = db.execute(
+        text(f"""
+            SELECT
+                l.id::text,
+                l.user_id::text,
+                u.email,
+                l.started_at,
+                l.finished_at,
+                l.status,
+                l.error_message,
+                l.error_detail,
+                l.upload_batch_id::text,
+                l.trigger,
+                u.last_api_sync_at
+            FROM {qname("uzum_sync_log")} l
+            LEFT JOIN {qname("users")} u ON u.id = l.user_id
+            WHERE 1=1 {user_filter}
+            ORDER BY l.started_at DESC
+            LIMIT :limit OFFSET :offset
+        """),
+        params,
+    ).fetchall()
+
+    items = [
+        UzumSyncLogRow(
+            id=row[0],
+            user_id=row[1],
+            user_email=row[2],
+            started_at=_safe_iso(row[3]) or "",
+            finished_at=_safe_iso(row[4]),
+            status=row[5],
+            error_message=row[6],
+            error_detail=row[7],
+            upload_batch_id=row[8],
+            trigger=row[9],
+            last_api_sync_at=_safe_iso(row[10]),
+        )
+        for row in rows
+    ]
+    return UzumSyncLogsResponse(
+        items=items,
+        total_count=total,
+        stats=UzumSyncLogsStats(
+            active_count=active_count,
+            days_count=days_count,
+            success_count=success_count,
+            failed_count=failed_count,
+            success_rate_percent=success_rate_percent,
+            manual_count=manual_count,
+            scheduled_count=scheduled_count,
+        ),
+    )
+
+
+class DeleteUzumSyncLogsBody(BaseModel):
+    ids: list[str]
+
+
+@router.post("/admin/uzum-sync-logs/delete")
+async def admin_delete_uzum_sync_logs(
+    body: DeleteUzumSyncLogsBody,
+    _: UUID = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Delete selected rows from uzum_sync_log (admin audit cleanup)."""
+    valid_ids: list[str] = []
+    for raw in body.ids:
+        try:
+            valid_ids.append(str(UUID(str(raw).strip())))
+        except ValueError:
+            continue
+    if not valid_ids:
+        raise HTTPException(status_code=400, detail="No valid log ids")
+
+    deleted = 0
+    for log_id in valid_ids:
+        result = db.execute(
+            text(f"DELETE FROM {qname('uzum_sync_log')} WHERE id = CAST(:id AS uuid)"),
+            {"id": log_id},
+        )
+        deleted += int(result.rowcount or 0)
+    db.commit()
+    return {"ok": True, "deleted": deleted}

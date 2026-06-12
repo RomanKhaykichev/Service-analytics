@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
@@ -119,9 +121,30 @@ docs_config = {
     "openapi_url": None if is_prod else "/openapi.json",
 }
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    stop_scheduler_fn = None
+    try:
+        from app.services.uzum_scheduler import start_scheduler, stop_scheduler
+
+        start_scheduler()
+        stop_scheduler_fn = stop_scheduler
+    except Exception as exc:
+        logger.warning("Uzum scheduled sync scheduler not started: %s", exc)
+
+    yield
+
+    if stop_scheduler_fn is not None:
+        try:
+            stop_scheduler_fn()
+        except Exception as exc:
+            logger.warning("Uzum scheduler shutdown error: %s", exc)
+
+
 app = FastAPI(
     title="Service Analytics API",
     version="1.0.0",
+    lifespan=lifespan,
     **docs_config
 )
 

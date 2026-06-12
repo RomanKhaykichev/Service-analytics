@@ -54,6 +54,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AdminPanelTabs, type AdminPanelTab } from "@/components/admin/AdminPanelTabs";
+import { UzumSyncLogsView } from "@/components/admin/UzumSyncLogsView";
 import { ServicesView } from "@/components/dashboard/ServicesView";
 import { ReportUploadDialog, type ReportUploadDialogHandle } from "@/components/dashboard/ReportUploadDialog";
 
@@ -435,7 +436,7 @@ export default function Admin() {
 
   useEffect(() => {
     const tab = searchParams.get("tab");
-    if (tab === "overview" || tab === "uzum" || tab === "archive") {
+    if (tab === "overview" || tab === "uzum" || tab === "uzumUsers" || tab === "archive") {
       setAdminTab(tab);
     }
     if (tab === "archive" && searchParams.get("upload") === "guided") {
@@ -723,6 +724,8 @@ export default function Admin() {
       )}
 
       {!accessDenied && adminTab === "uzum" && <ServicesView />}
+
+      {!accessDenied && adminTab === "uzumUsers" && <UzumSyncLogsView />}
 
       {!accessDenied && adminTab === "archive" && (
         <div className="space-y-4 max-w-lg">

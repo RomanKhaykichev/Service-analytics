@@ -26,6 +26,11 @@ class Settings:
     
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+
+    # Uzum scheduled sync (06:00 and 18:00 Asia/Tashkent)
+    UZUM_SCHEDULED_SYNC_ENABLED: bool = os.getenv("UZUM_SCHEDULED_SYNC_ENABLED", "true").lower() in (
+        "1", "true", "yes", "on",
+    )
     
     # Dev fallback for user_id (only used when APP_ENV=dev)
     DEFAULT_DEV_USER_ID: str = os.getenv(

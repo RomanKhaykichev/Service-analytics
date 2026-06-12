@@ -5,6 +5,7 @@ import { apiGet } from "@/lib/api";
 interface SalesDateRangeResponse {
   min_date: string | null;
   max_date: string | null;
+  last_updated_at?: string | null;
 }
 
 /**
@@ -23,6 +24,7 @@ export function useSalesDateRange() {
   return {
     minDate: data?.min_date ?? null,
     maxDate: data?.max_date ?? null,
+    lastUpdatedAt: data?.last_updated_at ?? null,
     loading,
     error: error ? (error instanceof Error ? error.message : "Ошибка загрузки границ дат") : null,
   };

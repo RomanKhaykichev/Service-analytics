@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/contexts/LanguageContext";
 
-export type AdminPanelTab = "overview" | "uzum" | "archive";
+export type AdminPanelTab = "overview" | "uzum" | "uzumUsers" | "archive";
 
 interface AdminPanelTabsProps {
   activeTab: AdminPanelTab;
@@ -12,6 +12,7 @@ interface AdminPanelTabsProps {
 const tabs: { id: AdminPanelTab; labelKey: string }[] = [
   { id: "overview", labelKey: "admin.tabs.overview" },
   { id: "uzum", labelKey: "admin.tabs.uzum" },
+  { id: "uzumUsers", labelKey: "admin.tabs.uzumUsers" },
   { id: "archive", labelKey: "admin.tabs.archive" },
 ];
 

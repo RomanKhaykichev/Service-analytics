@@ -1021,6 +1021,27 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                 LEFT JOIN {qname('map_shop_sku')} m
                     ON m.user_id = s.user_id
                    AND {barcode_norm_sql('m.barcode')} = {barcode_norm_sql('s.barcode')}
+            ),
+            filtered AS (
+                SELECT *
+                FROM casted
+                WHERE date_created IS NOT NULL
+                  AND barcode IS NOT NULL
+                  AND (
+                    :is_trial_plan = false
+                    OR :trial_cutoff_date IS NULL
+                    OR date_created >= (CAST(:trial_cutoff_date AS timestamptz) - interval '59 days')
+                  )
+            ),
+            deduped AS (
+                SELECT DISTINCT ON (user_id, order_no, barcode, date_created)
+                    user_id, upload_batch_id, shop_id,
+                    status, date_created, date_received, order_no,
+                    sku, barcode, product_name, category, barcode_norm,
+                    qty, returns_qty,
+                    revenue_sum, revenue_net_sum, commission_sum, logistics_sum, price_sum, promo_sum, cogs_sum
+                FROM filtered
+                ORDER BY user_id, order_no, barcode, date_created, upload_batch_id DESC
             )
             INSERT INTO {qname('fact_sales')} (
                 user_id, upload_batch_id, shop_id,
@@ -1035,14 +1056,7 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                 sku, barcode, product_name, category, barcode_norm,
                 qty, returns_qty,
                 revenue_sum, revenue_net_sum, commission_sum, logistics_sum, price_sum, promo_sum, cogs_sum
-            FROM casted
-            WHERE date_created IS NOT NULL
-              AND barcode IS NOT NULL
-              AND (
-                :is_trial_plan = false
-                OR :trial_cutoff_date IS NULL
-                OR date_created >= (CAST(:trial_cutoff_date AS timestamptz) - interval '59 days')
-              )
+            FROM deduped
             ON CONFLICT (user_id, order_no, barcode, date_created) DO UPDATE
             SET
                 upload_batch_id = EXCLUDED.upload_batch_id,

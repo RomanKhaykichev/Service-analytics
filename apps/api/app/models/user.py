@@ -20,6 +20,7 @@ class User(Base):
     preferred_language = Column(String(10), nullable=True)  # 'ru' | 'uz' — язык интерфейса
     phone_verified_at = Column(DateTime(timezone=True), nullable=True)
     uzum_seller_api_key = Column(Text, nullable=True)
+    last_api_sync_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     auth_identities = relationship("AuthIdentity", back_populates="user", cascade="all, delete-orphan")
