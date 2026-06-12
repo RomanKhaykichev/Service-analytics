@@ -13,7 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { fetchUzumApiKey } from "@/lib/uzumApiCredentials";
 import { formatUzumConnectError } from "@/lib/uzumApiErrors";
-import { syncUzumReportsToService } from "@/lib/uzumApiSync";
+import { syncUzumReportsToService, UZUM_SYNC_REQUEST_INTERRUPTED } from "@/lib/uzumApiSync";
 import { toast } from "sonner";
 
 const CONNECT_LOADING_STEP_KEYS = [
@@ -148,10 +148,14 @@ export function UzumApiConnectProvider({ children }: { children: ReactNode }) {
         options?.onSuccess?.();
         await queryClient.invalidateQueries();
       } catch (e) {
-        const message = formatUzumConnectError(e, t, {
-          generic: t("services.connectFailed"),
-          rateLimit: t("services.rateLimit"),
-        });
+        const interrupted =
+          e instanceof Error && e.message === UZUM_SYNC_REQUEST_INTERRUPTED;
+        const message = interrupted
+          ? t("services.syncRequestInterrupted")
+          : formatUzumConnectError(e, t, {
+              generic: t("services.connectFailed"),
+              rateLimit: t("services.rateLimit"),
+            });
         setError(message);
         toast.error(message);
       } finally {

@@ -11,7 +11,7 @@ from uuid import UUID
 from datetime import date
 
 import requests
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -32,7 +32,13 @@ from app.services.uzum_api_helpers import (
     uzum_error_means_invalid_key,
     validate_api_key,
 )
-from app.services.uzum_sync import run_uzum_sync_for_user
+from app.services.uzum_sync import (
+    enqueue_manual_uzum_sync_job,
+    get_uzum_sync_log_status,
+    run_uzum_sync_for_user,
+    user_has_running_manual_sync,
+    _insert_running_sync_log,
+)
 from app.services.uzum_time import timezone_metadata
 
 logger = logging.getLogger(__name__)
@@ -350,6 +356,89 @@ class UzumSyncBody(BaseModel):
     api_key: str = Field(min_length=1, max_length=512)
     date_from: Optional[str] = Field(default=None, description="YYYY-MM-DD, default: Jan 1 current year")
     date_to: Optional[str] = Field(default=None, description="YYYY-MM-DD, default: today")
+
+
+class UzumSyncStartResponse(BaseModel):
+    ok: bool = True
+    sync_id: str
+    status: str = "running"
+
+
+class UzumSyncStatusResponse(BaseModel):
+    sync_id: str
+    status: str
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    error_message: Optional[str] = None
+    upload_batch_id: Optional[str] = None
+    imported: Optional[dict[str, int]] = None
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
+
+
+def _resolve_sync_dates(body: UzumSyncBody) -> tuple[str, str]:
+    today = date.today()
+    date_from = body.date_from or f"{today.year}-01-01"
+    date_to = body.date_to or today.isoformat()
+    return date_from, date_to
+
+
+@router.post("/uzum-seller/reports/sync/start", response_model=UzumSyncStartResponse)
+def start_uzum_reports_sync(
+    body: UzumSyncBody,
+    background_tasks: BackgroundTasks,
+    user_id: UUID = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    """Start Uzum sync in background; poll GET .../sync/status/{sync_id} for result."""
+    api_key = normalize_api_key(body.api_key)
+    date_from, date_to = _resolve_sync_dates(body)
+
+    key_valid, _, _ = validate_api_key(api_key)
+    if not key_valid:
+        raise HTTPException(status_code=400, detail=INVALID_UZUM_API_KEY)
+
+    if user_has_running_manual_sync(db, user_id):
+        raise HTTPException(
+            status_code=409,
+            detail="Синхронизация уже выполняется. Подождите завершения текущей загрузки.",
+        )
+
+    _save_user_uzum_api_key(db, user_id, api_key)
+    log_id, _ = _insert_running_sync_log(db, user_id=user_id, trigger="manual")
+
+    background_tasks.add_task(
+        enqueue_manual_uzum_sync_job,
+        log_id,
+        user_id,
+        api_key=api_key,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+    return UzumSyncStartResponse(sync_id=log_id, status="running")
+
+
+@router.get("/uzum-seller/reports/sync/status/{sync_id}", response_model=UzumSyncStatusResponse)
+def get_uzum_reports_sync_status(
+    sync_id: str,
+    user_id: UUID = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    """Poll status of a manual Uzum sync started via POST .../sync/start."""
+    row = get_uzum_sync_log_status(db, user_id, sync_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Sync job not found")
+
+    response = UzumSyncStatusResponse(
+        sync_id=row["sync_id"],
+        status=row["status"],
+        started_at=row["started_at"],
+        finished_at=row["finished_at"],
+        error_message=row["error_message"],
+        upload_batch_id=row["upload_batch_id"],
+    )
+    return response
 
 
 @router.post("/uzum-seller/reports/sync")

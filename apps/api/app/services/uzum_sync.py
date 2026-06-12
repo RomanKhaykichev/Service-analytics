@@ -35,7 +35,7 @@ from app.utils.sync_errors import split_sync_error
 
 logger = logging.getLogger(__name__)
 
-SyncStatus = Literal["success", "failed", "skipped"]
+SyncStatus = Literal["running", "success", "failed", "skipped"]
 SyncTrigger = Literal["scheduled", "manual"]
 
 
@@ -138,6 +138,102 @@ def _insert_sync_log(
     return str(row[0])
 
 
+def _insert_running_sync_log(
+    db: Session,
+    *,
+    user_id: UUID,
+    trigger: SyncTrigger,
+) -> tuple[str, datetime]:
+    started_at = datetime.now(timezone.utc)
+    log_id = _insert_sync_log(
+        db,
+        user_id=user_id,
+        started_at=started_at,
+        finished_at=None,
+        status="running",
+        trigger=trigger,
+    )
+    return log_id, started_at
+
+
+def _update_sync_log(
+    db: Session,
+    log_id: str,
+    *,
+    user_id: UUID,
+    status: SyncStatus,
+    finished_at: Optional[datetime] = None,
+    error_message: Optional[str] = None,
+    error_detail: Optional[str] = None,
+    upload_batch_id: Optional[str] = None,
+) -> None:
+    db.execute(
+        text(f"""
+            UPDATE {qname("uzum_sync_log")}
+            SET
+                status = :status,
+                finished_at = :finished_at,
+                error_message = :error_message,
+                error_detail = :error_detail,
+                upload_batch_id = CASE
+                    WHEN :upload_batch_id IS NULL THEN NULL
+                    ELSE CAST(:upload_batch_id AS uuid)
+                END
+            WHERE id = CAST(:log_id AS uuid)
+              AND user_id = CAST(:user_id AS uuid)
+        """),
+        {
+            "log_id": log_id,
+            "user_id": str(user_id),
+            "status": status,
+            "finished_at": finished_at,
+            "error_message": error_message,
+            "error_detail": error_detail,
+            "upload_batch_id": upload_batch_id,
+        },
+    )
+    db.commit()
+
+
+def _write_sync_log(
+    db: Session,
+    *,
+    user_id: UUID,
+    started_at: datetime,
+    status: SyncStatus,
+    trigger: SyncTrigger,
+    log_id: Optional[str] = None,
+    finished_at: Optional[datetime] = None,
+    error_message: Optional[str] = None,
+    error_detail: Optional[str] = None,
+    upload_batch_id: Optional[str] = None,
+) -> str:
+    finished = finished_at if finished_at is not None else datetime.now(timezone.utc)
+    if log_id:
+        _update_sync_log(
+            db,
+            log_id,
+            user_id=user_id,
+            status=status,
+            finished_at=finished if status != "running" else None,
+            error_message=error_message,
+            error_detail=error_detail,
+            upload_batch_id=upload_batch_id,
+        )
+        return log_id
+    return _insert_sync_log(
+        db,
+        user_id=user_id,
+        started_at=started_at,
+        finished_at=finished if status != "running" else None,
+        status=status,
+        trigger=trigger,
+        error_message=error_message,
+        error_detail=error_detail,
+        upload_batch_id=upload_batch_id,
+    )
+
+
 def _log_sync_failure(
     db: Session,
     *,
@@ -145,16 +241,17 @@ def _log_sync_failure(
     started_at: datetime,
     trigger: SyncTrigger,
     raw_error: str,
+    log_id: Optional[str] = None,
 ) -> str:
     """Write failed sync log with short summary + full detail."""
     summary, detail = split_sync_error(raw_error)
-    return _insert_sync_log(
+    return _write_sync_log(
         db,
         user_id=user_id,
         started_at=started_at,
-        finished_at=datetime.now(timezone.utc),
         status="failed",
         trigger=trigger,
+        log_id=log_id,
         error_message=summary or raw_error[:300],
         error_detail=detail,
     )
@@ -181,13 +278,24 @@ def run_uzum_sync_for_user(
     date_to: Optional[str] = None,
     trigger: SyncTrigger = "scheduled",
     skip_access_checks: bool = False,
+    log_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """
     Fetch four Uzum reports and import them for one user.
     Writes uzum_sync_log and updates last_api_sync_at on success.
+    If log_id is set, updates that running log row instead of inserting a new one.
     """
     started_at = datetime.now(timezone.utc)
-    log_id: Optional[str] = None
+    if log_id:
+        row_started = db.execute(
+            text(f"""
+                SELECT started_at FROM {qname("uzum_sync_log")}
+                WHERE id = CAST(:log_id AS uuid) AND user_id = CAST(:user_id AS uuid)
+            """),
+            {"log_id": log_id, "user_id": str(user_id)},
+        ).fetchone()
+        if row_started and row_started[0]:
+            started_at = row_started[0]
 
     row = db.execute(
         text(f"""
@@ -202,46 +310,43 @@ def run_uzum_sync_for_user(
 
     stored_key, is_active, trial_ends_at, phone, phone_verified_at = row[0], row[1], row[2], row[3], row[4]
     key = normalize_api_key(api_key or (stored_key or ""))
-    if not key:
-        log_id = _insert_sync_log(
+    active_log_id = log_id
+
+    def _finish(
+        status: SyncStatus,
+        *,
+        error_message: Optional[str] = None,
+        error_detail: Optional[str] = None,
+        upload_batch_id: Optional[str] = None,
+    ) -> str:
+        return _write_sync_log(
             db,
             user_id=user_id,
             started_at=started_at,
-            finished_at=datetime.now(timezone.utc),
-            status="skipped",
+            status=status,
             trigger=trigger,
-            error_message="API-ключ отсутствует",
+            log_id=active_log_id,
+            error_message=error_message,
+            error_detail=error_detail,
+            upload_batch_id=upload_batch_id,
         )
-        return {"status": "skipped", "log_id": log_id, "error": "API-ключ отсутствует"}
+
+    if not key:
+        finished_log_id = _finish("skipped", error_message="API-ключ отсутствует")
+        return {"status": "skipped", "log_id": finished_log_id, "error": "API-ключ отсутствует"}
 
     if not skip_access_checks:
         sub_ok, sub_reason = is_subscription_active(
             user_id, db, is_active=bool(is_active), trial_ends_at=trial_ends_at
         )
         if not sub_ok:
-            log_id = _insert_sync_log(
-                db,
-                user_id=user_id,
-                started_at=started_at,
-                finished_at=datetime.now(timezone.utc),
-                status="skipped",
-                trigger=trigger,
-                error_message=sub_reason,
-            )
-            return {"status": "skipped", "log_id": log_id, "error": sub_reason}
+            finished_log_id = _finish("skipped", error_message=sub_reason)
+            return {"status": "skipped", "log_id": finished_log_id, "error": sub_reason}
 
         phone_ok, phone_reason = is_phone_verified_for_sync(user_id, db, phone, phone_verified_at)
         if not phone_ok:
-            log_id = _insert_sync_log(
-                db,
-                user_id=user_id,
-                started_at=started_at,
-                finished_at=datetime.now(timezone.utc),
-                status="skipped",
-                trigger=trigger,
-                error_message=phone_reason,
-            )
-            return {"status": "skipped", "log_id": log_id, "error": phone_reason}
+            finished_log_id = _finish("skipped", error_message=phone_reason)
+            return {"status": "skipped", "log_id": finished_log_id, "error": phone_reason}
 
     df, dt = _year_to_date_range()
     date_from = date_from or df
@@ -249,75 +354,53 @@ def run_uzum_sync_for_user(
 
     key_valid, _, _ = validate_api_key(key)
     if not key_valid:
-        finished = datetime.now(timezone.utc)
-        log_id = _insert_sync_log(
-            db,
-            user_id=user_id,
-            started_at=started_at,
-            finished_at=finished,
-            status="failed",
-            trigger=trigger,
-            error_message=INVALID_UZUM_API_KEY,
-        )
-        return {"status": "failed", "log_id": log_id, "error": INVALID_UZUM_API_KEY}
+        finished_log_id = _finish("failed", error_message=INVALID_UZUM_API_KEY)
+        return {"status": "failed", "log_id": finished_log_id, "error": INVALID_UZUM_API_KEY}
 
     try:
         files, file_names, warnings = fetch_uzum_report_files(key, date_from=date_from, date_to=date_to)
         result = import_uzum_api_sync(db, user_id, files, file_names)
     except HTTPException as exc:
         err = str(exc.detail) if exc.detail else str(exc)
-        log_id = _log_sync_failure(
-            db, user_id=user_id, started_at=started_at, trigger=trigger, raw_error=err
+        finished_log_id = _log_sync_failure(
+            db,
+            user_id=user_id,
+            started_at=started_at,
+            trigger=trigger,
+            raw_error=err,
+            log_id=active_log_id,
         )
         summary, _ = split_sync_error(err)
-        return {"status": "failed", "log_id": log_id, "error": summary or err}
+        return {"status": "failed", "log_id": finished_log_id, "error": summary or err}
     except ShopUnavailableError as exc:
-        finished = datetime.now(timezone.utc)
         err = INVALID_UZUM_API_KEY
-        log_id = _insert_sync_log(
-            db,
-            user_id=user_id,
-            started_at=started_at,
-            finished_at=finished,
-            status="failed",
-            trigger=trigger,
-            error_message=err,
-        )
+        finished_log_id = _finish("failed", error_message=err)
         logger.warning("Uzum sync shop unavailable for user %s: %s", user_id, exc)
-        return {"status": "failed", "log_id": log_id, "error": err}
+        return {"status": "failed", "log_id": finished_log_id, "error": err}
     except UzumRateLimitError as exc:
-        finished = datetime.now(timezone.utc)
         err = str(exc)
-        log_id = _insert_sync_log(
-            db,
-            user_id=user_id,
-            started_at=started_at,
-            finished_at=finished,
-            status="failed",
-            trigger=trigger,
-            error_message=err,
-        )
-        return {"status": "failed", "log_id": log_id, "error": err}
+        finished_log_id = _finish("failed", error_message=err)
+        return {"status": "failed", "log_id": finished_log_id, "error": err}
     except Exception as exc:
         err = str(exc)
         if uzum_error_means_invalid_key(exc):
             err = INVALID_UZUM_API_KEY
-        log_id = _log_sync_failure(
-            db, user_id=user_id, started_at=started_at, trigger=trigger, raw_error=err
+        finished_log_id = _log_sync_failure(
+            db,
+            user_id=user_id,
+            started_at=started_at,
+            trigger=trigger,
+            raw_error=err,
+            log_id=active_log_id,
         )
         logger.error("Uzum sync failed for user %s: %s", user_id, exc, exc_info=True)
         summary, _ = split_sync_error(err)
-        return {"status": "failed", "log_id": log_id, "error": summary or err}
+        return {"status": "failed", "log_id": finished_log_id, "error": summary or err}
 
     finished = datetime.now(timezone.utc)
     batch_id = result.get("upload_batch_id")
-    log_id = _insert_sync_log(
-        db,
-        user_id=user_id,
-        started_at=started_at,
-        finished_at=finished,
-        status="success",
-        trigger=trigger,
+    finished_log_id = _finish(
+        "success",
         upload_batch_id=str(batch_id) if batch_id else None,
     )
     _set_last_api_sync_at(db, user_id, finished)
@@ -327,11 +410,12 @@ def run_uzum_sync_for_user(
 
     return {
         "status": "success",
-        "log_id": log_id,
+        "log_id": finished_log_id,
         "upload_batch_id": batch_id,
         "imported": result.get("imported"),
         "date_from": date_from,
         "date_to": date_to,
+        "warnings": warnings,
     }
 
 
@@ -421,6 +505,111 @@ def _scheduled_sync_one_user(
         stats[status] += 1
     logger.info("Uzum sync user %s finished: %s", user_id, status)
     return status
+
+
+def user_has_running_manual_sync(db: Session, user_id: UUID) -> bool:
+    row = db.execute(
+        text(f"""
+            SELECT 1 FROM {qname("uzum_sync_log")}
+            WHERE user_id = CAST(:user_id AS uuid)
+              AND trigger = 'manual'
+              AND status = 'running'
+              AND started_at > now() - INTERVAL '30 minutes'
+            LIMIT 1
+        """),
+        {"user_id": str(user_id)},
+    ).fetchone()
+    return row is not None
+
+
+def get_uzum_sync_log_status(db: Session, user_id: UUID, sync_id: str) -> Optional[dict[str, Any]]:
+    row = db.execute(
+        text(f"""
+            SELECT
+                id::text,
+                status,
+                started_at,
+                finished_at,
+                error_message,
+                error_detail,
+                upload_batch_id::text
+            FROM {qname("uzum_sync_log")}
+            WHERE id = CAST(:sync_id AS uuid)
+              AND user_id = CAST(:user_id AS uuid)
+        """),
+        {"sync_id": sync_id, "user_id": str(user_id)},
+    ).fetchone()
+    if not row:
+        return None
+    return {
+        "sync_id": row[0],
+        "status": row[1],
+        "started_at": row[2].isoformat() if row[2] else None,
+        "finished_at": row[3].isoformat() if row[3] else None,
+        "error_message": row[4],
+        "error_detail": row[5],
+        "upload_batch_id": row[6],
+    }
+
+
+def run_manual_uzum_sync_job(
+    log_id: str,
+    user_id: UUID,
+    *,
+    api_key: str,
+    date_from: str,
+    date_to: str,
+) -> None:
+    """Background worker for manual user-initiated Uzum sync."""
+    db = SessionLocal()
+    try:
+        db.execute(text(f"SET search_path TO {get_settings().DB_SCHEMA}, public"))
+        run_uzum_sync_for_user(
+            db,
+            user_id,
+            api_key=api_key,
+            date_from=date_from,
+            date_to=date_to,
+            trigger="manual",
+            log_id=log_id,
+        )
+    except Exception as exc:
+        logger.error("Manual uzum sync job failed for user %s log %s: %s", user_id, log_id, exc, exc_info=True)
+        try:
+            _log_sync_failure(
+                db,
+                user_id=user_id,
+                started_at=datetime.now(timezone.utc),
+                trigger="manual",
+                raw_error=str(exc),
+                log_id=log_id,
+            )
+        except Exception:
+            logger.error("Failed to mark uzum sync log %s as failed", log_id, exc_info=True)
+    finally:
+        db.close()
+
+
+def enqueue_manual_uzum_sync_job(
+    log_id: str,
+    user_id: UUID,
+    *,
+    api_key: str,
+    date_from: str,
+    date_to: str,
+) -> None:
+    """Run manual sync in a daemon thread (used from FastAPI BackgroundTasks)."""
+    threading.Thread(
+        target=run_manual_uzum_sync_job,
+        args=(log_id, user_id),
+        kwargs={
+            "api_key": api_key,
+            "date_from": date_from,
+            "date_to": date_to,
+        },
+        daemon=True,
+        name=f"uzum-manual-sync-{log_id}",
+    ).start()
 
 
 def run_admin_uzum_sync_for_tenant(tenant_id: UUID) -> None:

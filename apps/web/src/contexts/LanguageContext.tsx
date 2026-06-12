@@ -71,7 +71,7 @@ const translations: Record<Language, Record<string, string>> = {
     'services.keyWarningTitle': 'Проверьте API-ключ',
     'services.apiKeyRequired': 'Укажите API-ключ',
     'services.connect': 'Подключить',
-    'services.connectInProgress': 'Подключение и загрузка данных…',
+    'services.connectInProgress': 'Загрузка данных…',
     'services.connectStepApi': 'Подключаем API…',
     'services.connectStepSales': 'Анализируем продажи…',
     'services.connectStepProfit': 'Считаем прибыль…',
@@ -108,6 +108,7 @@ const translations: Record<Language, Record<string, string>> = {
     'services.loadDataInProgress': 'Загрузка данных…',
     'services.loadDataHint': 'Выгружает 4 отчёта из Uzum API с начала года и импортирует их в сервис.',
     'services.loadDataSuccess': 'Данные загружены',
+    'services.syncRequestInterrupted': 'Не удалось завершить запрос. Если загрузка уже началась, она может продолжаться на сервере. Проверьте статус через несколько минут.',
     'services.loadDataFailed': 'Не удалось загрузить данные',
 
     // Help → Подключить API (отдельная копия окна из архива)
@@ -887,6 +888,7 @@ const translations: Record<Language, Record<string, string>> = {
     'services.loadDataInProgress': 'Maʼlumotlar yuklanmoqda…',
     'services.loadDataHint': "Yil boshidan 4 ta hisobotni Uzum API dan yuklab, xizmatga import qiladi.",
     'services.loadDataSuccess': 'Maʼlumotlar yuklandi',
+    'services.syncRequestInterrupted': "So'rovni yakunlab bo'lmadi. Agar yuklash boshlangan bo'lsa, u serverda davom etishi mumkin. Bir necha daqiqadan so'ng holatni tekshiring.",
     'services.loadDataFailed': 'Maʼlumotlarni yuklab bo‘lmadi',
 
     // Help → API ulash (arxivdan alohida nusxa)
