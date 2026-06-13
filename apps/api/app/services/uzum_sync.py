@@ -12,12 +12,13 @@ from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.auth.access import _as_utc_aware, _now_utc
+from app.auth.access import is_admin_subscription_status_active, subscription_active_reason
 from app.db import SessionLocal, qname
 from app.deps import is_user_admin
 from app.routes.imports import import_uzum_api_sync
 from app.services.uzum_api_helpers import (
     INVALID_UZUM_API_KEY,
+    UZUM_SHOP_UNAVAILABLE,
     UZUM_SYNC_REPORT_TYPES,
     normalize_api_key,
     uzum_error_means_invalid_key,
@@ -42,28 +43,6 @@ SyncTrigger = Literal["scheduled", "manual"]
 def _year_to_date_range() -> tuple[str, str]:
     today = uz_now().date()
     return f"{today.year}-01-01", today.isoformat()
-
-
-def is_subscription_active(
-    user_id: UUID,
-    db: Session,
-    *,
-    is_active: bool,
-    trial_ends_at: Optional[datetime],
-) -> tuple[bool, str]:
-    """Mirror UI «Активен»: admin, trial not expired, or open-ended access."""
-    if not is_active:
-        return False, "Аккаунт заблокирован"
-    if is_user_admin(user_id, db):
-        return True, ""
-    if trial_ends_at is None:
-        return True, ""
-    end = _as_utc_aware(trial_ends_at) if isinstance(trial_ends_at, datetime) else None
-    if end is None:
-        return True, ""
-    if end <= _now_utc():
-        return False, "Подписка не активна"
-    return True, ""
 
 
 def is_phone_verified_for_sync(user_id: UUID, db: Session, phone: Optional[str], phone_verified_at) -> tuple[bool, str]:
@@ -269,6 +248,19 @@ def _set_last_api_sync_at(db: Session, user_id: UUID, ts: datetime) -> None:
     db.commit()
 
 
+def _persist_uzum_api_key(db: Session, user_id: UUID, api_key: str) -> None:
+    """Save API key after a successful manual sync (replaces previous key)."""
+    db.execute(
+        text(f"""
+            UPDATE {qname("users")}
+            SET uzum_seller_api_key = :key, updated_at = now()
+            WHERE id = CAST(:user_id AS uuid)
+        """),
+        {"user_id": str(user_id), "key": api_key},
+    )
+    db.commit()
+
+
 def run_uzum_sync_for_user(
     db: Session,
     user_id: UUID,
@@ -278,6 +270,7 @@ def run_uzum_sync_for_user(
     date_to: Optional[str] = None,
     trigger: SyncTrigger = "scheduled",
     skip_access_checks: bool = False,
+    skip_key_validation: bool = False,
     log_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """
@@ -310,6 +303,7 @@ def run_uzum_sync_for_user(
 
     stored_key, is_active, trial_ends_at, phone, phone_verified_at = row[0], row[1], row[2], row[3], row[4]
     key = normalize_api_key(api_key or (stored_key or ""))
+    explicit_key = api_key is not None
     active_log_id = log_id
 
     def _finish(
@@ -336,7 +330,7 @@ def run_uzum_sync_for_user(
         return {"status": "skipped", "log_id": finished_log_id, "error": "API-ключ отсутствует"}
 
     if not skip_access_checks:
-        sub_ok, sub_reason = is_subscription_active(
+        sub_ok, sub_reason = subscription_active_reason(
             user_id, db, is_active=bool(is_active), trial_ends_at=trial_ends_at
         )
         if not sub_ok:
@@ -352,10 +346,11 @@ def run_uzum_sync_for_user(
     date_from = date_from or df
     date_to = date_to or dt
 
-    key_valid, _, _ = validate_api_key(key)
-    if not key_valid:
-        finished_log_id = _finish("failed", error_message=INVALID_UZUM_API_KEY)
-        return {"status": "failed", "log_id": finished_log_id, "error": INVALID_UZUM_API_KEY}
+    if not skip_key_validation:
+        key_valid, _, _ = validate_api_key(key)
+        if not key_valid:
+            finished_log_id = _finish("failed", error_message=INVALID_UZUM_API_KEY)
+            return {"status": "failed", "log_id": finished_log_id, "error": INVALID_UZUM_API_KEY}
 
     try:
         files, file_names, warnings = fetch_uzum_report_files(key, date_from=date_from, date_to=date_to)
@@ -373,8 +368,12 @@ def run_uzum_sync_for_user(
         summary, _ = split_sync_error(err)
         return {"status": "failed", "log_id": finished_log_id, "error": summary or err}
     except ShopUnavailableError as exc:
-        err = INVALID_UZUM_API_KEY
-        finished_log_id = _finish("failed", error_message=err)
+        err = UZUM_SHOP_UNAVAILABLE
+        finished_log_id = _finish(
+            "failed",
+            error_message=err,
+            error_detail=str(exc),
+        )
         logger.warning("Uzum sync shop unavailable for user %s: %s", user_id, exc)
         return {"status": "failed", "log_id": finished_log_id, "error": err}
     except UzumRateLimitError as exc:
@@ -403,6 +402,8 @@ def run_uzum_sync_for_user(
         "success",
         upload_batch_id=str(batch_id) if batch_id else None,
     )
+    if explicit_key:
+        _persist_uzum_api_key(db, user_id, key)
     _set_last_api_sync_at(db, user_id, finished)
 
     if warnings:
@@ -451,29 +452,21 @@ def _scheduled_sync_one_user(
     """
     Run scheduled sync for one user with eligibility checks.
     Returns status: success, failed, or skipped.
+
+    «Не активен» in admin «Статус» column → silent skip (no uzum_sync_log row).
+    «Активен» → sync with log; failed runs are retried once in the cycle.
     """
     user_id = user["id"]
     if not isinstance(user_id, UUID):
         user_id = UUID(str(user_id))
 
-    sub_ok, sub_reason = is_subscription_active(
-        user_id,
-        db,
-        is_active=bool(user["is_active"]),
-        trial_ends_at=user["trial_ends_at"],
-    )
-    if not sub_ok:
-        _insert_sync_log(
-            db,
-            user_id=user_id,
-            started_at=datetime.now(timezone.utc),
-            finished_at=datetime.now(timezone.utc),
-            status="skipped",
-            trigger="scheduled",
-            error_message=sub_reason,
+    if not is_admin_subscription_status_active(
+        user_id, db, trial_ends_at=user["trial_ends_at"]
+    ):
+        logger.info(
+            "Uzum scheduled sync: user %s not eligible (subscription status inactive)",
+            user_id,
         )
-        stats["skipped"] += 1
-        logger.info("Uzum sync skipped user %s: %s", user_id, sub_reason)
         return "skipped"
 
     phone_ok, phone_reason = is_phone_verified_for_sync(
@@ -498,7 +491,6 @@ def _scheduled_sync_one_user(
         user_id,
         api_key=user["api_key"],
         trigger="scheduled",
-        skip_access_checks=True,
     )
     status = str(result.get("status", "failed"))
     if status in stats:
@@ -572,6 +564,7 @@ def run_manual_uzum_sync_job(
             date_to=date_to,
             trigger="manual",
             log_id=log_id,
+            skip_key_validation=True,
         )
     except Exception as exc:
         logger.error("Manual uzum sync job failed for user %s log %s: %s", user_id, log_id, exc, exc_info=True)
@@ -639,7 +632,6 @@ def run_admin_uzum_sync_for_tenant(tenant_id: UUID) -> None:
             tenant_id,
             api_key=api_key,
             trigger="manual",
-            skip_access_checks=True,
         )
         logger.info(
             "Admin uzum sync finished for tenant %s: %s",
@@ -728,7 +720,6 @@ def run_scheduled_sync_cycle() -> None:
                     user["id"] if isinstance(user["id"], UUID) else UUID(str(user["id"])),
                     api_key=user["api_key"],
                     trigger="scheduled",
-                    skip_access_checks=True,
                 )
                 status = str(result.get("status", "failed"))
                 user_id = user["id"]

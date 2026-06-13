@@ -32,6 +32,7 @@ from app.utils.column_mappings import (
     SALES_COLUMN_ORDER,
     STORAGE_COLUMN_ORDER,
 )
+from app.utils.product_image import resolve_product_image_url
 
 logger = logging.getLogger(__name__)
 
@@ -852,7 +853,10 @@ class ProductCatalogIndex:
                     commission=sku.get("commission"),
                     product_status=product_status,
                     shop_name="",
-                    preview_image=_extract_preview_image_url(sku, product),
+                    preview_image=resolve_product_image_url(
+                        _extract_preview_image_url(sku, product)
+                    )
+                    or "",
                     quantity_on_photo_studio=sku.get("quantityOnPhotoStudio"),
                 )
                 if sku_id is not None:

@@ -112,7 +112,7 @@ def test_import_blocked_when_trial_expired():
 
         response = asyncio.run(_login_and_import())
         assert response.status_code == 403
-        assert "Trial expired" in (response.json().get("detail") or "")
+        assert "Подписка не активна" in (response.json().get("detail") or "")
     finally:
         with engine.begin() as conn:
             try:

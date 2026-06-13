@@ -26,9 +26,15 @@ from app.utils.metrics import (
     sql_cogs_line_amount,
     sql_unit_price_from_rows,
 )
-from app.services.uzum_time import sql_uz_calendar_date
+from app.utils.product_image import (
+    is_allowed_product_image_host,
+    normalize_product_image_url,
+    resolve_product_image_url,
+    uzum_cdn_fetch_candidates,
+)
 from app.utils.barcode import barcode_norm_sql
 from app.utils.shop_filter import normalize_shop, shop_filter_condition, storage_barcode_filter_sql
+from app.services.uzum_time import sql_uz_calendar_date
 from app.schemas import (
     RevenueDailyResponse,
     RevenuePoint,
@@ -882,71 +888,13 @@ async def get_shipment_recommendations(
         )
 
 
-_PRODUCT_IMAGE_HOST_SUFFIXES = (".uzum.uz", ".uzummarket.uz")
-_UZUM_CDN_IMAGE_VARIANTS = (
-    "t_product_240_high.jpg",
-    "original.jpg",
-)
-
-
-def _is_bare_uzum_cdn_path(path: str) -> bool:
-    """images.uzum.uz/{hash} без расширения — нужен суффикс /t_product_240_high.jpg."""
-    cleaned = (path or "").strip("/")
-    if not cleaned or "/" in cleaned:
-        return False
-    return "." not in cleaned.split("/")[-1]
-
-
-def _uzum_cdn_fetch_candidates(url: str) -> list[str]:
-    normalized = _normalize_product_image_url(url)
-    if not normalized:
-        return []
-    parsed = urlparse(normalized)
-    host = (parsed.hostname or "").lower()
-    if not host.endswith("images.uzum.uz"):
-        return [normalized]
-    if _is_bare_uzum_cdn_path(parsed.path or ""):
-        base = normalized.rstrip("/")
-        return [f"{base}/{variant}" for variant in _UZUM_CDN_IMAGE_VARIANTS]
-    return [normalized]
-
-
-def _normalize_product_image_url(raw: Any) -> Optional[str]:
-    """Нормализует URL превью из left-out-report («Ссылка на товар» / previewImage)."""
-    url = _str_val(raw)
-    if not url or url.lower() in {"nan", "none", "null", "-"}:
-        return None
-    if url.startswith("//"):
-        return f"https:{url}"
-    if url.startswith("/"):
-        return f"https://images.uzum.uz{url}"
-    if url.lower().startswith(("http://", "https://")):
-        parsed = urlparse(url)
-        host = (parsed.hostname or "").lower()
-        if host.startswith("seller.") or host == "seller.uzum.uz":
-            return None
-        return url
-    return None
-
-
 def _extract_product_image_url_from_data(data: dict) -> Optional[str]:
     raw = _get_data_ru_uz(
         data,
         ["Ссылка на товар"],
         ["Mahsulot havolasi", "Tovar havolasi"],
     )
-    normalized = _normalize_product_image_url(raw)
-    if not normalized:
-        return None
-    candidates = _uzum_cdn_fetch_candidates(normalized)
-    return candidates[0] if candidates else normalized
-
-
-def _is_allowed_product_image_host(hostname: Optional[str]) -> bool:
-    if not hostname:
-        return False
-    host = hostname.lower()
-    return any(host == suffix[1:] or host.endswith(suffix) for suffix in _PRODUCT_IMAGE_HOST_SUFFIXES)
+    return resolve_product_image_url(raw)
 
 
 def _parse_num(v) -> Optional[float]:
@@ -976,13 +924,13 @@ def proxy_product_image(
     Прокси превью товаров Uzum для <img> (тег img не передаёт Authorization).
     Разрешены только хосты *.uzum.uz / *.uzummarket.uz.
     """
-    normalized = _normalize_product_image_url(url)
+    normalized = normalize_product_image_url(url)
     if not normalized:
         raise HTTPException(status_code=400, detail="Invalid image URL")
     parsed = urlparse(normalized)
-    if not _is_allowed_product_image_host(parsed.hostname):
+    if not is_allowed_product_image_host(parsed.hostname):
         raise HTTPException(status_code=400, detail="Image host not allowed")
-    candidates = _uzum_cdn_fetch_candidates(url)
+    candidates = uzum_cdn_fetch_candidates(url)
     upstream = None
     last_error: Optional[Exception] = None
     for candidate in candidates:
@@ -993,6 +941,7 @@ def proxy_product_image(
                 headers={
                     "User-Agent": "Mozilla/5.0 (compatible; PROFiboard/1.0)",
                     "Accept": "image/avif,image/webp,image/*,*/*;q=0.8",
+                    "Referer": "https://seller.uzum.uz/",
                 },
             )
             response.raise_for_status()

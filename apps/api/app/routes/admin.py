@@ -13,6 +13,7 @@ import logging
 
 from app.db import get_db, qname
 from app.deps import require_admin, is_user_admin
+from app.auth.access import count_uzum_api_users_with_active_status
 from app.settings import get_settings
 from app.auth import hash_password
 from app.models import User, RefreshToken
@@ -2094,16 +2095,7 @@ async def admin_uzum_sync_logs(
     finished = success_count + failed_count
     success_rate_percent = round(success_count / finished * 100, 1) if finished > 0 else None
 
-    active_row = db.execute(
-        text(f"""
-            SELECT COUNT(*)
-            FROM {qname("users")} u
-            WHERE u.is_active = true
-              AND u.uzum_seller_api_key IS NOT NULL
-              AND trim(u.uzum_seller_api_key) <> ''
-        """),
-    ).fetchone()
-    active_count = int(active_row[0] or 0) if active_row else 0
+    active_count = count_uzum_api_users_with_active_status(db)
 
     rows = db.execute(
         text(f"""

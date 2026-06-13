@@ -7,6 +7,7 @@ from typing import Any, Optional
 import requests
 
 INVALID_UZUM_API_KEY = "invalid_uzum_api_key"
+UZUM_SHOP_UNAVAILABLE = "uzum_shop_unavailable"
 UZUM_HOST = "https://api-seller.uzum.uz"
 API_BASE_URL = f"{UZUM_HOST}/api/seller-openapi"
 REQUEST_TIMEOUT = 30
@@ -15,12 +16,9 @@ DEFAULT_AUTH_MODE = "authorization_raw"
 UZUM_SYNC_REPORT_TYPES = ("inventory_old", "sales", "expenses", "storage")
 
 _INVALID_KEY_MARKERS = (
-    "forbidden-001",
-    "shop is not available",
     "invalid_uzum_api_key",
     "unauthorized",
     "uzum api 401",
-    "uzum api 403",
 )
 
 
@@ -67,7 +65,7 @@ def _response_body(response: requests.Response) -> Any:
 
 
 def validate_api_key(api_key: str) -> tuple[bool, Optional[str], Optional[int]]:
-    """Probe GET /v1/shops to verify the seller token."""
+    """Probe GET /v1/shops with the same Authorization format used for sync."""
     url = _resolve_url("/v1/shops")
     headers = _headers_for_mode(api_key, DEFAULT_AUTH_MODE)
     try:

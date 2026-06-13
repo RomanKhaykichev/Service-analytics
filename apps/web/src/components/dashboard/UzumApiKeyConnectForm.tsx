@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Eye, EyeOff, KeyRound, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +43,13 @@ export function UzumApiKeyConnectForm({
   const [showKey, setShowKey] = useState(false);
   const [keyLoading, setKeyLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const userEditedRef = useRef(false);
+  const loadedForActiveRef = useRef(false);
+  const apiKeyRef = useRef("");
+
+  useEffect(() => {
+    apiKeyRef.current = apiKey;
+  }, [apiKey]);
 
   useEffect(() => {
     if (!active) {
@@ -50,13 +57,19 @@ export function UzumApiKeyConnectForm({
         setShowKey(false);
         setLocalError(null);
       }
+      loadedForActiveRef.current = false;
+      userEditedRef.current = false;
       return;
     }
+
+    if (loadedForActiveRef.current) return;
+    loadedForActiveRef.current = true;
+
     let cancelled = false;
     setKeyLoading(true);
     fetchUzumApiKey()
       .then((data) => {
-        if (!cancelled && data.api_key) {
+        if (!cancelled && data.api_key && !userEditedRef.current) {
           setApiKey(data.api_key);
         }
       })
@@ -69,17 +82,17 @@ export function UzumApiKeyConnectForm({
     return () => {
       cancelled = true;
     };
-  }, [active, loading]);
+  }, [active]);
 
   const connect = useCallback(async () => {
-    const key = apiKey.trim();
+    const key = apiKeyRef.current.trim();
     if (!key) {
       setLocalError(t("services.apiKeyRequired"));
       return;
     }
     setLocalError(null);
     await startConnect(key, { onSuccess });
-  }, [apiKey, onSuccess, startConnect, t]);
+  }, [onSuccess, startConnect, t]);
 
   const displayError = localError ?? error;
   const busy = loading || keyLoading || disabled;
@@ -96,6 +109,7 @@ export function UzumApiKeyConnectForm({
             placeholder={t("services.apiKeyPlaceholder")}
             value={apiKey}
             onChange={(e) => {
+              userEditedRef.current = true;
               setApiKey(e.target.value);
               if (localError) setLocalError(null);
               if (error) clearError();

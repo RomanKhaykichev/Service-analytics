@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import { getProductImageSrc, getProxiedProductImageSrc } from "@/lib/productImage";
+import { getProductImageSrc } from "@/lib/productImage";
 
 interface ProductThumbnailProps {
   imageUrl: string | null | undefined;
@@ -49,14 +49,7 @@ export function ProductThumbnail({
       loading="lazy"
       decoding="async"
       referrerPolicy="no-referrer"
-      onError={() => {
-        const trimmed = imageUrl?.trim();
-        if (trimmed && !src.includes("/api/charts/product-image")) {
-          setSrc(getProxiedProductImageSrc(trimmed));
-          return;
-        }
-        setFailed(true);
-      }}
+      onError={() => setFailed(true)}
       className={imgClassName}
     />
   );

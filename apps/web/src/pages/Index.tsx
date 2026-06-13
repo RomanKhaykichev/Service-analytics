@@ -84,6 +84,9 @@ function Dashboard() {
   const [taxPercent, setTaxPercent] = useState(1);
   const rawPlan = (user?.plan ?? "trial").trim().toLowerCase();
   const isTrial10 = !user?.is_admin && (!rawPlan || rawPlan === "trial");
+  const isSubscriptionActive =
+    !!user?.is_admin ||
+    (typeof user?.trial_days_left === "number" && user.trial_days_left > 0);
 
   const handleTaxPercentKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
@@ -406,10 +409,16 @@ function Dashboard() {
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" align="start" className="text-sm">
-                    {t("common.nextUpdate")}{" "}
-                    <span className="font-medium">
-                      {next.dateLabel}, {next.timeLabel}
-                    </span>
+                    {isSubscriptionActive ? (
+                      <>
+                        {t("common.nextUpdate")}{" "}
+                        <span className="font-medium">
+                          {next.dateLabel}, {next.timeLabel}
+                        </span>
+                      </>
+                    ) : (
+                      t("common.renewTariffForUpdate")
+                    )}
                   </TooltipContent>
                 </Tooltip>
               );
