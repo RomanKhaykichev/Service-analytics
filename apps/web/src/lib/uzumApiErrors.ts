@@ -7,6 +7,15 @@ function messageLooksLikeInvalidKey(text: string): boolean {
   );
 }
 
+function messageLooksLikeInsufficientAccess(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    lower.includes("uzum_key_insufficient_access") ||
+    lower.includes("insufficient_access") ||
+    lower.includes("недостаточно прав")
+  );
+}
+
 function messageLooksLikeShopUnavailable(text: string): boolean {
   const lower = text.toLowerCase();
   return (
@@ -50,6 +59,10 @@ export function formatUzumConnectError(
     return t("services.keyInvalidUserMessage");
   }
 
+  if (messageLooksLikeInsufficientAccess(raw)) {
+    return t("services.keyInsufficientAccessUserMessage");
+  }
+
   if (messageLooksLikeShopUnavailable(raw)) {
     return t("services.shopUnavailableUserMessage");
   }
@@ -60,6 +73,9 @@ export function formatUzumConnectError(
     if (typeof detail === "string") {
       if (detail === "invalid_uzum_api_key" || messageLooksLikeInvalidKey(detail)) {
         return t("services.keyInvalidUserMessage");
+      }
+      if (detail === "uzum_key_insufficient_access" || messageLooksLikeInsufficientAccess(detail)) {
+        return t("services.keyInsufficientAccessUserMessage");
       }
       if (detail === "uzum_shop_unavailable" || messageLooksLikeShopUnavailable(detail)) {
         return t("services.shopUnavailableUserMessage");

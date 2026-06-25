@@ -29,9 +29,18 @@ def main():
                 shop_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                 user_id uuid NOT NULL,
                 shop_name text NOT NULL,
+                uzum_shop_id integer,
+                api_key_accessible boolean NOT NULL DEFAULT false,
                 UNIQUE (user_id, shop_name)
             )
         """))
+        conn.execute(text(f"ALTER TABLE {schema}.dim_shop ADD COLUMN IF NOT EXISTS uzum_shop_id INTEGER"))
+        conn.execute(
+            text(
+                f"ALTER TABLE {schema}.dim_shop "
+                f"ADD COLUMN IF NOT EXISTS api_key_accessible BOOLEAN NOT NULL DEFAULT false"
+            )
+        )
         conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_dim_shop_user_id ON {schema}.dim_shop (user_id)"))
         conn.commit()
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 from uuid import UUID
@@ -14,15 +15,21 @@ from sqlalchemy.orm import Session
 
 from app.auth.access import is_admin_subscription_status_active, subscription_active_reason
 from app.db import SessionLocal, qname
+from app.settings import get_settings
 from app.deps import is_user_admin
 from app.routes.imports import import_uzum_api_sync
+from app.utils.tenant_shop_allowlist import register_uzum_api_dim_shops
+from app.services.uzum_export import UzumApiClient
+from app.services.uzum_shop_scope import prepare_sync_shop_scope
 from app.services.uzum_api_helpers import (
     INVALID_UZUM_API_KEY,
+    UZUM_KEY_INSUFFICIENT_ACCESS,
     UZUM_SHOP_UNAVAILABLE,
     UZUM_SYNC_REPORT_TYPES,
     normalize_api_key,
     uzum_error_means_invalid_key,
     validate_api_key,
+    validate_api_key_shops,
 )
 from app.services.uzum_export import (
     ShopUnavailableError,
@@ -31,7 +38,6 @@ from app.services.uzum_export import (
     build_xlsx_bytes,
 )
 from app.services.uzum_time import uz_now
-from app.settings import get_settings
 from app.utils.sync_errors import split_sync_error
 
 logger = logging.getLogger(__name__)
@@ -58,17 +64,25 @@ def fetch_uzum_report_files(
     *,
     date_from: str,
     date_to: str,
+    shop_ids: list[int],
+    client: Optional[UzumApiClient] = None,
 ) -> tuple[dict[str, bytes], dict[str, str], list[str]]:
     files: dict[str, bytes] = {}
     file_names: dict[str, str] = {}
     warnings: list[str] = []
+    uzum_client = client or UzumApiClient(api_key)
 
     for report_type in UZUM_SYNC_REPORT_TYPES:
-        kwargs: dict[str, Any] = {}
+        kwargs: dict[str, Any] = {
+            "shop_ids": shop_ids,
+            "client": uzum_client,
+        }
         if report_type in ("sales", "expenses"):
             kwargs["date_from"] = date_from
             kwargs["date_to"] = date_to
-        columns, rows, filename, report_warnings = build_report(report_type, api_key, **kwargs)
+        columns, rows, filename, report_warnings = build_report(
+            report_type, api_key, **kwargs
+        )
         files[report_type] = build_xlsx_bytes(report_type, columns, rows)
         file_names[report_type] = filename
         warnings.extend(report_warnings)
@@ -346,14 +360,45 @@ def run_uzum_sync_for_user(
     date_from = date_from or df
     date_to = date_to or dt
 
+    access_probes = None
     if not skip_key_validation:
-        key_valid, _, _ = validate_api_key(key)
+        key_valid, key_err, _ = validate_api_key_shops(key)
         if not key_valid:
-            finished_log_id = _finish("failed", error_message=INVALID_UZUM_API_KEY)
-            return {"status": "failed", "log_id": finished_log_id, "error": INVALID_UZUM_API_KEY}
+            err = key_err or INVALID_UZUM_API_KEY
+            finished_log_id = _finish("failed", error_message=err)
+            return {"status": "failed", "log_id": finished_log_id, "error": err}
+
+    if active_log_id is None and trigger == "manual":
+        active_log_id, started_at = _insert_running_sync_log(
+            db, user_id=user_id, trigger=trigger
+        )
 
     try:
-        files, file_names, warnings = fetch_uzum_report_files(key, date_from=date_from, date_to=date_to)
+        client = UzumApiClient(key)
+        accessible_shop_ids, _name_map = prepare_sync_shop_scope(
+            client,
+            db,
+            user_id,
+            prior_probes=access_probes,
+        )
+        register_uzum_api_dim_shops(
+            db,
+            user_id,
+            client.list_shops(),
+            set(accessible_shop_ids),
+        )
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        files, file_names, warnings = fetch_uzum_report_files(
+            key,
+            date_from=date_from,
+            date_to=date_to,
+            shop_ids=accessible_shop_ids,
+            client=client,
+        )
         result = import_uzum_api_sync(db, user_id, files, file_names)
     except HTTPException as exc:
         err = str(exc.detail) if exc.detail else str(exc)
@@ -701,13 +746,30 @@ def run_scheduled_sync_cycle() -> None:
 
         stats = {"success": 0, "failed": 0, "skipped": 0}
         failed_for_retry: list[dict[str, Any]] = []
+        user_pause = max(0.0, settings.UZUM_SCHEDULED_USER_PAUSE_SEC)
 
-        for user in users:
+        for idx, user in enumerate(users):
+            if idx > 0 and user_pause > 0:
+                logger.info(
+                    "Uzum scheduled sync: pause %.0fs before next user (%s/%s)",
+                    user_pause,
+                    idx + 1,
+                    len(users),
+                )
+                time.sleep(user_pause)
             status = _scheduled_sync_one_user(db, user, stats)
             if status == "failed":
                 failed_for_retry.append(user)
 
         if failed_for_retry:
+            retry_pause = max(0.0, settings.UZUM_SCHEDULED_RETRY_PAUSE_SEC)
+            if retry_pause > 0:
+                logger.info(
+                    "Uzum scheduled sync: pause %.0fs before retry pass (%s users)",
+                    retry_pause,
+                    len(failed_for_retry),
+                )
+                time.sleep(retry_pause)
             logger.info(
                 "Uzum scheduled sync retry pass started: %s users after failed first pass",
                 len(failed_for_retry),

@@ -90,6 +90,7 @@ interface TenantRow {
   last_login_at?: string | null;
   login_count?: number;
   has_uzum_api_key?: boolean;
+  uzum_sync_running?: boolean;
 }
 
 interface TenantsResponse {
@@ -135,6 +136,8 @@ interface DashboardMetrics {
   totals: DashboardTotals;
   monthly: MonthlyRow[];
 }
+
+const normShopLabel = (s: string) => s.trim().replace(/\s+/g, " ").toUpperCase();
 
 export default function Admin() {
   const { t } = useLanguage();
@@ -452,6 +455,16 @@ export default function Admin() {
       fetchDashboardMetrics();
     }
   }, [accessDenied, fetchTenants, fetchDashboardMetrics]);
+
+  useEffect(() => {
+    if (accessDenied || adminTab !== "overview") return;
+    const hasRunning = tenants?.tenants?.some((t) => t.uzum_sync_running);
+    if (!hasRunning) return;
+    const timer = window.setInterval(() => {
+      void fetchTenants();
+    }, 12_000);
+    return () => window.clearInterval(timer);
+  }, [accessDenied, adminTab, tenants?.tenants, fetchTenants]);
 
   useEffect(() => {
     if (!shopAllowTenantId) {
@@ -1259,6 +1272,12 @@ export default function Admin() {
                           {row.owner_email && (
                             <div className="text-xs text-muted-foreground truncate">{row.owner_email}</div>
                           )}
+                          {row.uzum_sync_running ? (
+                            <Badge variant="secondary" className="mt-1 gap-1 text-[10px] font-normal">
+                              <RefreshCw className="h-3 w-3 animate-spin" />
+                              Синхронизация Uzum…
+                            </Badge>
+                          ) : null}
                         </TableCell>
                         <TableCell className="text-center">{row.created_at ?? "—"}</TableCell>
                         <TableCell className="text-center">{row.phone ?? "—"}</TableCell>
@@ -1284,7 +1303,8 @@ export default function Admin() {
                                   (tenantShops[row.tenant_id]?.names?.length ? (
                                     tenantShops[row.tenant_id].names.map((name, idx) => {
                                       const allowedShops = tenantShops[row.tenant_id]?.allowedShops ?? [];
-                                      const isAllowed = allowedShops.includes(name);
+                                      const allowedNorms = new Set(allowedShops.map(normShopLabel));
+                                      const isAllowed = allowedNorms.has(normShopLabel(name));
                                       return (
                                         <span key={`${name}-${idx}`}>
                                           {isAllowed ? <span className="font-bold">{name}</span> : name}

@@ -22,6 +22,9 @@ from app.utils.tenant_shop_allowlist import (
     get_user_allowed_shops_list,
     set_user_allowed_shops_list,
     fetch_all_tenant_shop_labels,
+    count_tenant_shop_labels,
+    merge_shop_labels,
+    resolve_allowed_shop_labels,
     canonicalize_allowlist,
     norm_shop_label as _allow_norm_shop,
 )
@@ -117,6 +120,7 @@ class TenantRow(BaseModel):
     last_login_at: Optional[str] = None  # дата последнего входа
     login_count: int = 0  # Вход — сколько раз клиент зашёл на сервис (login_events)
     has_uzum_api_key: bool = False  # сохранённый ключ Uzum Seller API
+    uzum_sync_running: bool = False  # идёт фоновая синхронизация Uzum API
 
 
 class TenantShopsResponse(BaseModel):
@@ -1083,6 +1087,26 @@ async def admin_tenants_list(
         except Exception as e:
             logger.debug("admin_tenants_list login_counts: %s", e)
 
+    running_sync_uids: set[str] = set()
+    if rows:
+        uids = [str(row[0]) for row in rows]
+        placeholders = ", ".join(f":uid_{i}" for i in range(len(uids)))
+        sync_params = {f"uid_{i}": uid for i, uid in enumerate(uids)}
+        try:
+            sync_rows = db.execute(
+                text(f"""
+                    SELECT DISTINCT user_id::text
+                    FROM {qname('uzum_sync_log')}
+                    WHERE user_id IN ({placeholders})
+                      AND status = 'running'
+                      AND started_at > now() - INTERVAL '30 minutes'
+                """),
+                sync_params,
+            ).fetchall()
+            running_sync_uids = {str(r[0]) for r in sync_rows or []}
+        except Exception as e:
+            logger.debug("admin_tenants_list running_sync: %s", e)
+
     tenants_out: list[TenantRow] = []
 
     for row in rows or []:
@@ -1185,15 +1209,12 @@ async def admin_tenants_list(
             if df and df[0] is not None:
                 data_freshness_days = int(df[0])
 
-        # Количество магазинов (dim_shop), без «все»/заглушки (Не определено)
+        # Количество всех загруженных магазинов (не только разрешённых по тарифу).
         try:
-            sc = db.execute(text(f"""
-                SELECT COUNT(*) FROM {qname('dim_shop')}
-                WHERE user_id = :uid AND COALESCE(trim(shop_name), '') != '(Не определено)'
-            """), {"uid": uid}).scalar()
-            shops_count = sc or 0
+            shops_count = count_tenant_shop_labels(db, UUID(uid))
         except Exception:
-            pass
+            db.rollback()
+            shops_count = 0
 
         # Остаток дней триала; оплачено = plan paid
         trial_days_left = None
@@ -1242,6 +1263,7 @@ async def admin_tenants_list(
             last_login_at=last_login_at_val[:10] if last_login_at_val else None,
             login_count=login_counts.get(uid, 0),
             has_uzum_api_key=has_uzum_api_key,
+            uzum_sync_running=uid in running_sync_uids,
         ))
 
     return TenantsListResponse(tenants=tenants_out, total_count=total)
@@ -1256,16 +1278,13 @@ async def admin_tenant_shops(
     """
     Список магазинов по тенанту (для подсказки в админке).
 
-    Источник: dim_shop, те же магазины, что учитываются в shops_count:
-    - user_id = tenant_id
-    - shop_name не пустой и не '(Не определено)'.
+    Все загруженные магазины + отдельно разрешённые (жирным в UI).
     """
     uid = str(tenant_id)
     shops: list[str] = []
     active_shop: Optional[str] = None
     allowed_shops: list[str] = []
     try:
-        # Determine tariff max shops (админы — без лимита по магазинам).
         if is_user_admin(tenant_id, db):
             max_shops = None
         else:
@@ -1286,83 +1305,13 @@ async def admin_tenant_shops(
             else:
                 max_shops = 1
 
-        # allowed_shops for admin tooltip: first N by shop_name (matches store-limit ordering in imports.py).
-        # We also compute active_shop as the first allowed shop (useful for trial UX).
-        undefined_list = (
-            "'не определено','неопределено','undefined','null','(не определено)','не определен'"
+        shops = fetch_all_tenant_shop_labels(db, tenant_id)
+        allowed_shops, active_shop = resolve_allowed_shop_labels(
+            db, tenant_id, shops, max_shops=max_shops
         )
-
-        # Full list: storage / staging / dim_shop (как в подсказке админки).
-        rows = db.execute(
-            text(
-                f"""
-                WITH src AS (
-                    SELECT NULLIF(TRIM(fss.shop_raw), '') AS shop_name
-                    FROM {qname('fact_storage_snapshot')} fss
-                    WHERE fss.user_id = CAST(:uid AS uuid)
-                    UNION ALL
-                    SELECT NULLIF(TRIM(ss.shop_raw), '') AS shop_name
-                    FROM {qname('stg_storage')} ss
-                    WHERE ss.user_id = CAST(:uid AS uuid)
-                    UNION ALL
-                    SELECT NULLIF(TRIM(ds.shop_name), '') AS shop_name
-                    FROM {qname('dim_shop')} ds
-                    WHERE ds.user_id = CAST(:uid AS uuid)
-                ),
-                cleaned AS (
-                    SELECT shop_name
-                    FROM src
-                    WHERE shop_name IS NOT NULL
-                      AND shop_name <> ''
-                      AND lower(shop_name) NOT IN ({undefined_list})
-                ),
-                norm AS (
-                    SELECT
-                        upper(regexp_replace(trim(shop_name), '\\s+', ' ', 'g')) AS shop_norm,
-                        MIN(shop_name) AS label
-                    FROM cleaned
-                    GROUP BY 1
-                )
-                SELECT label
-                FROM norm
-                ORDER BY shop_norm
-                """
-            ),
-            {"uid": uid},
-        ).fetchall()
-        shops = [str(r[0]) for r in rows or []]
-
-        override = get_user_allowed_shops_list(db, tenant_id)
-        if override:
-            label_by_norm = {_allow_norm_shop(lbl): lbl for lbl in shops}
-            allowed_shops = []
-            for o in override:
-                n = _allow_norm_shop(o)
-                if n in label_by_norm:
-                    allowed_shops.append(label_by_norm[n])
-            if allowed_shops:
-                active_shop = allowed_shops[0]
-        else:
-            limit_sql = "" if max_shops is None else f" LIMIT {int(max_shops)}"
-            rows_allowed = db.execute(
-                text(
-                    f"""
-                    SELECT shop_name
-                    FROM {qname('dim_shop')}
-                    WHERE user_id = :uid
-                      AND shop_name IS NOT NULL
-                      AND TRIM(shop_name) <> ''
-                      AND lower(TRIM(shop_name)) NOT IN ({undefined_list})
-                    ORDER BY shop_name
-                    {limit_sql}
-                    """
-                ),
-                {"uid": uid},
-            ).fetchall()
-            allowed_shops = [str(r[0]) for r in rows_allowed or []]
-            if allowed_shops:
-                active_shop = allowed_shops[0]
+        shops = merge_shop_labels(shops, allowed_shops)
     except Exception as e:
+        db.rollback()
         logger.debug("admin_tenant_shops failed for %s: %s", uid, e)
 
     return TenantShopsResponse(

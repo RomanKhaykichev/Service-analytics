@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
 import requests
+from requests.exceptions import ChunkedEncodingError, ConnectionError, ReadTimeout, Timeout
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
@@ -22,6 +23,7 @@ from app.services.uzum_time import (
     parse_to_epoch_ms,
     timezone_metadata,
 )
+from app.services.uzum_api_helpers import build_query_params
 from app.utils.column_mappings import (
     CANONICAL_EXPENSES,
     CANONICAL_LEFTOUT_API,
@@ -42,11 +44,14 @@ PAGE_SIZE = 100
 FBS_ORDERS_PAGE_SIZE = 50  # OpenAPI max for GET /v2/fbs/orders
 PRODUCT_PAGE_SIZE = 100
 MAX_PAGES = 200
-# Uzum rate-limits seller API; space out calls and retry on 429.
+# Uzum rate-limits seller API; space out calls and retry on 429 / transient network errors.
 MIN_REQUEST_INTERVAL_SEC = 0.5
 MAX_RETRIES_RATE_LIMIT = 6
+MAX_RETRIES_NETWORK = 3
+NETWORK_RETRY_BACKOFF_SEC = (2.0, 5.0, 10.0)
 MAX_BACKOFF_SEC = 45.0
 PAUSE_BETWEEN_SHOPS_SEC = 0.75
+TRANSIENT_HTTP_STATUSES = frozenset({500, 502, 503, 504})
 SALES_LOOKBACK_DAYS = 15
 
 FINANCE_ORDER_STATUSES = [
@@ -133,6 +138,21 @@ def _detail_is_shop_unavailable(detail: Any) -> bool:
         return True
     if isinstance(detail, dict):
         return _errors_indicate_unavailable_shop(detail.get("errors"))
+    return False
+
+
+def _should_fallback_finance_bulk(exc: BaseException) -> bool:
+    """Bulk finance request failed due to shop scope — retry per shop."""
+    if isinstance(exc, ShopUnavailableError):
+        return True
+    if isinstance(exc, RuntimeError):
+        msg = str(exc).lower()
+        return (
+            "403" in msg
+            or "forbidden" in msg
+            or "forbidden-001" in msg
+            or "not available" in msg
+        )
     return False
 
 
@@ -943,6 +963,15 @@ class ProductCatalogIndex:
         return None
 
 
+def _is_transient_request_error(exc: BaseException) -> bool:
+    if isinstance(exc, (ConnectionError, ReadTimeout, Timeout, ChunkedEncodingError)):
+        return True
+    if exc.__class__.__name__ == "IncompleteRead":
+        return True
+    msg = str(exc).lower()
+    return "incompleteread" in msg or "connection broken" in msg
+
+
 class UzumApiClient:
     def __init__(self, api_key: str):
         self._headers = {
@@ -951,8 +980,32 @@ class UzumApiClient:
             "Accept-Language": "ru-RU",
         }
         self.warnings: list[str] = []
+        self.shop_sync_status: dict[int, dict[str, Any]] = {}
         self._last_request_at: float = 0.0
         self._shops_cache: Optional[list[dict[str, Any]]] = None
+
+    def _record_shop_fail(self, shop_id: int, endpoint: str, error: str) -> None:
+        self.shop_sync_status[shop_id] = {
+            "ok": False,
+            "endpoint": endpoint,
+            "error": error,
+        }
+
+    def _record_shop_ok(self, shop_id: int, endpoint: str) -> None:
+        prev = self.shop_sync_status.get(shop_id, {})
+        prev_ok = prev.get("ok", True)
+        self.shop_sync_status[shop_id] = {
+            "ok": prev_ok if prev_ok is False else True,
+            "endpoint": endpoint,
+        }
+
+    @staticmethod
+    def _request_id(response: requests.Response) -> Optional[str]:
+        for key in ("x-request-id", "X-Request-Id", "request-id", "Request-Id"):
+            value = response.headers.get(key)
+            if value:
+                return value
+        return None
 
     def _throttle(self) -> None:
         elapsed = time.monotonic() - self._last_request_at
@@ -968,19 +1021,60 @@ class UzumApiClient:
                 pass
         return min(2.0 * (2**attempt), MAX_BACKOFF_SEC)
 
+    def _network_retry_wait(self, attempt: int) -> float:
+        idx = min(attempt, len(NETWORK_RETRY_BACKOFF_SEC) - 1)
+        return NETWORK_RETRY_BACKOFF_SEC[idx]
+
     def get(self, path: str, params: Optional[dict[str, Any]] = None) -> Any:
         url = f"{API_BASE_URL.rstrip('/')}{path if path.startswith('/') else '/' + path}"
         last_error: Optional[RuntimeError] = None
+        shop_ids_log: Optional[list[int]] = None
+        query_params: Any = None
+        if params:
+            if "shopIds" in params:
+                raw = params["shopIds"]
+                shop_ids_log = list(raw) if isinstance(raw, list) else [raw]
+            query_params = build_query_params(params)
 
         for attempt in range(MAX_RETRIES_RATE_LIMIT + 1):
-            self._throttle()
-            response = requests.get(
-                url,
-                headers=self._headers,
-                params=params,
-                timeout=REQUEST_TIMEOUT,
+            response: Optional[requests.Response] = None
+            for net_attempt in range(MAX_RETRIES_NETWORK):
+                try:
+                    self._throttle()
+                    response = requests.get(
+                        url,
+                        headers=self._headers,
+                        params=query_params,
+                        timeout=REQUEST_TIMEOUT,
+                    )
+                    self._last_request_at = time.monotonic()
+                    break
+                except Exception as exc:
+                    if not _is_transient_request_error(exc) or net_attempt >= MAX_RETRIES_NETWORK - 1:
+                        raise RuntimeError(str(exc)) from exc
+                    wait_sec = self._network_retry_wait(net_attempt)
+                    logger.warning(
+                        "Uzum API network error GET %s shopIds=%s attempt %s/%s: %s; retry in %.1fs",
+                        path,
+                        shop_ids_log,
+                        net_attempt + 1,
+                        MAX_RETRIES_NETWORK,
+                        exc,
+                        wait_sec,
+                    )
+                    time.sleep(wait_sec)
+
+            if response is None:
+                continue
+
+            request_id = self._request_id(response)
+            logger.info(
+                "Uzum API GET %s shopIds=%s status=%s request_id=%s",
+                path,
+                shop_ids_log,
+                response.status_code,
+                request_id,
             )
-            self._last_request_at = time.monotonic()
 
             if response.status_code == 429:
                 wait_sec = self._retry_after_seconds(response, attempt)
@@ -999,11 +1093,43 @@ class UzumApiClient:
                 time.sleep(wait_sec)
                 continue
 
+            if response.status_code in TRANSIENT_HTTP_STATUSES:
+                wait_sec = self._network_retry_wait(min(attempt, MAX_RETRIES_NETWORK - 1))
+                logger.warning(
+                    "Uzum API transient HTTP %s on %s shopIds=%s, retry %s/%s after %.1fs",
+                    response.status_code,
+                    path,
+                    shop_ids_log,
+                    attempt + 1,
+                    MAX_RETRIES_RATE_LIMIT,
+                    wait_sec,
+                )
+                if attempt >= MAX_RETRIES_RATE_LIMIT:
+                    try:
+                        detail = response.json()
+                    except ValueError:
+                        detail = response.text
+                    last_error = RuntimeError(_format_uzum_error(response.status_code, detail))
+                    break
+                time.sleep(wait_sec)
+                continue
+
             if response.status_code >= 400:
                 try:
                     detail = response.json()
                 except ValueError:
                     detail = response.text
+                body_preview = detail if isinstance(detail, str) else str(detail)
+                if len(body_preview) > 500:
+                    body_preview = body_preview[:500] + "…"
+                logger.warning(
+                    "Uzum API error GET %s shopIds=%s status=%s request_id=%s body=%s",
+                    path,
+                    shop_ids_log,
+                    response.status_code,
+                    request_id,
+                    body_preview,
+                )
                 if _detail_is_shop_unavailable(detail):
                     raise ShopUnavailableError(_format_uzum_error(response.status_code, detail))
                 last_error = RuntimeError(_format_uzum_error(response.status_code, detail))
@@ -1026,9 +1152,26 @@ class UzumApiClient:
         if self._shops_cache is not None:
             return self._shops_cache
         data = self.get("/v1/shops")
+        shops: list[dict[str, Any]] = []
         if isinstance(data, list):
-            self._shops_cache = data
-            return data
+            shops = data
+        elif isinstance(data, dict):
+            for key in ("payload", "shops", "data", "items"):
+                inner = data.get(key)
+                if isinstance(inner, list):
+                    shops = inner
+                    break
+        if shops:
+            self._shops_cache = shops
+            logger.info(
+                "Uzum API /v1/shops shop_ids=%s",
+                [
+                    int(s["id"])
+                    for s in shops
+                    if isinstance(s, dict) and s.get("id") is not None
+                ],
+            )
+            return shops
         self._shops_cache = []
         return []
 
@@ -1045,14 +1188,22 @@ class UzumApiClient:
         return ids
 
     def resolve_shop_ids(self, shop_ids: Optional[list[int]] = None) -> list[int]:
+        from_api = self.list_shop_ids()
         if shop_ids:
-            return shop_ids
-        resolved = self.list_shop_ids()
-        if not resolved:
+            allowed = set(from_api)
+            resolved = [sid for sid in shop_ids if sid in allowed]
+            if not resolved:
+                raise RuntimeError(
+                    "Указанные магазины недоступны для текущего API-ключа (/v1/shops)."
+                )
+            logger.info("Uzum API resolved shop_ids (override): %s", resolved)
+            return resolved
+        if not from_api:
             raise RuntimeError(
                 "Не найдены магазины в Uzum API (/v1/shops). Проверьте API-ключ и права доступа."
             )
-        return resolved
+        logger.info("Uzum API resolved shop_ids from /v1/shops: %s", from_api)
+        return from_api
 
     def _fetch_orders_for_shop(
         self,
@@ -1193,7 +1344,12 @@ class UzumApiClient:
             page += 1
         return payments
 
-    def _probe_shop_for_orders(self, shop_id: int) -> bool:
+    def _probe_shop_for_orders(
+        self,
+        shop_id: int,
+        date_from_ms: Optional[int] = None,
+        date_to_ms: Optional[int] = None,
+    ) -> bool:
         params: dict[str, Any] = {
             "page": 0,
             "size": 1,
@@ -1201,19 +1357,38 @@ class UzumApiClient:
             "shopIds": [shop_id],
             "statuses": FINANCE_ORDER_STATUSES,
         }
+        if date_from_ms is not None and date_to_ms is not None:
+            params["dateFrom"] = date_from_ms
+            params["dateTo"] = date_to_ms
         try:
             self.get("/v1/finance/orders", params)
             return True
         except ShopUnavailableError:
             return False
+        except RuntimeError as exc:
+            if "403" in str(exc) or "forbidden" in str(exc).lower():
+                return False
+            raise
 
-    def _probe_shop_for_expenses(self, shop_id: int) -> bool:
+    def _probe_shop_for_expenses(
+        self,
+        shop_id: int,
+        date_from_ms: Optional[int] = None,
+        date_to_ms: Optional[int] = None,
+    ) -> bool:
         params: dict[str, Any] = {"page": 0, "size": 1, "shopIds": [shop_id]}
+        if date_from_ms is not None and date_to_ms is not None:
+            params["dateFrom"] = date_from_ms
+            params["dateTo"] = date_to_ms
         try:
             self.get("/v1/finance/expenses", params)
             return True
         except ShopUnavailableError:
             return False
+        except RuntimeError as exc:
+            if "403" in str(exc) or "forbidden" in str(exc).lower():
+                return False
+            raise
 
     def _fetch_orders_for_shops(
         self,
@@ -1229,12 +1404,19 @@ class UzumApiClient:
                 shop_ids[0], date_from_ms, date_to_ms, unit_ms=unit_ms
             )
         try:
+            logger.info("Uzum API finance/orders bulk shop_ids=%s", shop_ids)
             return self._fetch_orders_bulk(
                 shop_ids, date_from_ms, date_to_ms, unit_ms=unit_ms
             )
-        except ShopUnavailableError:
+        except Exception as exc:
+            if not _should_fallback_finance_bulk(exc):
+                raise
+            logger.info(
+                "Uzum API finance/orders bulk failed (%s), falling back to per-shop",
+                exc,
+            )
             self.warnings.append(
-                "Сводная выгрузка недоступна, загружаем магазины по одному (медленнее)."
+                "Сводная выгрузка продаж недоступна, загружаем магазины по одному."
             )
             return self._collect_per_shop(
                 shop_ids,
@@ -1242,6 +1424,7 @@ class UzumApiClient:
                 lambda sid: self._fetch_orders_for_shop(
                     sid, date_from_ms, date_to_ms, unit_ms=unit_ms
                 ),
+                endpoint_label="finance/orders",
             )
 
     def _fetch_expenses_for_shops(
@@ -1258,12 +1441,19 @@ class UzumApiClient:
                 shop_ids[0], date_from_ms, date_to_ms, unit_ms=unit_ms
             )
         try:
+            logger.info("Uzum API finance/expenses bulk shop_ids=%s", shop_ids)
             return self._fetch_expenses_bulk(
                 shop_ids, date_from_ms, date_to_ms, unit_ms=unit_ms
             )
-        except ShopUnavailableError:
+        except Exception as exc:
+            if not _should_fallback_finance_bulk(exc):
+                raise
+            logger.info(
+                "Uzum API finance/expenses bulk failed (%s), falling back to per-shop",
+                exc,
+            )
             self.warnings.append(
-                "Сводная выгрузка недоступна, загружаем магазины по одному (медленнее)."
+                "Сводная выгрузка услуг недоступна, загружаем магазины по одному."
             )
             return self._collect_per_shop(
                 shop_ids,
@@ -1271,6 +1461,7 @@ class UzumApiClient:
                 lambda sid: self._fetch_expenses_for_shop(
                     sid, date_from_ms, date_to_ms, unit_ms=unit_ms
                 ),
+                endpoint_label="finance/expenses",
             )
 
     def _fetch_dated_records(
@@ -1317,6 +1508,8 @@ class UzumApiClient:
         shop_ids: list[int],
         shop_names: dict[int, str],
         probe: Callable[[int], bool],
+        *,
+        pause_between: bool = True,
     ) -> list[int]:
         available: list[int] = []
         unavailable: list[str] = []
@@ -1326,7 +1519,7 @@ class UzumApiClient:
                 available.append(shop_id)
             else:
                 unavailable.append(label)
-            if PAUSE_BETWEEN_SHOPS_SEC > 0:
+            if pause_between and PAUSE_BETWEEN_SHOPS_SEC > 0:
                 time.sleep(PAUSE_BETWEEN_SHOPS_SEC)
         if unavailable:
             self.warnings.append(
@@ -1340,22 +1533,33 @@ class UzumApiClient:
         shop_ids: list[int],
         shop_names: dict[int, str],
         fetcher: Callable[[int], list[dict[str, Any]]],
+        *,
+        endpoint_label: str = "api",
     ) -> list[dict[str, Any]]:
         combined: list[dict[str, Any]] = []
         unavailable: list[str] = []
         for shop_id in shop_ids:
             label = shop_names.get(shop_id) or f"ID {shop_id}"
             try:
-                combined.extend(fetcher(shop_id))
-            except ShopUnavailableError:
+                rows = fetcher(shop_id)
+                combined.extend(rows)
+                self._record_shop_ok(shop_id, endpoint_label)
+            except ShopUnavailableError as exc:
                 unavailable.append(label)
+                self._record_shop_fail(shop_id, endpoint_label, str(exc))
                 continue
+            except RuntimeError as exc:
+                if "403" in str(exc) or "forbidden" in str(exc).lower():
+                    unavailable.append(label)
+                    self._record_shop_fail(shop_id, endpoint_label, str(exc))
+                    continue
+                raise
             finally:
                 if PAUSE_BETWEEN_SHOPS_SEC > 0:
                     time.sleep(PAUSE_BETWEEN_SHOPS_SEC)
         if unavailable:
             self.warnings.append(
-                "Пропущены недоступные магазины (нет доступа в финансовом API): "
+                "Пропущены недоступные магазины (нет доступа в API): "
                 + ", ".join(unavailable)
             )
         return combined
@@ -1371,19 +1575,8 @@ class UzumApiClient:
             raise RuntimeError("Для отчёта по продажам нужен хотя бы один магазин (shopIds).")
 
         names = shop_names or {sid: f"ID {sid}" for sid in shop_ids}
-        available = self._filter_available_shops(
+        items = self._fetch_dated_records(
             shop_ids,
-            names,
-            self._probe_shop_for_orders,
-        )
-        if not available:
-            raise RuntimeError(
-                "Нет доступных магазинов для отчёта по продажам. "
-                + (self.warnings[-1] if self.warnings else "")
-            )
-
-        return self._fetch_dated_records(
-            available,
             names,
             date_from_ms,
             date_to_ms,
@@ -1393,6 +1586,16 @@ class UzumApiClient:
             ),
             "Продажи",
         )
+        if not items and shop_ids:
+            all_failed = all(
+                self.shop_sync_status.get(sid, {}).get("ok") is False for sid in shop_ids
+            )
+            if all_failed:
+                raise RuntimeError(
+                    "Нет доступных магазинов для отчёта по продажам. "
+                    + (self.warnings[-1] if self.warnings else "")
+                )
+        return items
 
     def fetch_finance_expenses(
         self,
@@ -1405,19 +1608,8 @@ class UzumApiClient:
             raise RuntimeError("Для отчёта по услугам нужен хотя бы один магазин.")
 
         names = shop_names or {sid: f"ID {sid}" for sid in shop_ids}
-        available = self._filter_available_shops(
-            shop_ids,
-            names,
-            self._probe_shop_for_expenses,
-        )
-        if not available:
-            raise RuntimeError(
-                "Нет доступных магазинов для отчёта по услугам. "
-                + (self.warnings[-1] if self.warnings else "")
-            )
-
         items = self._fetch_dated_records(
-            available,
+            shop_ids,
             names,
             date_from_ms,
             date_to_ms,
@@ -1444,6 +1636,15 @@ class UzumApiClient:
                 "Услуги: удалено %s дублей по ID операции",
                 len(filtered) - len(deduped),
             )
+        if not deduped and shop_ids:
+            all_failed = all(
+                self.shop_sync_status.get(sid, {}).get("ok") is False for sid in shop_ids
+            )
+            if all_failed:
+                raise RuntimeError(
+                    "Нет доступных магазинов для отчёта по услугам. "
+                    + (self.warnings[-1] if self.warnings else "")
+                )
         return deduped
 
     def fetch_sku_stocks(self) -> list[dict[str, Any]]:
@@ -1465,28 +1666,7 @@ class UzumApiClient:
         return stocks
 
     def fetch_fbo_invoices(self, shop_ids: list[int]) -> list[dict[str, Any]]:
-        """FBO-накладные с составом (для «К отправке» и себестоимости)."""
-        invoices: list[dict[str, Any]] = []
-        page = 0
-        while page < MAX_PAGES:
-            data = self.get("/v1/invoice", {"page": page, "size": 50})
-            batch: list[dict[str, Any]] = []
-            if isinstance(data, list):
-                batch = [x for x in data if isinstance(x, dict)]
-            elif isinstance(data, dict):
-                payload = data.get("payload")
-                if isinstance(payload, list):
-                    batch = [x for x in payload if isinstance(x, dict)]
-            if not batch:
-                break
-            invoices.extend(batch)
-            if len(batch) < 50:
-                break
-            page += 1
-
-        if invoices:
-            return self._hydrate_fbo_invoice_products(invoices)
-
+        """FBO-накладные с составом (для «К отправке» и себестоимости) — только по shop_id ключа."""
         combined: list[dict[str, Any]] = []
         for shop_id in shop_ids:
             shop_page = 0
@@ -1496,7 +1676,7 @@ class UzumApiClient:
                         f"/v1/shop/{shop_id}/invoice",
                         {"page": shop_page, "size": 50},
                     )
-                except RuntimeError:
+                except (ShopUnavailableError, RuntimeError):
                     break
                 batch = data if isinstance(data, list) else []
                 batch = [x for x in batch if isinstance(x, dict)]
@@ -1554,32 +1734,52 @@ class UzumApiClient:
         index = ProductCatalogIndex.empty()
         if not shop_ids:
             return index
+        loaded_any = False
         for shop_id in shop_ids:
+            endpoint = f"/v1/product/shop/{shop_id}"
             page = 0
             loaded = 0
-            while page < MAX_PAGES:
-                data = self.get(
-                    f"/v1/product/shop/{shop_id}",
-                    {
-                        "page": page,
-                        "size": PRODUCT_PAGE_SIZE,
-                        "filter": "ALL",
-                    },
+            try:
+                while page < MAX_PAGES:
+                    data = self.get(
+                        endpoint,
+                        {
+                            "page": page,
+                            "size": PRODUCT_PAGE_SIZE,
+                            "filter": "ALL",
+                        },
+                    )
+                    products = (data or {}).get("productList") or []
+                    if not products:
+                        break
+                    index.add_shop_products(shop_id, products)
+                    loaded += len(products)
+                    loaded_any = True
+                    total = (data or {}).get("totalProductsAmount")
+                    if total is not None and loaded >= int(total):
+                        break
+                    if len(products) < PRODUCT_PAGE_SIZE:
+                        break
+                    page += 1
+                self._record_shop_ok(shop_id, endpoint)
+            except ShopUnavailableError as exc:
+                self._record_shop_fail(shop_id, endpoint, str(exc))
+                self.warnings.append(
+                    f"Каталог товаров недоступен для магазина {shop_id}."
                 )
-                products = (data or {}).get("productList") or []
-                if not products:
-                    break
-                index.add_shop_products(shop_id, products)
-                loaded += len(products)
-                total = (data or {}).get("totalProductsAmount")
-                if total is not None and loaded >= int(total):
-                    break
-                if len(products) < PRODUCT_PAGE_SIZE:
-                    break
-                page += 1
-            if PAUSE_BETWEEN_SHOPS_SEC > 0:
-                time.sleep(PAUSE_BETWEEN_SHOPS_SEC)
-        if index.size:
+                continue
+            except RuntimeError as exc:
+                if "403" in str(exc) or "forbidden" in str(exc).lower():
+                    self._record_shop_fail(shop_id, endpoint, str(exc))
+                    self.warnings.append(
+                        f"Каталог товаров недоступен для магазина {shop_id}."
+                    )
+                    continue
+                raise
+            finally:
+                if PAUSE_BETWEEN_SHOPS_SEC > 0:
+                    time.sleep(PAUSE_BETWEEN_SHOPS_SEC)
+        if loaded_any:
             self.warnings.append(
                 "Часть колонок дополнена из каталога товаров Uzum (/v1/product/shop)."
             )
@@ -2300,11 +2500,13 @@ def build_report(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     shop_ids: Optional[list[int]] = None,
+    client: Optional[UzumApiClient] = None,
 ) -> tuple[list[ExportColumn], list[dict[str, Any]], str, list[str]]:
     builder = REPORT_BUILDERS.get(report_type)
     if not builder:
         raise ValueError(f"Unknown report type: {report_type}")
-    client = UzumApiClient(api_key)
+    if client is None:
+        client = UzumApiClient(api_key)
     date_from_ms = date_to_epoch_ms(date_from, end_of_day=False)
     date_to_ms = date_to_epoch_ms(date_to, end_of_day=True)
     columns, rows = builder(client, date_from_ms, date_to_ms, shop_ids)

@@ -28,10 +28,12 @@ from app.services.uzum_export import (
 )
 from app.services.uzum_api_helpers import (
     INVALID_UZUM_API_KEY,
+    UZUM_KEY_INSUFFICIENT_ACCESS,
     UZUM_SHOP_UNAVAILABLE,
     normalize_api_key,
     uzum_error_means_invalid_key,
     validate_api_key,
+    validate_api_key_shops,
 )
 from app.services.uzum_sync import (
     enqueue_manual_uzum_sync_job,
@@ -55,6 +57,10 @@ def _invalid_key_http_exception() -> HTTPException:
 
 def _shop_unavailable_http_exception() -> HTTPException:
     return HTTPException(status_code=403, detail=UZUM_SHOP_UNAVAILABLE)
+
+
+def _key_insufficient_access_http_exception() -> HTTPException:
+    return HTTPException(status_code=403, detail=UZUM_KEY_INSUFFICIENT_ACCESS)
 
 # From Uzum OpenAPI: Authorization header, token WITHOUT "Bearer " prefix.
 DEFAULT_AUTH_MODE = "authorization_raw"
@@ -403,9 +409,14 @@ def start_uzum_reports_sync(
         raise HTTPException(status_code=400, detail="API key is required")
     date_from, date_to = _resolve_sync_dates(body)
 
-    key_valid, _, _ = validate_api_key(api_key)
+    key_valid, key_error, key_status = validate_api_key_shops(api_key)
     if not key_valid:
-        raise HTTPException(status_code=400, detail=INVALID_UZUM_API_KEY)
+        raise HTTPException(
+            status_code=400 if key_error == INVALID_UZUM_API_KEY else 502,
+            detail=key_error or INVALID_UZUM_API_KEY,
+        )
+
+    _save_user_uzum_api_key(db, user_id, api_key)
 
     if user_has_running_manual_sync(db, user_id):
         raise HTTPException(
@@ -425,6 +436,16 @@ def start_uzum_reports_sync(
     )
 
     return UzumSyncStartResponse(sync_id=log_id, status="running")
+
+
+@router.get("/uzum-seller/sync/active")
+def get_active_uzum_sync(
+    user_id: UUID = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    """Whether a Uzum sync is running for the current user (for dashboard UI)."""
+    running = user_has_running_manual_sync(db, user_id)
+    return {"running": running}
 
 
 @router.get("/uzum-seller/reports/sync/status/{sync_id}", response_model=UzumSyncStatusResponse)
@@ -461,9 +482,20 @@ def sync_uzum_reports_to_service(
     date_from = body.date_from or f"{today.year}-01-01"
     date_to = body.date_to or today.isoformat()
 
-    key_valid, key_error, _ = validate_api_key(api_key)
+    key_valid, key_error, _ = validate_api_key_shops(api_key)
     if not key_valid:
-        raise HTTPException(status_code=400, detail=INVALID_UZUM_API_KEY)
+        raise HTTPException(
+            status_code=400 if key_error == INVALID_UZUM_API_KEY else 502,
+            detail=key_error or INVALID_UZUM_API_KEY,
+        )
+
+    _save_user_uzum_api_key(db, user_id, api_key)
+
+    if user_has_running_manual_sync(db, user_id):
+        raise HTTPException(
+            status_code=409,
+            detail="Синхронизация уже выполняется. Подождите завершения текущей загрузки.",
+        )
 
     try:
         sync_result = run_uzum_sync_for_user(
@@ -495,6 +527,8 @@ def sync_uzum_reports_to_service(
             raise _invalid_key_http_exception()
         if err == UZUM_SHOP_UNAVAILABLE:
             raise _shop_unavailable_http_exception()
+        if err == UZUM_KEY_INSUFFICIENT_ACCESS:
+            raise _key_insufficient_access_http_exception()
         if "429" in str(err).lower() or "rate" in str(err).lower():
             raise HTTPException(status_code=429, detail=err)
         raise HTTPException(status_code=500, detail=err)

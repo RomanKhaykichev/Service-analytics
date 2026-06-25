@@ -31,6 +31,10 @@ class Settings:
     UZUM_SCHEDULED_SYNC_ENABLED: bool = os.getenv("UZUM_SCHEDULED_SYNC_ENABLED", "true").lower() in (
         "1", "true", "yes", "on",
     )
+    # Pause between users in scheduled cycle (reduces API/Uzum load spikes).
+    UZUM_SCHEDULED_USER_PAUSE_SEC: float = float(os.getenv("UZUM_SCHEDULED_USER_PAUSE_SEC", "30"))
+    # Pause before retry pass for users that failed in the first pass.
+    UZUM_SCHEDULED_RETRY_PAUSE_SEC: float = float(os.getenv("UZUM_SCHEDULED_RETRY_PAUSE_SEC", "120"))
     
     # Dev fallback for user_id (only used when APP_ENV=dev)
     DEFAULT_DEV_USER_ID: str = os.getenv(

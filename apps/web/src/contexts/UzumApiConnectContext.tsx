@@ -147,6 +147,7 @@ export function UzumApiConnectProvider({ children }: { children: ReactNode }) {
         toast.success(t("services.loadDataSuccess"));
         options?.onSuccess?.();
         await queryClient.invalidateQueries();
+        window.setTimeout(() => window.location.reload(), 600);
       } catch (e) {
         const interrupted =
           e instanceof Error && e.message === UZUM_SYNC_REQUEST_INTERRUPTED;

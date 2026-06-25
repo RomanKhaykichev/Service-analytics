@@ -12,7 +12,11 @@ import json
 import re
 from app.db import get_db, qname
 from app.deps import require_user, require_phone_verified, is_user_admin
-from app.utils.tenant_shop_allowlist import get_user_allowed_shops_list, norm_shop_label as _allow_norm_shop
+from app.utils.tenant_shop_allowlist import (
+    get_user_allowed_shops_list,
+    norm_shop_label as _allow_norm_shop,
+    upsert_dim_shop_names,
+)
 from app.auth.access import require_active_access
 from app.settings import get_settings
 from app.utils.barcode import barcode_norm_sql
@@ -198,6 +202,13 @@ def _file_shop_names_ordered(df: pd.DataFrame, shop_column: str = "Магази�
             seen.add(v)
             result.append(v)
     return result
+
+
+def _register_df_shops(db: Session, user_id: UUID, df: pd.DataFrame, shop_column: str = "Магазин") -> None:
+    """Сохраняет все магазины из файла в dim_shop до фильтра по тарифу."""
+    names = _file_shop_names_ordered(df, shop_column)
+    if names:
+        upsert_dim_shop_names(db, user_id, names)
 
 
 def compute_allowed_shops(
@@ -1821,6 +1832,7 @@ async def import_xlsx(
             saved_shops = get_saved_shop_names(db, user_id)
             max_shops = get_user_max_shops(db, user_id)
             file_shop_names = _file_shop_names_ordered(df, "Магазин")
+            _register_df_shops(db, user_id, df)
             explicit = get_user_allowed_shops_list(db, user_id)
             if explicit:
                 allowed_norms = {_allow_norm_shop(s) for s in explicit}
@@ -2158,6 +2170,7 @@ async def import_xlsx_batch(
                 if report_type in ("inventory", "storage") and "Магазин" in df.columns:
                     explicit_bt = get_user_allowed_shops_list(db, user_id)
                     file_shop_names = _file_shop_names_ordered(df, "Магазин")
+                    _register_df_shops(db, user_id, df)
                     if explicit_bt:
                         allowed_norms = {_allow_norm_shop(s) for s in explicit_bt}
                         file_norms = {_allow_norm_shop(s) for s in file_shop_names}
@@ -2197,7 +2210,7 @@ async def import_xlsx_batch(
                     )
                 
                 # После inventory/storage обновляем список сохранённых магазинов для следующего файла (лимит тарифа)
-                if report_type in ("inventory", "storage"):
+                if report_type in ("inventory_old", "storage"):
                     saved_shops = get_saved_shop_names(db, user_id)
                 
                 logger.info(f"Imported {report_type}: {rows_imported} rows, batch_id={batch_id}")
@@ -2286,15 +2299,6 @@ def import_uzum_api_sync(
     require_active_access(user_id, db)
 
     try:
-        delete_all_user_data(db, user_id)
-        batch_id = create_batch(db, user_id)
-
-        project_root = Path(__file__).parent.parent.parent.parent
-        uploads_base = project_root / "apps" / "api" / "uploads"
-        user_dir = uploads_base / str(user_id)
-        batch_dir = user_dir / batch_id
-        batch_dir.mkdir(parents=True, exist_ok=True)
-
         import_order = [
             ("inventory_old", "leftout_old", LEFTOUT_OLD_MAP, "stg_leftout_old"),
             ("sales", "sales", SALES_MAP, "stg_sales"),
@@ -2302,16 +2306,91 @@ def import_uzum_api_sync(
             ("storage", "storage", STORAGE_MAP, "stg_storage"),
         ]
 
-        imported_counts: dict[str, int] = {}
-        saved_paths: dict[str, str] = {}
-        batch_store_limit_exceeded = False
         saved_shops = get_saved_shop_names(db, user_id)
         max_shops = get_user_max_shops(db, user_id)
+        batch_store_limit_exceeded = False
 
+        project_root = Path(__file__).parent.parent.parent.parent
+        uploads_base = project_root / "apps" / "api" / "uploads"
+        user_dir = uploads_base / str(user_id)
+
+        prepared: list[dict[str, Any]] = []
         for report_type, file_type, mapping, staging_table in import_order:
             file_content = files[report_type]
             file_name = names[report_type]
             sheet_name = SHEETS[file_type]
+
+            try:
+                df = read_excel_as_str(file_content, sheet_name, file_type)
+            except Exception as e:
+                logger.error("Error reading Excel for %s: %s", report_type, e, exc_info=True)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Error reading {report_type} Excel file: {str(e)}",
+                ) from e
+
+            if not df.empty:
+                try:
+                    validate_required(df, file_type)
+                except ValueError as e:
+                    raise HTTPException(status_code=400, detail=f"{report_type}: {str(e)}") from e
+
+                if report_type in ("inventory_old", "storage") and "Магазин" in df.columns:
+                    explicit_bt = get_user_allowed_shops_list(db, user_id)
+                    file_shop_names = _file_shop_names_ordered(df, "Магазин")
+                    _register_df_shops(db, user_id, df)
+                    if explicit_bt:
+                        allowed_norms = {_allow_norm_shop(s) for s in explicit_bt}
+                        file_norms = {_allow_norm_shop(s) for s in file_shop_names}
+                        exceeded = len(file_norms - allowed_norms) > 0
+                        batch_store_limit_exceeded = batch_store_limit_exceeded or exceeded
+                        skip_storage_filter = report_type == "storage" and max_shops == 1
+                        if not skip_storage_filter:
+                            df = filter_df_by_allowed_shops(df, list(explicit_bt), "Магазин")
+                    elif max_shops is not None:
+                        allowed_shops, exceeded = compute_allowed_shops(
+                            saved_shops, file_shop_names, max_shops
+                        )
+                        df = filter_df_by_allowed_shops(df, allowed_shops, "Магазин")
+                        batch_store_limit_exceeded = batch_store_limit_exceeded or exceeded
+
+                if report_type in ("inventory_old", "storage"):
+                    saved_shops = get_saved_shop_names(db, user_id)
+
+            prepared.append(
+                {
+                    "report_type": report_type,
+                    "file_type": file_type,
+                    "mapping": mapping,
+                    "staging_table": staging_table,
+                    "file_content": file_content,
+                    "file_name": file_name,
+                    "df": df,
+                }
+            )
+
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+
+        delete_all_user_data(db, user_id)
+        batch_id = create_batch(db, user_id)
+        batch_dir = user_dir / batch_id
+        batch_dir.mkdir(parents=True, exist_ok=True)
+
+        imported_counts: dict[str, int] = {}
+        saved_paths: dict[str, str] = {}
+
+        for item in prepared:
+            report_type = item["report_type"]
+            file_type = item["file_type"]
+            mapping = item["mapping"]
+            staging_table = item["staging_table"]
+            file_content = item["file_content"]
+            file_name = item["file_name"]
+            df = item["df"]
 
             file_ext = Path(file_name).suffix or ".xlsx"
             saved_filename = f"{report_type}{file_ext}"
@@ -2320,38 +2399,13 @@ def import_uzum_api_sync(
                 f.write(file_content)
             saved_paths[report_type] = str(saved_path)
 
-            try:
-                df = read_excel_as_str(file_content, sheet_name, file_type)
-            except Exception as e:
-                logger.error("Error reading Excel for %s: %s", report_type, e, exc_info=True)
-                db.rollback()
-                raise HTTPException(status_code=400, detail=f"Error reading {report_type} Excel file: {str(e)}") from e
-
             if df.empty:
-                db.rollback()
-                raise HTTPException(status_code=400, detail=f"{report_type} Excel file is empty or has no valid data")
-
-            try:
-                validate_required(df, file_type)
-            except ValueError as e:
-                db.rollback()
-                raise HTTPException(status_code=400, detail=f"{report_type}: {str(e)}") from e
-
-            if report_type in ("inventory", "storage") and "Магазин" in df.columns:
-                explicit_bt = get_user_allowed_shops_list(db, user_id)
-                file_shop_names = _file_shop_names_ordered(df, "Магазин")
-                if explicit_bt:
-                    allowed_norms = {_allow_norm_shop(s) for s in explicit_bt}
-                    file_norms = {_allow_norm_shop(s) for s in file_shop_names}
-                    exceeded = len(file_norms - allowed_norms) > 0
-                    batch_store_limit_exceeded = batch_store_limit_exceeded or exceeded
-                    skip_storage_filter = report_type == "storage" and max_shops == 1
-                    if not skip_storage_filter:
-                        df = filter_df_by_allowed_shops(df, list(explicit_bt), "Магазин")
-                elif max_shops is not None:
-                    allowed_shops, exceeded = compute_allowed_shops(saved_shops, file_shop_names, max_shops)
-                    df = filter_df_by_allowed_shops(df, allowed_shops, "Магазин")
-                    batch_store_limit_exceeded = batch_store_limit_exceeded or exceeded
+                logger.info(
+                    "Uzum API sync: %s report has no data rows, skipping",
+                    report_type,
+                )
+                imported_counts[report_type] = 0
+                continue
 
             try:
                 to_staging(df, mapping, str(user_id), batch_id, staging_table, db, file_type)
@@ -2367,9 +2421,6 @@ def import_uzum_api_sync(
                 logger.error("Error populating %s fact tables: %s", report_type, e, exc_info=True)
                 db.rollback()
                 raise HTTPException(status_code=500, detail=f"Error populating {report_type} fact tables: {str(e)}") from e
-
-            if report_type in ("inventory", "storage"):
-                saved_shops = get_saved_shop_names(db, user_id)
 
             logger.info("Uzum sync imported %s: %s rows, batch_id=%s", report_type, rows_imported, batch_id)
 
