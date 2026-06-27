@@ -284,6 +284,89 @@ def fetch_all_tenant_shop_labels(db: Session, user_id: UUID | str) -> list[str]:
     return [str(r[0]) for r in rows or [] if r and r[0]]
 
 
+def fetch_loaded_tenant_shop_labels(db: Session, user_id: UUID | str) -> list[str]:
+    """Магазины dim_shop, по которым есть строки в fact/staging (импорт в сервис)."""
+    uid = str(user_id)
+    undefined_list = UNDEFINED_SHOP_SQL_LIST
+    shop_norm = "upper(regexp_replace(trim({col}), '\\\\s+', ' ', 'g'))"
+    ds_norm = shop_norm.format(col="ds.shop_name")
+    rows = db.execute(
+        text(
+            f"""
+            SELECT ds.shop_name
+            FROM {qname('dim_shop')} ds
+            WHERE ds.user_id = CAST(:uid AS uuid)
+              AND ds.shop_name IS NOT NULL
+              AND TRIM(ds.shop_name) <> ''
+              AND lower(TRIM(ds.shop_name)) NOT IN ({undefined_list})
+              AND (
+                EXISTS (
+                    SELECT 1 FROM {qname('fact_sales')} fs
+                    WHERE fs.user_id = ds.user_id AND fs.shop_id = ds.shop_id
+                )
+                OR EXISTS (
+                    SELECT 1 FROM {qname('fact_leftout_snapshot')} fl
+                    WHERE fl.user_id = ds.user_id AND fl.shop_id = ds.shop_id
+                )
+                OR EXISTS (
+                    SELECT 1 FROM {qname('fact_storage_snapshot')} fss
+                    WHERE fss.user_id = ds.user_id
+                      AND (
+                        fss.shop_id = ds.shop_id
+                        OR {shop_norm.format(col='fss.shop_raw')} = {ds_norm}
+                      )
+                )
+                OR EXISTS (
+                    SELECT 1 FROM {qname('stg_storage')} ss
+                    WHERE ss.user_id = ds.user_id
+                      AND {shop_norm.format(col='ss.shop_raw')} = {ds_norm}
+                )
+                OR EXISTS (
+                    SELECT 1 FROM {qname('stg_leftout')} sl
+                    WHERE sl.user_id = ds.user_id
+                      AND {shop_norm.format(col='sl.shop_raw')} = {ds_norm}
+                )
+              )
+            ORDER BY ds.shop_name
+            """
+        ),
+        {"uid": uid},
+    ).fetchall()
+    return [str(r[0]) for r in rows or [] if r and r[0]]
+
+
+def _fetch_dim_shop_names_ordered(db: Session, user_id: UUID | str) -> list[str]:
+    uid = str(user_id)
+    undefined_list = UNDEFINED_SHOP_SQL_LIST
+    rows = db.execute(
+        text(
+            f"""
+            SELECT shop_name
+            FROM {qname('dim_shop')}
+            WHERE user_id = :uid
+              AND shop_name IS NOT NULL
+              AND TRIM(shop_name) <> ''
+              AND lower(TRIM(shop_name)) NOT IN ({undefined_list})
+            ORDER BY shop_name
+            """
+        ),
+        {"uid": uid},
+    ).fetchall()
+    return [str(r[0]) for r in rows or [] if r and r[0]]
+
+
+def shop_names_loaded_first(db: Session, user_id: UUID | str) -> list[str]:
+    """Сначала магазины с импортированными данными, затем остальные из dim_shop (по алфавиту)."""
+    loaded = fetch_loaded_tenant_shop_labels(db, user_id)
+    loaded_norms = {norm_shop_label(name) for name in loaded}
+    rest = [
+        name
+        for name in _fetch_dim_shop_names_ordered(db, user_id)
+        if norm_shop_label(name) not in loaded_norms
+    ]
+    return loaded + rest
+
+
 def count_tenant_shop_labels(db: Session, user_id: UUID | str) -> int:
     """Количество уникальных магазинов пользователя для колонки «Магазин» в админке."""
     uid = str(user_id)
@@ -309,9 +392,8 @@ def resolve_allowed_shop_labels(
     """
     Разрешённые магазины для подсветки в админке.
     Возвращает (allowed_labels, active_shop).
+    При авто-режиме: первые N — из загруженных в сервис, затем остальные dim_shop.
     """
-    undefined_list = UNDEFINED_SHOP_SQL_LIST
-    uid = str(user_id)
     label_by_norm = {norm_shop_label(lbl): lbl for lbl in all_labels}
 
     override = get_user_allowed_shops_list(db, user_id)
@@ -327,23 +409,11 @@ def resolve_allowed_shop_labels(
         active = allowed[0] if allowed else None
         return allowed, active
 
-    limit_sql = "" if max_shops is None else f" LIMIT {int(max_shops)}"
-    rows_allowed = db.execute(
-        text(
-            f"""
-            SELECT shop_name
-            FROM {qname('dim_shop')}
-            WHERE user_id = :uid
-              AND shop_name IS NOT NULL
-              AND TRIM(shop_name) <> ''
-              AND lower(TRIM(shop_name)) NOT IN ({undefined_list})
-            ORDER BY shop_name
-            {limit_sql}
-            """
-        ),
-        {"uid": uid},
-    ).fetchall()
-    allowed = [str(r[0]) for r in rows_allowed or []]
+    pool = shop_names_loaded_first(db, user_id)
+    if max_shops is not None:
+        allowed = pool[: int(max_shops)]
+    else:
+        allowed = pool
     active = allowed[0] if allowed else None
     return allowed, active
 

@@ -158,7 +158,16 @@ export default function Admin() {
   const [sortColumn, setSortColumn] = useState<TenantSortColumn>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(null);
   const [tenantShops, setTenantShops] = useState<
-    Record<string, { loading: boolean; error: string | null; names: string[]; allowedShops?: string[] | null }>
+    Record<
+      string,
+      {
+        loading: boolean;
+        error: string | null;
+        names: string[];
+        allowedShops?: string[] | null;
+        loadedShops?: string[] | null;
+      }
+    >
   >({});
   const [notesModal, setNotesModal] = useState<{ tenantId: string; notes: string } | null>(null);
   const [passwordModal, setPasswordModal] = useState<{ tenantId: string; newPassword: string } | null>(null);
@@ -279,22 +288,38 @@ export default function Admin() {
   const loadTenantShops = useCallback(async (tenantId: string) => {
     setTenantShops((prev) => {
       const current = prev[tenantId];
-      if (current?.loading || current?.names?.length) return prev;
-      return { ...prev, [tenantId]: { loading: true, error: null, names: current?.names ?? [] } };
+      if (current?.loading) return prev;
+      return { ...prev, [tenantId]: { ...current, loading: true, error: null } };
     });
     try {
-      const res = await apiGet<{ tenant_id: string; shops: string[]; active_shop?: string | null; allowed_shops?: string[] | null }>(
-        `/api/admin/tenants/${tenantId}/shops`
-      );
+      const res = await apiGet<{
+        tenant_id: string;
+        shops: string[];
+        active_shop?: string | null;
+        allowed_shops?: string[] | null;
+        loaded_shops?: string[] | null;
+      }>(`/api/admin/tenants/${tenantId}/shops`);
       setTenantShops((prev) => ({
         ...prev,
-        [tenantId]: { loading: false, error: null, names: res.shops ?? [], allowedShops: res.allowed_shops ?? null },
+        [tenantId]: {
+          loading: false,
+          error: null,
+          names: res.shops ?? [],
+          allowedShops: res.allowed_shops ?? null,
+          loadedShops: res.loaded_shops ?? null,
+        },
       }));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setTenantShops((prev) => ({
         ...prev,
-        [tenantId]: { loading: false, error: msg, names: prev[tenantId]?.names ?? [], allowedShops: prev[tenantId]?.allowedShops ?? null },
+        [tenantId]: {
+          loading: false,
+          error: msg,
+          names: prev[tenantId]?.names ?? [],
+          allowedShops: prev[tenantId]?.allowedShops ?? null,
+          loadedShops: prev[tenantId]?.loadedShops ?? null,
+        },
       }));
     }
   }, []);
@@ -455,16 +480,6 @@ export default function Admin() {
       fetchDashboardMetrics();
     }
   }, [accessDenied, fetchTenants, fetchDashboardMetrics]);
-
-  useEffect(() => {
-    if (accessDenied || adminTab !== "overview") return;
-    const hasRunning = tenants?.tenants?.some((t) => t.uzum_sync_running);
-    if (!hasRunning) return;
-    const timer = window.setInterval(() => {
-      void fetchTenants();
-    }, 12_000);
-    return () => window.clearInterval(timer);
-  }, [accessDenied, adminTab, tenants?.tenants, fetchTenants]);
 
   useEffect(() => {
     if (!shopAllowTenantId) {
@@ -1303,11 +1318,21 @@ export default function Admin() {
                                   (tenantShops[row.tenant_id]?.names?.length ? (
                                     tenantShops[row.tenant_id].names.map((name, idx) => {
                                       const allowedShops = tenantShops[row.tenant_id]?.allowedShops ?? [];
+                                      const loadedShops = tenantShops[row.tenant_id]?.loadedShops ?? [];
                                       const allowedNorms = new Set(allowedShops.map(normShopLabel));
+                                      const loadedNorms = new Set(loadedShops.map(normShopLabel));
                                       const isAllowed = allowedNorms.has(normShopLabel(name));
+                                      const isLoaded = loadedNorms.has(normShopLabel(name));
                                       return (
                                         <span key={`${name}-${idx}`}>
-                                          {isAllowed ? <span className="font-bold">{name}</span> : name}
+                                          <span
+                                            className={cn(
+                                              isAllowed && "font-bold",
+                                              isLoaded && "italic",
+                                            )}
+                                          >
+                                            {name}
+                                          </span>
                                           {idx < tenantShops[row.tenant_id].names.length - 1 ? <br /> : null}
                                         </span>
                                       );

@@ -22,6 +22,7 @@ from app.utils.tenant_shop_allowlist import (
     get_user_allowed_shops_list,
     set_user_allowed_shops_list,
     fetch_all_tenant_shop_labels,
+    fetch_loaded_tenant_shop_labels,
     count_tenant_shop_labels,
     merge_shop_labels,
     resolve_allowed_shop_labels,
@@ -131,6 +132,8 @@ class TenantShopsResponse(BaseModel):
     # Shops that should be treated as "visible/allowed" for tariff in admin tooltip.
     # For trial => 1, Month 5 => up to 5, Month 10 => up to 10, Gold => all.
     allowed_shops: list[str] = []
+    # Shops with imported report/fact data (italic in admin tooltip).
+    loaded_shops: list[str] = []
 
 class DashboardFunnel(BaseModel):
     visited_site: int  # Зашли на сайт — количество человек, зашедших на сайт (лендинг)
@@ -1278,12 +1281,13 @@ async def admin_tenant_shops(
     """
     Список магазинов по тенанту (для подсказки в админке).
 
-    Все загруженные магазины + отдельно разрешённые (жирным в UI).
+    Все магазины пользователя; жирным — allowed по тарифу; курсивом — загружены в сервис.
     """
     uid = str(tenant_id)
     shops: list[str] = []
     active_shop: Optional[str] = None
     allowed_shops: list[str] = []
+    loaded_shops: list[str] = []
     try:
         if is_user_admin(tenant_id, db):
             max_shops = None
@@ -1306,10 +1310,11 @@ async def admin_tenant_shops(
                 max_shops = 1
 
         shops = fetch_all_tenant_shop_labels(db, tenant_id)
+        loaded_shops = fetch_loaded_tenant_shop_labels(db, tenant_id)
         allowed_shops, active_shop = resolve_allowed_shop_labels(
             db, tenant_id, shops, max_shops=max_shops
         )
-        shops = merge_shop_labels(shops, allowed_shops)
+        shops = merge_shop_labels(shops, allowed_shops, loaded_shops)
     except Exception as e:
         db.rollback()
         logger.debug("admin_tenant_shops failed for %s: %s", uid, e)
@@ -1319,6 +1324,7 @@ async def admin_tenant_shops(
         shops=shops,
         active_shop=active_shop,
         allowed_shops=allowed_shops,
+        loaded_shops=loaded_shops,
     )
 
 

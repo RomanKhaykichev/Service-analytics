@@ -15,6 +15,7 @@ from app.deps import require_user, require_phone_verified, is_user_admin
 from app.utils.tenant_shop_allowlist import (
     get_user_allowed_shops_list,
     norm_shop_label as _allow_norm_shop,
+    shop_names_loaded_first,
     upsert_dim_shop_names,
 )
 from app.auth.access import require_active_access
@@ -168,23 +169,11 @@ def get_user_max_shops(db: Session, user_id: UUID) -> Optional[int]:
 
 def get_saved_shop_names(db: Session, user_id: UUID) -> list:
     """
-    Список названий магазинов, сохранённых у пользователя (из dim_shop), без «не определено».
-    Отсортирован по shop_name для стабильного порядка (первые N = допуск по тарифу).
+    Магазины dim_shop: сначала с импортированными данными, затем остальные (по алфавиту).
+    Первые N = допуск по тарифу при импорте.
     """
     try:
-        excluded_sql = ", ".join(repr(s) for s in UNDEFINED_SHOP_NAMES)
-        result = db.execute(
-            text(f"""
-                SELECT shop_name FROM {qname('dim_shop')}
-                WHERE user_id = CAST(:user_id AS uuid)
-                  AND shop_name IS NOT NULL
-                  AND TRIM(shop_name) <> ''
-                  AND lower(TRIM(shop_name)) NOT IN ({excluded_sql})
-                ORDER BY shop_name
-            """),
-            {"user_id": str(user_id)},
-        )
-        return [row[0].strip() for row in result.fetchall() if row and row[0]]
+        return shop_names_loaded_first(db, user_id)
     except Exception as e:
         logger.warning("get_saved_shop_names: %s", e)
         return []
