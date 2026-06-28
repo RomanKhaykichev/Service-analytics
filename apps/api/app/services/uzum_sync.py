@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, Optional
 from uuid import UUID
@@ -47,6 +48,10 @@ SyncTrigger = Literal["scheduled", "manual"]
 
 # Trial sync window matches KPI display clamp (60 calendar days inclusive).
 TRIAL_SYNC_LOOKBACK_DAYS = 59
+
+# Incremental API refresh after first successful connect (calendar days inclusive).
+INCREMENTAL_SALES_LOOKBACK_DAYS = 29
+INCREMENTAL_EXPENSES_LOOKBACK_DAYS = 1
 
 _PAID_SYNC_PLANS = frozenset(
     {
@@ -100,6 +105,87 @@ def resolve_uzum_sync_date_range(
     return start, end
 
 
+@dataclass(frozen=True)
+class UzumSyncFetchDates:
+    mode: Literal["full", "incremental"]
+    sales_from: str
+    sales_to: str
+    expenses_from: str
+    expenses_to: str
+    sales_replace_from: Optional[str] = None
+    expenses_replace_from: Optional[str] = None
+
+
+def user_has_prior_successful_api_sync(db: Session, user_id: UUID) -> bool:
+    row = db.execute(
+        text(f"""
+            SELECT 1 FROM {qname("uzum_sync_log")}
+            WHERE user_id = CAST(:uid AS uuid)
+              AND status = 'success'
+              AND upload_batch_id IS NOT NULL
+            LIMIT 1
+        """),
+        {"uid": str(user_id)},
+    ).fetchone()
+    return row is not None
+
+
+def resolve_full_sync_date_range_ytd(
+    *,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> tuple[str, str]:
+    """Full sync from Jan 1 through today (admin panel)."""
+    today = uz_now().date()
+    end = (date_to or today.isoformat())[:10]
+    start = date_from[:10] if date_from else f"{today.year}-01-01"
+    return start, end
+
+
+def resolve_sync_fetch_dates(
+    db: Session,
+    user_id: UUID,
+    *,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    force_full_sync: bool = False,
+) -> UzumSyncFetchDates:
+    today = uz_now().date()
+    end = (date_to or today.isoformat())[:10]
+
+    if force_full_sync:
+        start, resolved_end = resolve_full_sync_date_range_ytd(date_from=date_from, date_to=end)
+        return UzumSyncFetchDates(
+            mode="full",
+            sales_from=start,
+            sales_to=resolved_end,
+            expenses_from=start,
+            expenses_to=resolved_end,
+        )
+
+    if user_has_prior_successful_api_sync(db, user_id):
+        sales_from = (today - timedelta(days=INCREMENTAL_SALES_LOOKBACK_DAYS)).isoformat()
+        expenses_from = (today - timedelta(days=INCREMENTAL_EXPENSES_LOOKBACK_DAYS)).isoformat()
+        return UzumSyncFetchDates(
+            mode="incremental",
+            sales_from=sales_from,
+            sales_to=end,
+            expenses_from=expenses_from,
+            expenses_to=end,
+            sales_replace_from=sales_from,
+            expenses_replace_from=expenses_from,
+        )
+
+    start, resolved_end = resolve_uzum_sync_date_range(db, user_id, date_from=date_from, date_to=end)
+    return UzumSyncFetchDates(
+        mode="full",
+        sales_from=start,
+        sales_to=resolved_end,
+        expenses_from=start,
+        expenses_to=resolved_end,
+    )
+
+
 def is_phone_verified_for_sync(user_id: UUID, db: Session, phone: Optional[str], phone_verified_at) -> tuple[bool, str]:
     if is_user_admin(user_id, db):
         return True, ""
@@ -111,8 +197,10 @@ def is_phone_verified_for_sync(user_id: UUID, db: Session, phone: Optional[str],
 def fetch_uzum_report_files(
     api_key: str,
     *,
-    date_from: str,
-    date_to: str,
+    sales_date_from: str,
+    sales_date_to: str,
+    expenses_date_from: str,
+    expenses_date_to: str,
     shop_ids: list[int],
     client: Optional[UzumApiClient] = None,
 ) -> tuple[dict[str, bytes], dict[str, str], list[str]]:
@@ -121,14 +209,20 @@ def fetch_uzum_report_files(
     warnings: list[str] = []
     uzum_client = client or UzumApiClient(api_key)
 
+    report_dates: dict[str, tuple[str, str]] = {
+        "sales": (sales_date_from, sales_date_to),
+        "expenses": (expenses_date_from, expenses_date_to),
+    }
+
     for report_type in UZUM_SYNC_REPORT_TYPES:
         kwargs: dict[str, Any] = {
             "shop_ids": shop_ids,
             "client": uzum_client,
         }
-        if report_type in ("sales", "expenses"):
-            kwargs["date_from"] = date_from
-            kwargs["date_to"] = date_to
+        if report_type in report_dates:
+            df, dt = report_dates[report_type]
+            kwargs["date_from"] = df
+            kwargs["date_to"] = dt
         columns, rows, filename, report_warnings = build_report(
             report_type, api_key, **kwargs
         )
@@ -335,6 +429,7 @@ def run_uzum_sync_for_user(
     skip_access_checks: bool = False,
     skip_key_validation: bool = False,
     log_id: Optional[str] = None,
+    force_full_sync: bool = False,
 ) -> dict[str, Any]:
     """
     Fetch four Uzum reports and import them for one user.
@@ -405,8 +500,12 @@ def run_uzum_sync_for_user(
             finished_log_id = _finish("skipped", error_message=phone_reason)
             return {"status": "skipped", "log_id": finished_log_id, "error": phone_reason}
 
-    date_from, date_to = resolve_uzum_sync_date_range(
-        db, user_id, date_from=date_from, date_to=date_to
+    fetch_dates = resolve_sync_fetch_dates(
+        db,
+        user_id,
+        date_from=date_from,
+        date_to=date_to,
+        force_full_sync=force_full_sync,
     )
 
     access_probes = None
@@ -443,12 +542,22 @@ def run_uzum_sync_for_user(
             raise
         files, file_names, warnings = fetch_uzum_report_files(
             key,
-            date_from=date_from,
-            date_to=date_to,
+            sales_date_from=fetch_dates.sales_from,
+            sales_date_to=fetch_dates.sales_to,
+            expenses_date_from=fetch_dates.expenses_from,
+            expenses_date_to=fetch_dates.expenses_to,
             shop_ids=accessible_shop_ids,
             client=client,
         )
-        result = import_uzum_api_sync(db, user_id, files, file_names)
+        result = import_uzum_api_sync(
+            db,
+            user_id,
+            files,
+            file_names,
+            mode=fetch_dates.mode,
+            sales_replace_from=fetch_dates.sales_replace_from,
+            expenses_replace_from=fetch_dates.expenses_replace_from,
+        )
     except HTTPException as exc:
         err = str(exc.detail) if exc.detail else str(exc)
         finished_log_id = _log_sync_failure(
@@ -508,8 +617,9 @@ def run_uzum_sync_for_user(
         "log_id": finished_log_id,
         "upload_batch_id": batch_id,
         "imported": result.get("imported"),
-        "date_from": date_from,
-        "date_to": date_to,
+        "date_from": fetch_dates.sales_from,
+        "date_to": fetch_dates.sales_to,
+        "sync_mode": fetch_dates.mode,
         "warnings": warnings,
     }
 
@@ -726,6 +836,7 @@ def run_admin_uzum_sync_for_tenant(tenant_id: UUID) -> None:
             tenant_id,
             api_key=api_key,
             trigger="manual",
+            force_full_sync=True,
         )
         logger.info(
             "Admin uzum sync finished for tenant %s: %s",

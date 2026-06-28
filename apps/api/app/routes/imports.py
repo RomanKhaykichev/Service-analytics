@@ -2,7 +2,7 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from uuid import UUID
-from typing import Optional, Any
+from typing import Optional, Any, Literal
 from pathlib import Path
 from datetime import datetime, timedelta
 import pandas as pd
@@ -824,6 +824,40 @@ def delete_old_data(db: Session, user_id: UUID, report_type: str):
             )
     
     # Note: No commit here - caller will commit the transaction
+
+
+def delete_user_sales_from_date(db: Session, user_id: UUID, from_date: str) -> None:
+    """Delete sales facts/staging on or after from_date (incremental API sync)."""
+    params = {"user_id": str(user_id), "from_date": from_date}
+    db.execute(
+        text(f"""
+            DELETE FROM {qname('fact_sales')}
+            WHERE user_id = CAST(:user_id AS uuid)
+              AND date_created::date >= CAST(:from_date AS date)
+        """),
+        params,
+    )
+    db.execute(
+        text(f"DELETE FROM {qname('stg_sales')} WHERE user_id = CAST(:user_id AS uuid)"),
+        {"user_id": str(user_id)},
+    )
+
+
+def delete_user_expenses_from_date(db: Session, user_id: UUID, from_date: str) -> None:
+    """Delete expense facts/staging on or after from_date (incremental API sync)."""
+    params = {"user_id": str(user_id), "from_date": from_date}
+    db.execute(
+        text(f"""
+            DELETE FROM {qname('fact_expenses')}
+            WHERE user_id = CAST(:user_id AS uuid)
+              AND date_written_off::date >= CAST(:from_date AS date)
+        """),
+        params,
+    )
+    db.execute(
+        text(f"DELETE FROM {qname('stg_expenses')} WHERE user_id = CAST(:user_id AS uuid)"),
+        {"user_id": str(user_id)},
+    )
 
 
 def create_batch(db: Session, user_id: UUID) -> str:
@@ -2263,9 +2297,14 @@ def import_uzum_api_sync(
     user_id: UUID,
     files: dict[str, bytes],
     file_names: Optional[dict[str, str]] = None,
+    *,
+    mode: Literal["full", "incremental"] = "full",
+    sales_replace_from: Optional[str] = None,
+    expenses_replace_from: Optional[str] = None,
 ) -> dict[str, Any]:
     """
-    Import four Uzum API report XLSX blobs in one transaction (overwrite all user data).
+    Import four Uzum API report XLSX blobs in one transaction.
+    full: overwrite all user data; incremental: replace sales/expenses in date windows only.
     Expected keys: inventory_old, sales, expenses, storage.
     """
     required = ("inventory_old", "sales", "expenses", "storage")
@@ -2364,7 +2403,18 @@ def import_uzum_api_sync(
             db.rollback()
             raise
 
-        delete_all_user_data(db, user_id)
+        if mode == "incremental":
+            if not sales_replace_from or not expenses_replace_from:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Incremental API sync requires sales_replace_from and expenses_replace_from",
+                )
+            delete_user_sales_from_date(db, user_id, sales_replace_from)
+            delete_user_expenses_from_date(db, user_id, expenses_replace_from)
+            delete_old_data(db, user_id, "storage")
+            delete_old_data(db, user_id, "inventory_old")
+        else:
+            delete_all_user_data(db, user_id)
         batch_id = create_batch(db, user_id)
         batch_dir = user_dir / batch_id
         batch_dir.mkdir(parents=True, exist_ok=True)
@@ -2430,6 +2480,7 @@ def import_uzum_api_sync(
             "imported": imported_counts,
             "saved_as": saved_paths,
             "store_limit_exceeded": batch_store_limit_exceeded,
+            "sync_mode": mode,
         }
         if batch_store_limit_exceeded and max_shops is not None:
             out["store_limit_max"] = max_shops
