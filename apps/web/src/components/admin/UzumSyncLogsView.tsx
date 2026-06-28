@@ -70,6 +70,28 @@ function formatLogDateTime(iso: string | null | undefined): string {
   return `${day}.${month}.${year} ${hours}:${minutes}`;
 }
 
+function formatSyncDuration(
+  startedAt: string | null | undefined,
+  finishedAt: string | null | undefined,
+): string {
+  if (!startedAt || !finishedAt) return "—";
+  const start = new Date(startedAt);
+  const end = new Date(finishedAt);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "—";
+  const ms = end.getTime() - start.getTime();
+  if (ms < 0) return "—";
+
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 function statusClass(status: string): string {
   if (status === "success") return "text-green-700 dark:text-green-400";
   if (status === "failed") return "text-destructive";
@@ -152,6 +174,7 @@ export function UzumSyncLogsView() {
         [t("admin.uzumSyncLogs.email")]: row.user_email ?? "",
         [t("admin.uzumSyncLogs.startedAt")]: formatLogDateTime(row.started_at),
         [t("admin.uzumSyncLogs.finishedAt")]: formatLogDateTime(row.finished_at),
+        [t("admin.uzumSyncLogs.duration")]: formatSyncDuration(row.started_at, row.finished_at),
         [t("admin.uzumSyncLogs.status")]: row.status,
         [t("admin.uzumSyncLogs.trigger")]: row.trigger,
         [t("admin.uzumSyncLogs.lastSync")]: formatLogDateTime(row.last_api_sync_at),
@@ -319,6 +342,7 @@ export function UzumSyncLogsView() {
               <TableHead>{t("admin.uzumSyncLogs.email")}</TableHead>
               <TableHead>{t("admin.uzumSyncLogs.startedAt")}</TableHead>
               <TableHead>{t("admin.uzumSyncLogs.finishedAt")}</TableHead>
+              <TableHead>{t("admin.uzumSyncLogs.duration")}</TableHead>
               <TableHead>{t("admin.uzumSyncLogs.status")}</TableHead>
               <TableHead>{t("admin.uzumSyncLogs.trigger")}</TableHead>
               <TableHead>{t("admin.uzumSyncLogs.lastSync")}</TableHead>
@@ -328,13 +352,13 @@ export function UzumSyncLogsView() {
           <TableBody>
             {loading && items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                   {t("admin.uzumSyncLogs.loading")}
                 </TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                   {t("admin.uzumSyncLogs.empty")}
                 </TableCell>
               </TableRow>
@@ -355,6 +379,9 @@ export function UzumSyncLogsView() {
                     <TableCell className="text-sm">{row.user_email ?? "—"}</TableCell>
                     <TableCell className="text-sm whitespace-nowrap">{formatLogDateTime(row.started_at)}</TableCell>
                     <TableCell className="text-sm whitespace-nowrap">{formatLogDateTime(row.finished_at)}</TableCell>
+                    <TableCell className="text-sm whitespace-nowrap font-mono tabular-nums">
+                      {formatSyncDuration(row.started_at, row.finished_at)}
+                    </TableCell>
                     <TableCell className={cn("text-sm font-medium capitalize", statusClass(row.status))}>
                       {row.status}
                     </TableCell>

@@ -11,6 +11,7 @@ interface SummaryWeeklyInsightsProps {
   shop?: string | null;
   onOpenProduct?: (product: WeeklyInsightProduct) => void;
   onOpenUploadReports?: () => void;
+  onOpenStorageChart?: () => void;
 }
 
 interface InsightRowProps {
@@ -108,6 +109,7 @@ export function SummaryWeeklyInsights({
   shop,
   onOpenProduct,
   onOpenUploadReports,
+  onOpenStorageChart,
 }: SummaryWeeklyInsightsProps) {
   const { t } = useLanguage();
   const { data, loading, hasData } = useSummaryWeeklyInsights(referenceDate, shop);
@@ -232,9 +234,26 @@ export function SummaryWeeklyInsights({
             }
           >
             {t("summary.weeklyInsights.storagePrefix")}
-            <span className={cn("font-semibold", storageChangeColor)}>
-              {storageChangeText}
-            </span>
+            {onOpenStorageChart ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onOpenStorageChart();
+                }}
+                className={cn(
+                  "font-semibold underline underline-offset-2 decoration-current/50 hover:decoration-current transition-colors",
+                  storageChangeColor,
+                )}
+              >
+                {storageChangeText}
+              </button>
+            ) : (
+              <span className={cn("font-semibold", storageChangeColor)}>
+                {storageChangeText}
+              </span>
+            )}
             {storageSuffix}
           </InsightRow>
 

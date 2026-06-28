@@ -34,11 +34,39 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { getWeeklyInsightRanges } from "@/lib/weekRanges";
 import { getNextUzumSyncSchedule } from "@/lib/uzumSyncSchedule";
 
+const VALID_DASHBOARD_TABS = new Set([
+  "summary",
+  "daily",
+  "products",
+  "expenses",
+  "shipment",
+  "monthly",
+]);
+
 function Dashboard() {
   const { t, language } = useLanguage();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState("summary");
+  const [activeTab, setActiveTabState] = useState(() => {
+    const tab = searchParams.get("tab");
+    return tab && VALID_DASHBOARD_TABS.has(tab) ? tab : "summary";
+  });
+  const changeActiveTab = useCallback(
+    (tab: string) => {
+      if (!VALID_DASHBOARD_TABS.has(tab)) return;
+      setActiveTabState(tab);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (tab === "summary") next.delete("tab");
+          else next.set("tab", tab);
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
   const [store, setStore] = useState(() => searchParams.get("shop") ?? "all");
   const [viewMode, setViewMode] = useState("day");
   // Состояние вкладки «Отгрузка»: кнопка «Рассчитать» пересчитывает всю таблицу (все товары без фильтра); данные общие для всех магазинов до следующего пересчёта
@@ -46,6 +74,8 @@ function Dashboard() {
   const [shipmentConsiderStock, setShipmentConsiderStock] = useState<string>("yes");
   const [shipmentCalculatedByKey, setShipmentCalculatedByKey] = useState<Record<string, number>>({});
   const [productToOpen, setProductToOpen] = useState<ProductsTableItemType | null>(null);
+  const [dailySeriesPreset, setDailySeriesPreset] = useState<"default" | "storage-only">("default");
+  const [dailyViewKey, setDailyViewKey] = useState(0);
   const handleOpenProductHandled = useCallback(() => setProductToOpen(null), []);
   const apiConnectRef = useRef<UzumApiConnectDialogHandle>(null);
   const openApiConnect = useCallback(() => {
@@ -78,6 +108,23 @@ function Dashboard() {
   // Диапазон дат из fact_sales (sells_report "Дата создания")
   const { minDate: salesMinDate, maxDate: salesMaxDate, lastUpdatedAt } = useSalesDateRange();
   const [monthlyYear, setMonthlyYear] = useState<number | null>(null);
+
+  const handleOpenStorageDaily = useCallback(() => {
+    setViewMode("day");
+    setDailySeriesPreset("storage-only");
+    setDailyViewKey((key) => key + 1);
+    changeActiveTab("daily");
+  }, [changeActiveTab]);
+
+  const handleTabChange = useCallback(
+    (tab: string) => {
+      if (tab !== "daily") {
+        setDailySeriesPreset("default");
+      }
+      changeActiveTab(tab);
+    },
+    [changeActiveTab],
+  );
 
   // Пользовательский процент для налога (по умолчанию 1%)
   const [taxPercentInput, setTaxPercentInput] = useState("1");
@@ -463,7 +510,7 @@ function Dashboard() {
 
       {/* Tabs и фильтры на одном уровне */}
       <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${isTrial10 ? "mt-6" : "mt-14"}`}>
-        <SummaryTabs activeTab={activeTab} onTabChange={setActiveTab} />
+        <SummaryTabs activeTab={activeTab} onTabChange={handleTabChange} />
         {activeTab !== "expenses" && activeTab !== "monthly" ? (
           <SummaryFilters 
             dateFrom={dateFrom}
@@ -500,8 +547,9 @@ function Dashboard() {
               setDateRange({ dateFrom: lastWeekFrom, dateTo: lastWeekTo });
             }
             setProductToOpen(entry.item);
-            setActiveTab("products");
+            changeActiveTab("products");
           }}
+          onOpenStorageChart={handleOpenStorageDaily}
         />
       )}
 
@@ -550,12 +598,14 @@ function Dashboard() {
       ) : activeTab === "daily" ? (
         <div className="mt-6">
           <DailyView
+            key={`daily-${dailyViewKey}`}
             viewMode={viewMode}
             dateFrom={dateFrom}
             dateTo={dateTo}
             shopId={null}
             shop={null}
             taxPercent={taxPercent}
+            seriesPreset={dailySeriesPreset}
           />
         </div>
       ) : activeTab === "products" ? (

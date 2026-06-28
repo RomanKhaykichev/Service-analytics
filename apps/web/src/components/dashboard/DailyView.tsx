@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   ComposedChart,
   Line,
@@ -36,6 +36,8 @@ interface DailyViewProps {
   shop?: string | null;
   /** Пользовательский процент налога (из вкладки Сводка), например 1 = 1% */
   taxPercent?: number;
+  /** Пресет видимых серий на графике (например, только хранение из инсайтов) */
+  seriesPreset?: "default" | "storage-only";
 }
 
 // 8 метрик на графике: левая ось (шт) — Заказы, Возвраты; правая (сум) — остальные. Все серии — Line.
@@ -61,6 +63,28 @@ const CHART_SERIES_KEYS: { key: string; labelKey: string; color: string; axis: "
   { key: "profit", labelKey: "daily.profitNet", color: SERIES_COLORS.profit, axis: "money" },
 ];
 
+const DEFAULT_VISIBLE_SERIES: Record<string, boolean> = {
+  orders: true,
+  returns: false,
+  revenue: true,
+  logistics: false,
+  ads: false,
+  storage: false,
+  taxes: false,
+  profit: true,
+};
+
+const STORAGE_ONLY_VISIBLE_SERIES: Record<string, boolean> = {
+  orders: false,
+  returns: false,
+  revenue: false,
+  logistics: false,
+  ads: false,
+  storage: true,
+  taxes: false,
+  profit: false,
+};
+
 type SortDirection = "asc" | "desc" | null;
 type SortColumn = string | null;
 
@@ -74,7 +98,15 @@ function formatChartDateLabel(dateISO: string, granularity: DailySummaryGranular
   return format(d, "MM.yyyy");
 }
 
-export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, shop = null, taxPercent = 1 }: DailyViewProps) {
+export function DailyView({
+  viewMode = "day",
+  dateFrom,
+  dateTo,
+  shopId = null,
+  shop = null,
+  taxPercent = 1,
+  seriesPreset = "default",
+}: DailyViewProps) {
   const { t, language } = useLanguage();
   const isUz = language === "uz";
   const CHART_SERIES = CHART_SERIES_KEYS.map((s) => ({ ...s, label: t(s.labelKey) }));
@@ -146,16 +178,15 @@ export function DailyView({ viewMode = "day", dateFrom, dateTo, shopId = null, s
   }, [chartSummaryData?.points, timeGrouping, taxPercent]);
 
   // По умолчанию видны: Заказы, Выручка, Прибыль
-  const [visibleSeries, setVisibleSeries] = useState<Record<string, boolean>>({
-    orders: true,
-    returns: false,
-    revenue: true,
-    logistics: false,
-    ads: false,
-    storage: false,
-    taxes: false,
-    profit: true,
-  });
+  const [visibleSeries, setVisibleSeries] = useState<Record<string, boolean>>(() =>
+    seriesPreset === "storage-only" ? STORAGE_ONLY_VISIBLE_SERIES : DEFAULT_VISIBLE_SERIES,
+  );
+
+  useEffect(() => {
+    if (seriesPreset === "storage-only") {
+      setVisibleSeries(STORAGE_ONLY_VISIBLE_SERIES);
+    }
+  }, [seriesPreset]);
   const toggleSeries = (key: string) => {
     setVisibleSeries((prev) => ({ ...prev, [key]: !prev[key] }));
   };
