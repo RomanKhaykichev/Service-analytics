@@ -8,8 +8,6 @@ import logging
 from typing import Any, Literal, Optional
 from uuid import UUID
 
-from datetime import date
-
 import requests
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import Response
@@ -38,6 +36,7 @@ from app.services.uzum_api_helpers import (
 from app.services.uzum_sync import (
     enqueue_manual_uzum_sync_job,
     get_uzum_sync_log_status,
+    resolve_uzum_sync_date_range,
     run_uzum_sync_for_user,
     user_has_running_manual_sync,
     _insert_running_sync_log,
@@ -389,11 +388,10 @@ class UzumSyncStatusResponse(BaseModel):
     date_to: Optional[str] = None
 
 
-def _resolve_sync_dates(body: UzumSyncBody) -> tuple[str, str]:
-    today = date.today()
-    date_from = body.date_from or f"{today.year}-01-01"
-    date_to = body.date_to or today.isoformat()
-    return date_from, date_to
+def _resolve_sync_dates(body: UzumSyncBody, db: Session, user_id: UUID) -> tuple[str, str]:
+    return resolve_uzum_sync_date_range(
+        db, user_id, date_from=body.date_from, date_to=body.date_to
+    )
 
 
 @router.post("/uzum-seller/reports/sync/start", response_model=UzumSyncStartResponse)
@@ -407,7 +405,7 @@ def start_uzum_reports_sync(
     api_key = normalize_api_key(body.api_key)
     if not api_key:
         raise HTTPException(status_code=400, detail="API key is required")
-    date_from, date_to = _resolve_sync_dates(body)
+    date_from, date_to = _resolve_sync_dates(body, db, user_id)
 
     key_valid, key_error, key_status = validate_api_key_shops(api_key)
     if not key_valid:
@@ -476,11 +474,11 @@ def sync_uzum_reports_to_service(
     user_id: UUID = Depends(require_user),
     db: Session = Depends(get_db),
 ):
-    """Fetch four Uzum reports (YTD by default) and import them into the service."""
+    """Fetch four Uzum reports (YTD by default; trial — last 60 days) and import them."""
     api_key = normalize_api_key(body.api_key)
-    today = date.today()
-    date_from = body.date_from or f"{today.year}-01-01"
-    date_to = body.date_to or today.isoformat()
+    date_from, date_to = resolve_uzum_sync_date_range(
+        db, user_id, date_from=body.date_from, date_to=body.date_to
+    )
 
     key_valid, key_error, _ = validate_api_key_shops(api_key)
     if not key_valid:

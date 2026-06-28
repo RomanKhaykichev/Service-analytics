@@ -11,6 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/hooks/useAuth";
 import { fetchUzumApiKey } from "@/lib/uzumApiCredentials";
 import { formatUzumConnectError } from "@/lib/uzumApiErrors";
 import { syncUzumReportsToService, UZUM_SYNC_REQUEST_INTERRUPTED } from "@/lib/uzumApiSync";
@@ -83,6 +84,7 @@ function UzumApiConnectProgressBanner() {
 
 export function UzumApiConnectProvider({ children }: { children: ReactNode }) {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
@@ -139,7 +141,7 @@ export function UzumApiConnectProvider({ children }: { children: ReactNode }) {
       setWarnings([]);
 
       try {
-        const result = await syncUzumReportsToService(key);
+        const result = await syncUzumReportsToService(key, user?.plan);
         setLoadingProgress(100);
         if (result.warnings?.length) {
           setWarnings(result.warnings);
@@ -164,7 +166,7 @@ export function UzumApiConnectProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     },
-    [queryClient, t],
+    [queryClient, t, user?.plan],
   );
 
   const refreshData = useCallback(

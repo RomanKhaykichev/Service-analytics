@@ -1,4 +1,4 @@
-import { format, startOfYear } from "date-fns";
+import { format, startOfYear, subDays } from "date-fns";
 import { apiGet, apiPost } from "@/lib/api";
 
 export interface UzumSyncResult {
@@ -40,16 +40,27 @@ function isNetworkError(err: unknown): boolean {
   return false;
 }
 
-export function getYearToDateRange(): { dateFrom: string; dateTo: string } {
-  const now = new Date();
-  return {
-    dateFrom: format(startOfYear(now), "yyyy-MM-dd"),
-    dateTo: format(now, "yyyy-MM-dd"),
-  };
+function isTrialPlan(plan?: string | null): boolean {
+  const raw = (plan ?? "trial").trim().toLowerCase();
+  return raw === "trial" || raw === "";
 }
 
-export async function startUzumSync(apiKey: string): Promise<{ sync_id: string }> {
-  const { dateFrom, dateTo } = getYearToDateRange();
+export function getSyncDateRange(plan?: string | null): { dateFrom: string; dateTo: string } {
+  const now = new Date();
+  const dateTo = format(now, "yyyy-MM-dd");
+  if (isTrialPlan(plan)) {
+    return { dateFrom: format(subDays(now, 59), "yyyy-MM-dd"), dateTo };
+  }
+  return { dateFrom: format(startOfYear(now), "yyyy-MM-dd"), dateTo };
+}
+
+/** @deprecated Use getSyncDateRange */
+export function getYearToDateRange(): { dateFrom: string; dateTo: string } {
+  return getSyncDateRange();
+}
+
+export async function startUzumSync(apiKey: string, plan?: string | null): Promise<{ sync_id: string }> {
+  const { dateFrom, dateTo } = getSyncDateRange(plan);
   return apiPost<{ ok: boolean; sync_id: string; status: string }>(
     "/api/uzum-seller/reports/sync/start",
     {
@@ -102,12 +113,15 @@ async function pollUzumSyncUntilDone(
 }
 
 /** Start background sync and poll until success or failure. */
-export async function syncUzumReportsToService(apiKey: string): Promise<UzumSyncResult> {
-  const { dateFrom, dateTo } = getYearToDateRange();
+export async function syncUzumReportsToService(
+  apiKey: string,
+  plan?: string | null,
+): Promise<UzumSyncResult> {
+  const { dateFrom, dateTo } = getSyncDateRange(plan);
 
   let syncId: string;
   try {
-    const started = await startUzumSync(apiKey);
+    const started = await startUzumSync(apiKey, plan);
     syncId = started.sync_id;
   } catch (err) {
     if (isNetworkError(err)) {

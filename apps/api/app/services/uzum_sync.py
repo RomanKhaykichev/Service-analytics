@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, Optional
 from uuid import UUID
 import threading
@@ -45,10 +45,59 @@ logger = logging.getLogger(__name__)
 SyncStatus = Literal["running", "success", "failed", "skipped"]
 SyncTrigger = Literal["scheduled", "manual"]
 
+# Trial sync window matches KPI display clamp (60 calendar days inclusive).
+TRIAL_SYNC_LOOKBACK_DAYS = 59
 
-def _year_to_date_range() -> tuple[str, str]:
+_PAID_SYNC_PLANS = frozenset(
+    {
+        "gold",
+        "gold_plan",
+        "month_5",
+        "month 5",
+        "month5",
+        "month_10",
+        "month 10",
+        "month10",
+        "paid",
+    }
+)
+
+
+def _user_plan(db: Session, user_id: UUID) -> str:
+    row = db.execute(
+        text(f"SELECT COALESCE(plan, 'trial') FROM {qname('users')} WHERE id = CAST(:uid AS uuid)"),
+        {"uid": str(user_id)},
+    ).fetchone()
+    return (row[0] or "trial").strip().lower() if row else "trial"
+
+
+def user_uses_trial_sync_window(db: Session, user_id: UUID) -> bool:
+    if is_user_admin(user_id, db):
+        return False
+    plan = _user_plan(db, user_id)
+    if plan in _PAID_SYNC_PLANS:
+        return False
+    return plan in ("trial", "", None) or not plan
+
+
+def resolve_uzum_sync_date_range(
+    db: Session,
+    user_id: UUID,
+    *,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> tuple[str, str]:
+    """Default sync range: trial users get last 60 days; paid users get YTD."""
     today = uz_now().date()
-    return f"{today.year}-01-01", today.isoformat()
+    end = (date_to or today.isoformat())[:10]
+
+    if user_uses_trial_sync_window(db, user_id):
+        start = (today - timedelta(days=TRIAL_SYNC_LOOKBACK_DAYS)).isoformat()
+    elif date_from:
+        start = date_from[:10]
+    else:
+        start = f"{today.year}-01-01"
+    return start, end
 
 
 def is_phone_verified_for_sync(user_id: UUID, db: Session, phone: Optional[str], phone_verified_at) -> tuple[bool, str]:
@@ -356,9 +405,9 @@ def run_uzum_sync_for_user(
             finished_log_id = _finish("skipped", error_message=phone_reason)
             return {"status": "skipped", "log_id": finished_log_id, "error": phone_reason}
 
-    df, dt = _year_to_date_range()
-    date_from = date_from or df
-    date_to = date_to or dt
+    date_from, date_to = resolve_uzum_sync_date_range(
+        db, user_id, date_from=date_from, date_to=date_to
+    )
 
     access_probes = None
     if not skip_key_validation:
