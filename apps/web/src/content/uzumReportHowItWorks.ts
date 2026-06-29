@@ -1,5 +1,4 @@
 export type AppLanguage = "ru" | "uz";
-export const IMPORT_REPORTS_VIDEO_SRC = "/videos/01-import-reports.mp4";
 
 export type UzumHowItWorksStep = {
   step: number;

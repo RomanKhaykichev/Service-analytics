@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useState, useEffect, useRef } from "react";
+import { forwardRef, useImperativeHandle, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
   Upload,
@@ -41,7 +41,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { getAuthHeaders, getApiBaseUrl } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { Link } from "react-router-dom";
-import { getUzumReportHowItWorksSteps, getStepVisualImageUrls, IMPORT_REPORTS_VIDEO_SRC } from "@/content/uzumReportHowItWorks";
+import { getUzumReportHowItWorksSteps, getStepVisualImageUrls } from "@/content/uzumReportHowItWorks";
 
 interface UploadedFile {
   name: string;
@@ -234,9 +234,7 @@ export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUpl
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [uploadVariant, setUploadVariant] = useState<"compact" | "guided">("compact");
-  const [videoOpen, setVideoOpen] = useState(false);
   const [stepImagePreview, setStepImagePreview] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, UploadedFile>>({});
   const [adIds, setAdIds] = useState<Record<string, string>>({});
   const [products, setProducts] = useState<ProductMapping[]>([]);
@@ -264,45 +262,6 @@ export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUpl
   const guidedStep2Item = howItWorksSteps.find((s) => s.step === 2);
   const guidedStep1Urls = guidedStep1Item ? getStepVisualImageUrls(guidedStep1Item) : [];
   const guidedStep2Urls = guidedStep2Item ? getStepVisualImageUrls(guidedStep2Item) : [];
-
-  useEffect(() => {
-    if (!videoOpen) {
-      videoRef.current?.pause();
-      return;
-    }
-
-    let removeCanPlay: (() => void) | undefined;
-    let raf = 0;
-
-    const start = (v: HTMLVideoElement) => {
-      const tryPlay = () => {
-        void v.play().catch(() => {});
-      };
-      v.currentTime = 0;
-      if (v.readyState >= 3) {
-        requestAnimationFrame(tryPlay);
-        return;
-      }
-      const onCanPlay = () => tryPlay();
-      v.addEventListener("canplay", onCanPlay, { once: true });
-      removeCanPlay = () => v.removeEventListener("canplay", onCanPlay);
-    };
-
-    const v = videoRef.current;
-    if (v) {
-      start(v);
-    } else {
-      raf = requestAnimationFrame(() => {
-        const el = videoRef.current;
-        if (el) start(el);
-      });
-    }
-
-    return () => {
-      cancelAnimationFrame(raf);
-      removeCanPlay?.();
-    };
-  }, [videoOpen]);
 
   useEffect(() => {
     if (!stepImagePreview) return;
@@ -678,14 +637,14 @@ export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUpl
                   {t("report.guidedHeroSubtitle")}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setVideoOpen(true)}
+              <Link
+                to="/training"
+                onClick={() => setOpen(false)}
                 className="inline-flex shrink-0 items-center gap-2 self-start rounded-lg border-2 border-primary bg-primary/5 px-3.5 py-2.5 text-sm font-bold text-primary shadow-sm transition-colors hover:bg-primary/10 dark:bg-primary/10 dark:hover:bg-primary/18"
               >
                 <PlayCircle className="h-5 w-5 shrink-0" strokeWidth={2.25} aria-hidden />
-                {t("report.watchImportVideoGuided")}
-              </button>
+                {t("header.videoTutorials")}
+              </Link>
             </div>
           ) : (
             <DialogTitle className="text-xl font-semibold">{t("report.uploadTitle")}</DialogTitle>
@@ -1170,26 +1129,6 @@ export const ReportUploadDialog = forwardRef<ReportUploadDialogHandle, ReportUpl
           document.body,
         )
       : null}
-
-    <Dialog open={videoOpen} onOpenChange={setVideoOpen}>
-      <DialogContent className="max-w-4xl w-[calc(100vw-2rem)] gap-0 p-0 sm:max-w-4xl overflow-hidden">
-        <DialogHeader className="px-4 pt-4 pb-3 text-left">
-          <DialogTitle>{t("report.importVideoModalTitle")}</DialogTitle>
-        </DialogHeader>
-        <div className="px-4 pb-4">
-          <video
-            ref={videoRef}
-            src={IMPORT_REPORTS_VIDEO_SRC}
-            controls
-            playsInline
-            className="w-full rounded-md bg-black"
-            preload="auto"
-          >
-            {language === "uz" ? "Brauzeringiz video qo‘llab-quvvatlamaydi." : "Ваш браузер не поддерживает видео."}
-          </video>
-        </div>
-      </DialogContent>
-    </Dialog>
 
     {storeLimitData && (
       <StoreLimitDialog

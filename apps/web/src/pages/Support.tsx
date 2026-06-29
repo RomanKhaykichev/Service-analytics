@@ -39,7 +39,7 @@ const faqItemsRu = [
   {
     question: "Где посмотреть видеоинструкции?",
     answer:
-      "В меню «Помощь» выберите «Видео-уроки» или откройте раздел «Обучение»: ролики по импорту отчётов и по вкладке «Сводка».",
+      "В меню «Помощь» выберите «Видео-уроки» или откройте раздел «Обучение»: ролики по всем вкладкам сервиса.",
   },
   {
     question: "Как сменить язык интерфейса?",
@@ -67,7 +67,7 @@ const faqItemsUz = [
   {
     question: "Video qo‘llanmalarni qayerdan ko‘rish mumkin?",
     answer:
-      "«Yordam» menyusida «Video-darsliklar»ni tanlang yoki «O‘qitish» bo‘limini oching: hisobot importi va «Svodka» varag‘i bo‘yicha rolliklar.",
+      "«Yordam» menyusida «Video-darsliklar»ni tanlang yoki «O‘qitish» bo‘limini oching: xizmatning barcha bo‘limlari bo‘yicha rolliklar.",
   },
   {
     question: "Interfeys tilini qanday almashtirish mumkin?",
