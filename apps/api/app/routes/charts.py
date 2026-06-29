@@ -1362,6 +1362,10 @@ async def get_products_table(
                 size_group = storage_row["size_group"]
                 shop = storage_row["shop"]  # только из seller-storage, колонка Магазин
 
+            # Товары без магазина в seller-storage не показываем в таблице и расчётах
+            if not shop or not str(shop).strip():
+                continue
+
             sales_row = sales_by_barcode.get(barcode_norm) if barcode_norm else None
             if sales_row:
                 sales_qty = sales_row["sales_qty"]
