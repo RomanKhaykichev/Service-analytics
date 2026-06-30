@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
-import { Plus, ArrowUpDown, Info, CalendarIcon, Trash2, Edit } from "lucide-react";
+import { Plus, ArrowUpDown, CalendarIcon, Trash2, Edit } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -481,38 +481,6 @@ export function ExpensesView({ dateFrom, dateTo, shop = null }: ExpensesViewProp
 
   return (
     <div className="space-y-6">
-      {/* Info Block */}
-      <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <div className="p-2 rounded-full bg-blue-100 dark:bg-blue-900">
-              <Info className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div className="space-y-2">
-              <h3 className="font-semibold text-foreground">{t('expense.howItWorks')}</h3>
-              <ul className="text-sm text-muted-foreground space-y-1.5">
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-600 dark:text-blue-400">•</span>
-                  <span>{t('expense.howItWorks1')}</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-600 dark:text-blue-400">•</span>
-                  <span>{t('expense.howItWorks2')}</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-600 dark:text-blue-400">•</span>
-                  <span>{t('expense.howItWorks3')}</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-blue-600 dark:text-blue-400">•</span>
-                  <span className="text-muted-foreground/80 italic">{t('expense.howItWorks4')}</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Expenses Table */}
       <Card>
         <CardContent className="p-0">

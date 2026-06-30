@@ -5,6 +5,14 @@ export interface TrainingVideoItem {
   descriptionKey: string;
 }
 
+export type DashboardTabId =
+  | "summary"
+  | "daily"
+  | "products"
+  | "expenses"
+  | "shipment"
+  | "monthly";
+
 export const TRAINING_VIDEO_PLAYLIST: TrainingVideoItem[] = [
   {
     id: "1",
@@ -43,3 +51,19 @@ export const TRAINING_VIDEO_PLAYLIST: TrainingVideoItem[] = [
     descriptionKey: "learning.videoMonthly.desc",
   },
 ];
+
+export function getTrainingVideoById(id: string): TrainingVideoItem | undefined {
+  return TRAINING_VIDEO_PLAYLIST.find((v) => v.id === id);
+}
+
+export function getTrainingVideoForTab(tab: DashboardTabId): TrainingVideoItem | undefined {
+  const tabToVideoId: Record<DashboardTabId, string> = {
+    summary: "1",
+    daily: "2",
+    products: "3",
+    expenses: "4",
+    shipment: "5",
+    monthly: "6",
+  };
+  return getTrainingVideoById(tabToVideoId[tab]);
+}

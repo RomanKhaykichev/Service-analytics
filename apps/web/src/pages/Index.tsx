@@ -16,6 +16,8 @@ import { ShipmentView } from "@/components/dashboard/ShipmentView";
 import { HeaderActions } from "@/components/dashboard/HeaderActions";
 import type { UzumApiConnectDialogHandle } from "@/components/dashboard/UzumApiConnectDialog";
 import { ProductsView, type ProductsTableItemType } from "@/components/dashboard/ProductsView";
+import { TabHowItWorksTrigger, TabHowItWorksPanel } from "@/components/dashboard/TabHowItWorksBlock";
+import type { DashboardTabId } from "@/data/trainingVideos";
 import type { WeeklyInsightProduct } from "@/hooks/useSummaryWeeklyInsights";
 import { useAuth } from "@/hooks/useAuth";
 import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
@@ -76,6 +78,7 @@ function Dashboard() {
   const [productToOpen, setProductToOpen] = useState<ProductsTableItemType | null>(null);
   const [dailySeriesPreset, setDailySeriesPreset] = useState<"default" | "storage-only">("default");
   const [dailyViewKey, setDailyViewKey] = useState(0);
+  const [howItWorksExpanded, setHowItWorksExpanded] = useState(false);
   const handleOpenProductHandled = useCallback(() => setProductToOpen(null), []);
   const apiConnectRef = useRef<UzumApiConnectDialogHandle>(null);
   const openApiConnect = useCallback(() => {
@@ -510,7 +513,13 @@ function Dashboard() {
 
       {/* Tabs и фильтры на одном уровне */}
       <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${isTrial10 ? "mt-6" : "mt-14"}`}>
-        <SummaryTabs activeTab={activeTab} onTabChange={handleTabChange} />
+        <div className="flex items-end gap-3 flex-wrap min-w-0">
+          <TabHowItWorksTrigger
+            expanded={howItWorksExpanded}
+            onExpandedChange={setHowItWorksExpanded}
+          />
+          <SummaryTabs activeTab={activeTab} onTabChange={handleTabChange} />
+        </div>
         {activeTab !== "expenses" && activeTab !== "monthly" ? (
           <SummaryFilters 
             dateFrom={dateFrom}
@@ -534,6 +543,12 @@ function Dashboard() {
           <div className="min-h-10" aria-hidden />
         )}
       </div>
+
+      <TabHowItWorksPanel
+        tab={activeTab as DashboardTabId}
+        expanded={howItWorksExpanded}
+        className="mt-4"
+      />
 
       {activeTab === "summary" && (
         <SummaryWeeklyInsights
