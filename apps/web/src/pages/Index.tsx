@@ -151,16 +151,22 @@ function Dashboard() {
   const revenueValue = metrics?.revenue ?? 0;
   const commissionValue = metrics?.uzumCommission ?? 0;
   const logisticsValue = metrics?.uzumLogistics ?? 0;
+  const uzumStorageValue = metrics?.uzumStorage ?? 0;
+  const uzumAdsValue = metrics?.uzumAds ?? 0;
+  const uzumFinesValue = metrics?.uzumFines ?? 0;
   const productCostValue = metrics?.productCost ?? 0;
   const extraExpensesValue = metrics?.extraExpenses ?? 0;
 
   // Налог = Выручка × указанный процент
   const adjustedTax = revenueValue * (taxPercent / 100);
 
-  // Расходы = Комиссия UZUM + Логистика UZUM + Себест. прод. тов. + Налог + Доп. расходы
+  // Расходы = сумма всех метрик блока «Расходы»
   const adjustedTotalExpenses =
     commissionValue +
     logisticsValue +
+    uzumStorageValue +
+    uzumAdsValue +
+    uzumFinesValue +
     productCostValue +
     adjustedTax +
     extraExpensesValue;
@@ -300,7 +306,7 @@ function Dashboard() {
     }
   ] : [];
 
-  // Основные метрики расходов (зависят от выбранного магазина)
+  // Метрики расходов (зависят от выбранного магазина, где применимо)
   const expenseMetrics = metrics ? [
     {
       icon: <Percent className="w-4 h-4" />,
@@ -313,6 +319,24 @@ function Dashboard() {
       label: t('summary.expense.logisticsUzum'),
       value: formatCurrency(metrics.uzumLogistics),
       tooltip: ""
+    },
+    {
+      icon: <Warehouse className="w-4 h-4" />,
+      label: t('summary.uzum.storage'),
+      value: formatCurrency(metrics.uzumStorage),
+      tooltip: t('summary.uzum.storageTooltip')
+    },
+    {
+      icon: <Target className="w-4 h-4" />,
+      label: t('summary.uzum.ads'),
+      value: formatCurrency(metrics.uzumAds),
+      tooltip: t('summary.uzum.adsTooltip')
+    },
+    {
+      icon: <AlertTriangle className="w-4 h-4" />,
+      label: t('summary.uzum.fines'),
+      value: formatCurrency(metrics.uzumFines),
+      tooltip: t('summary.uzum.finesTooltip')
     },
     {
       icon: <Boxes className="w-4 h-4" />,
@@ -345,29 +369,6 @@ function Dashboard() {
       label: t('summary.expense.extraExpenses'),
       value: formatCurrency(metrics.extraExpenses),
       tooltip: t('summary.expense.extraExpensesTooltip')
-    }
-  ] : [];
-
-  // Метрики услуг UZUM (не зависят от выбранного магазина)
-  // Порядок: Хранение, Реклама, Штрафы (как на скриншоте)
-  const uzumServicesMetrics = metrics ? [
-    {
-      icon: <Warehouse className="w-4 h-4" />,
-      label: t('summary.uzum.storage'),
-      value: formatCurrency(metrics.uzumStorage),
-      tooltip: t('summary.uzum.storageTooltip')
-    },
-    {
-      icon: <Target className="w-4 h-4" />,
-      label: t('summary.uzum.ads'),
-      value: formatCurrency(metrics.uzumAds),
-      tooltip: t('summary.uzum.adsTooltip')
-    },
-    {
-      icon: <AlertTriangle className="w-4 h-4" />,
-      label: t('summary.uzum.fines'),
-      value: formatCurrency(metrics.uzumFines),
-      tooltip: t('summary.uzum.finesTooltip')
     }
   ] : [];
 
@@ -674,53 +675,42 @@ function Dashboard() {
                   titleColor="text-destructive" 
                   metrics={expenseMetrics} 
                 />
-                <div className="flex flex-col h-full gap-4">
-                  <SummaryBlock 
-                    title={t('summary.blockWarehouse')} 
-                    titleColor="text-warning" 
-                    metrics={warehouseMetrics} 
-                    customHeightClass="h-auto"
-                    customOverflowClass="overflow-visible"
-                    customPadding="px-4 pb-4"
-                    customSpacing="space-y-1"
-                    emptyState={
-                      !loading && showStockZeroWarning ? (
-                        <Alert variant="destructive" className="m-0">
-                          <AlertTriangle className="h-4 w-4" />
-                          <AlertTitle>{t('alert.stockZero')}</AlertTitle>
-                          <AlertDescription>
-                            <p className="mb-2">
-                              {stockZeroReason === "all_zero_in_snapshot"
-                                ? t('alert.stockZeroReasonAll')
-                                : t('alert.stockZeroDesc')}
-                            </p>
-                            {(stockSkuTotal > 0 || stockSkuWithStock >= 0 || stockSnapshotAt) && (
-                              <div className="text-xs text-muted-foreground space-y-1">
-                                {stockSkuTotal > 0 && (
-                                  <p>SKU: {stockSkuTotal}, с остатком: {stockSkuWithStock}</p>
-                                )}
-                                {stockSnapshotAt && (
-                                  <p>{t('common.snapshot')}: {new Date(stockSnapshotAt).toLocaleString("ru-RU")}</p>
-                                )}
-                              </div>
-                            )}
-                          </AlertDescription>
-                        </Alert>
-                      ) : !loading && !stockHasData && stockSource === null ? (
-                        <p className="text-sm text-muted-foreground m-0">{t('alert.noStockData')}</p>
-                      ) : undefined
-                    }
-                  />
-                  <SummaryBlock 
-                    title={t('summary.blockUzumServices')} 
-                    titleColor="text-primary" 
-                    metrics={uzumServicesMetrics} 
-                    customBorderClass="border-violet-400 dark:border-violet-500"
-                    customMinHeight="min-h-[180px]"
-                    customPadding="px-4 pb-3"
-                    customSpacing="space-y-1.5"
-                  />
-                </div>
+                <SummaryBlock 
+                  title={t('summary.blockWarehouse')} 
+                  titleColor="text-warning" 
+                  metrics={warehouseMetrics} 
+                  customHeightClass="h-auto"
+                  customOverflowClass="overflow-visible"
+                  customPadding="px-4 pb-4"
+                  customSpacing="space-y-1"
+                  emptyState={
+                    !loading && showStockZeroWarning ? (
+                      <Alert variant="destructive" className="m-0">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertTitle>{t('alert.stockZero')}</AlertTitle>
+                        <AlertDescription>
+                          <p className="mb-2">
+                            {stockZeroReason === "all_zero_in_snapshot"
+                              ? t('alert.stockZeroReasonAll')
+                              : t('alert.stockZeroDesc')}
+                          </p>
+                          {(stockSkuTotal > 0 || stockSkuWithStock >= 0 || stockSnapshotAt) && (
+                            <div className="text-xs text-muted-foreground space-y-1">
+                              {stockSkuTotal > 0 && (
+                                <p>SKU: {stockSkuTotal}, с остатком: {stockSkuWithStock}</p>
+                              )}
+                              {stockSnapshotAt && (
+                                <p>{t('common.snapshot')}: {new Date(stockSnapshotAt).toLocaleString("ru-RU")}</p>
+                              )}
+                            </div>
+                          )}
+                        </AlertDescription>
+                      </Alert>
+                    ) : !loading && !stockHasData && stockSource === null ? (
+                      <p className="text-sm text-muted-foreground m-0">{t('alert.noStockData')}</p>
+                    ) : undefined
+                  }
+                />
               </>
             )}
           </div>
