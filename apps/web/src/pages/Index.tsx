@@ -529,7 +529,7 @@ function Dashboard() {
             onStoreChange={setStore}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
-            showStoreFilter={activeTab !== "daily"}
+            showStoreFilter={activeTab !== "expenses" && activeTab !== "monthly"}
             showViewMode={activeTab === "daily"}
             showPeriodFilter={activeTab !== "shipment"}
             shops={shops}
@@ -618,7 +618,7 @@ function Dashboard() {
             dateFrom={dateFrom}
             dateTo={dateTo}
             shopId={null}
-            shop={null}
+            shop={selectedShop}
             taxPercent={taxPercent}
             seriesPreset={dailySeriesPreset}
           />

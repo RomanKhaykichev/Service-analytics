@@ -10,7 +10,7 @@ from app.deps import require_user, is_user_admin
 from app.utils.statuses import get_status_sql_condition
 from app.utils.barcode import barcode_norm_sql
 from app.utils.metrics import get_status_conditions, sql_cogs_line_amount
-from app.utils.shop_filter import normalize_shop, shop_filter_condition, storage_barcode_filter_sql, storage_barcode_filter_by_shop_id_sql
+from app.utils.shop_filter import normalize_shop, shop_filter_condition, storage_barcode_filter_sql, storage_barcode_filter_by_shop_id_sql, expenses_shop_filter_condition
 from app.settings import get_settings
 from app.schemas import CumulativeRevenueResponse
 from fastapi import Depends
@@ -359,7 +359,7 @@ def kpi_summary(
         )
         
         # B) UZUM services from expenses-report (fact_expenses): uzumAds, uzumStorage, uzumFines
-        # Фильтр: user_id и date_written_off в диапазоне date_from/date_to. По shop эти метрики НЕ фильтруются.
+        # Фильтр: user_id, date_written_off и (при выборе магазина) shop_raw / shop_id.
         # Trial-safe effective range for expenses.
         # If requested date_from/date_to is outside trial window, clamp it.
         # If requested date_from is None (e.g. period=all), we must NOT add a lower bound
@@ -378,11 +378,17 @@ def kpi_summary(
         expenses_params = {**params_base}
         expenses_params["exp_date_to"] = (exp_date_to or date_to_date).isoformat()
 
-        expenses_where_parts = ["user_id = CAST(:user_id AS uuid)"]
+        expenses_where_parts = ["fe.user_id = CAST(:user_id AS uuid)"]
+        expenses_shop_frag, expenses_shop_params = expenses_shop_filter_condition(
+            shop, shop_id, outer_table_alias="fe"
+        )
+        expenses_params.update(expenses_shop_params)
+        if expenses_shop_frag:
+            expenses_where_parts.append(expenses_shop_frag)
         if exp_date_from is not None:
             expenses_params["exp_date_from"] = exp_date_from.isoformat()
-            expenses_where_parts.append("date_written_off >= CAST(:exp_date_from AS date)")
-        expenses_where_parts.append("date_written_off < CAST(:exp_date_to AS date) + INTERVAL '1 day'")
+            expenses_where_parts.append("fe.date_written_off >= CAST(:exp_date_from AS date)")
+        expenses_where_parts.append("fe.date_written_off < CAST(:exp_date_to AS date) + INTERVAL '1 day'")
         expenses_where_clause = " AND ".join(expenses_where_parts)
 
         expenses_table = qname("fact_expenses")
@@ -394,32 +400,32 @@ def kpi_summary(
             SELECT
                 COALESCE(SUM(
                     CASE
-                        WHEN upper(trim(COALESCE(source, ''))) = 'МАРКЕТИНГ' AND upper(trim(COALESCE(operation_type, ''))) = 'ОПЛАТА'
-                        THEN COALESCE(cost_sum, 0)
-                        WHEN upper(trim(COALESCE(source, ''))) = 'МАРКЕТИНГ' AND upper(trim(COALESCE(operation_type, ''))) = 'ВОЗВРАТ'
-                        THEN -COALESCE(cost_sum, 0)
+                        WHEN upper(trim(COALESCE(fe.source, ''))) = 'МАРКЕТИНГ' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ОПЛАТА'
+                        THEN COALESCE(fe.cost_sum, 0)
+                        WHEN upper(trim(COALESCE(fe.source, ''))) = 'МАРКЕТИНГ' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ВОЗВРАТ'
+                        THEN -COALESCE(fe.cost_sum, 0)
                         ELSE 0
                     END
                 ), 0) AS uzum_ads,
                 COALESCE(SUM(
                     CASE
-                        WHEN upper(trim(COALESCE(source, ''))) = 'СКЛАД' AND upper(trim(COALESCE(operation_type, ''))) = 'ОПЛАТА'
-                        THEN COALESCE(cost_sum, 0)
-                        WHEN upper(trim(COALESCE(source, ''))) = 'СКЛАД' AND upper(trim(COALESCE(operation_type, ''))) = 'ВОЗВРАТ'
-                        THEN -COALESCE(cost_sum, 0)
+                        WHEN upper(trim(COALESCE(fe.source, ''))) = 'СКЛАД' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ОПЛАТА'
+                        THEN COALESCE(fe.cost_sum, 0)
+                        WHEN upper(trim(COALESCE(fe.source, ''))) = 'СКЛАД' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ВОЗВРАТ'
+                        THEN -COALESCE(fe.cost_sum, 0)
                         ELSE 0
                     END
                 ), 0) AS uzum_storage,
                 COALESCE(SUM(
                     CASE
-                        WHEN upper(COALESCE(service, '')) LIKE '%ШТРАФ%' AND upper(trim(COALESCE(operation_type, ''))) = 'ОПЛАТА'
-                        THEN COALESCE(amount_sum, 0)
-                        WHEN upper(COALESCE(service, '')) LIKE '%ШТРАФ%' AND upper(trim(COALESCE(operation_type, ''))) = 'ВОЗВРАТ'
-                        THEN -COALESCE(amount_sum, 0)
+                        WHEN upper(COALESCE(fe.service, '')) LIKE '%ШТРАФ%' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ОПЛАТА'
+                        THEN COALESCE(fe.amount_sum, 0)
+                        WHEN upper(COALESCE(fe.service, '')) LIKE '%ШТРАФ%' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ВОЗВРАТ'
+                        THEN -COALESCE(fe.amount_sum, 0)
                         ELSE 0
                     END
                 ), 0) AS uzum_fines
-            FROM {expenses_table}
+            FROM {expenses_table} fe
             WHERE {expenses_where_clause}
         """)
         try:
@@ -436,6 +442,7 @@ def kpi_summary(
             logger.warning(
                 f"uzum_services from fact_expenses failed (returning 0): table={expenses_table}, reason={ex}"
             )
+            db.rollback()
             uzum_ads = 0.0
             uzum_storage = 0.0
             uzum_fines = 0.0

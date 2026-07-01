@@ -6,7 +6,7 @@ Tests for unified shop filter (seller-storage, barcode_norm).
 - With shop: filter by barcode set from fact_storage_snapshot for that shop_norm.
 """
 import pytest
-from app.utils.shop_filter import normalize_shop, storage_barcode_filter_sql, shop_filter_condition
+from app.utils.shop_filter import normalize_shop, storage_barcode_filter_sql, shop_filter_condition, expenses_shop_filter_condition
 
 
 def test_normalize_shop_none():
@@ -70,6 +70,18 @@ def test_shop_filter_condition_shop_overrides_shop_id():
     cond, params = shop_filter_condition("Shop A", "550e8400-e29b-41d4-a716-446655440000", outer_table_alias="fs")
     assert "EXISTS" in cond
     assert params == {"shop_norm": "SHOP A"}
+
+
+def test_expenses_shop_filter_by_name():
+    cond, params = expenses_shop_filter_condition("  My Shop  ", None, outer_table_alias="fe")
+    assert "fe.shop_raw" in cond
+    assert params == {"shop_norm": "MY SHOP"}
+
+
+def test_expenses_shop_filter_by_shop_id():
+    cond, params = expenses_shop_filter_condition(None, "550e8400-e29b-41d4-a716-446655440000", outer_table_alias="fe")
+    assert cond == "fe.shop_id = CAST(:shop_id AS uuid)"
+    assert params["shop_id"] == "550e8400-e29b-41d4-a716-446655440000"
 
 
 def test_sql_never_public_schema():

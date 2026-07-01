@@ -132,7 +132,7 @@ export function DailyView({
     dateFrom,
     dateTo,
     shopId: null,
-    shop: null,
+    shop,
     granularity: timeGrouping,
   });
   // Таблица: date_from/date_to + магазин, всегда по дням (без группировки)

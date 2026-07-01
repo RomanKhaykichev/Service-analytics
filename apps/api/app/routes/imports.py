@@ -290,6 +290,7 @@ SALES_MAP = {
 }
 
 EXP_MAP = {
+    "Магазины": "shop_raw",
     "Источник": "source_raw",
     "Услуга": "service_raw",
     "Статус": "status_raw",
@@ -516,6 +517,13 @@ def read_excel_as_str(file_content: bytes, sheet: str, file_type: str = None) ->
         for i, c in enumerate(cols):
             if c and str(c).strip().lower() == "магазин":
                 cols[i] = "Магазин"
+                break
+        df.columns = cols
+    if file_type == "expenses":
+        cols = list(df.columns)
+        for i, c in enumerate(cols):
+            if c and str(c).strip().lower() in ("магазин", "магазины"):
+                cols[i] = "Магазины"
                 break
         df.columns = cols
     # Ensure barcode/SKU string after possible UZ rename
@@ -1277,12 +1285,28 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
     
     elif report_type == "expenses":
         db.execute(text(f"DELETE FROM {qname('fact_expenses')} WHERE user_id = CAST(:user_id AS uuid) AND upload_batch_id = CAST(:batch_id AS uuid)"), params)
-        
+
+        db.execute(text(f"""
+            WITH shops AS (
+                SELECT DISTINCT
+                    se.user_id,
+                    NULLIF(trim(se.shop_raw), '') AS shop_name
+                FROM {qname('stg_expenses')} se
+                WHERE se.user_id = CAST(:user_id AS uuid)
+                  AND se.upload_batch_id = CAST(:batch_id AS uuid)
+                  AND NULLIF(trim(se.shop_raw), '') IS NOT NULL
+            )
+            INSERT INTO {qname('dim_shop')} (user_id, shop_name)
+            SELECT user_id, shop_name FROM shops
+            ON CONFLICT (user_id, shop_name) DO NOTHING
+        """), params)
+
         result = db.execute(text(f"""
             WITH src AS (
                 SELECT
                     se.user_id,
                     se.upload_batch_id,
+                    NULLIF(trim(se.shop_raw), '') AS shop_raw,
                     NULLIF(trim(se.source_raw), '') AS source,
                     NULLIF(trim(se.service_raw), '') AS service,
                     NULLIF(trim(se.status_raw), '') AS status,
@@ -1302,18 +1326,30 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
             ),
             casted AS (
                 SELECT
-                    user_id, upload_batch_id, source, service, status, operation_id,
-                    {sql_parse_expense_written_off_raw("written_off_raw")} AS date_written_off,
-                    ({sql_parse_decimal('cost_raw')})::numeric AS cost_sum,
-                    {sql_parse_int('qty_raw')} AS qty,
-                    ({sql_parse_decimal('amount_raw')})::numeric AS amount_sum,
-                    operation_type
-                FROM src
+                    s.user_id,
+                    s.upload_batch_id,
+                    s.shop_raw,
+                    ds.shop_id,
+                    s.source,
+                    s.service,
+                    s.status,
+                    s.operation_id,
+                    {sql_parse_expense_written_off_raw("s.written_off_raw")} AS date_written_off,
+                    ({sql_parse_decimal('s.cost_raw')})::numeric AS cost_sum,
+                    {sql_parse_int('s.qty_raw')} AS qty,
+                    ({sql_parse_decimal('s.amount_raw')})::numeric AS amount_sum,
+                    s.operation_type
+                FROM src s
+                LEFT JOIN {qname('dim_shop')} ds
+                  ON ds.user_id = s.user_id
+                 AND ds.shop_name = s.shop_raw
             ),
             deduped AS (
                 SELECT DISTINCT ON (user_id, operation_id)
                     user_id,
                     upload_batch_id,
+                    shop_raw,
+                    shop_id,
                     source,
                     service,
                     status,
@@ -1334,17 +1370,21 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
             )
             INSERT INTO {qname('fact_expenses')} (
                 user_id, upload_batch_id,
+                shop_raw, shop_id,
                 source, service, status, operation_id, date_written_off,
                 cost_sum, qty, amount_sum, operation_type
             )
             SELECT
                 user_id, upload_batch_id,
+                shop_raw, shop_id,
                 source, service, status, operation_id, date_written_off,
                 COALESCE(cost_sum, 0), qty, COALESCE(amount_sum, 0), operation_type
             FROM deduped
             ON CONFLICT (user_id, operation_id) DO UPDATE
             SET
                 upload_batch_id = EXCLUDED.upload_batch_id,
+                shop_raw = EXCLUDED.shop_raw,
+                shop_id = EXCLUDED.shop_id,
                 source = EXCLUDED.source,
                 service = EXCLUDED.service,
                 status = EXCLUDED.status,

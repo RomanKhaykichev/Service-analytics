@@ -1883,9 +1883,6 @@ async def admin_tenant_uzum_sync(
     from app.services.uzum_api_helpers import normalize_api_key
     from app.services.uzum_sync import schedule_admin_uzum_sync_for_tenant
 
-    if is_user_admin(tenant_id, db):
-        raise HTTPException(status_code=400, detail="Синхронизация недоступна для администраторов")
-
     row = db.execute(
         text(f"""
             SELECT uzum_seller_api_key

@@ -667,6 +667,25 @@ export default function Admin() {
     }
   };
 
+  const renderUzumSyncButton = (tenantId: string) => (
+    <UITooltip>
+      <TooltipTrigger asChild>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-7 w-7"
+          disabled={syncingTenantId === tenantId}
+          onClick={() => void handleUzumSync(tenantId)}
+        >
+          <RefreshCw
+            className={cn("h-4 w-4", syncingTenantId === tenantId && "animate-spin")}
+          />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{t("admin.tooltip.uzumSync")}</TooltipContent>
+    </UITooltip>
+  );
+
   if (accessDenied) {
     return (
       <MainLayout>
@@ -1466,7 +1485,15 @@ export default function Admin() {
                           )}
                         </TableCell>
                         <TableCell className="text-center">
-                          {row.is_admin || (row.owner_email && row.owner_email === user?.email) ? (
+                          {row.is_admin ? (
+                            row.has_uzum_api_key ? (
+                              <div className="flex flex-nowrap gap-0.5 justify-center items-center">
+                                {renderUzumSyncButton(row.tenant_id)}
+                              </div>
+                            ) : (
+                              "—"
+                            )
+                          ) : row.owner_email && row.owner_email === user?.email ? (
                             "—"
                           ) : (
                             <div className="flex flex-nowrap gap-0.5 justify-center items-center">
@@ -1536,29 +1563,7 @@ export default function Admin() {
                                 </TooltipTrigger>
                                 <TooltipContent>Разрешённые магазины</TooltipContent>
                               </UITooltip>
-                              {row.has_uzum_api_key ? (
-                                <UITooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      className="h-7 w-7"
-                                      disabled={syncingTenantId === row.tenant_id}
-                                      onClick={() => void handleUzumSync(row.tenant_id)}
-                                    >
-                                      <RefreshCw
-                                        className={cn(
-                                          "h-4 w-4",
-                                          syncingTenantId === row.tenant_id && "animate-spin",
-                                        )}
-                                      />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    {t("admin.tooltip.uzumSync")}
-                                  </TooltipContent>
-                                </UITooltip>
-                              ) : null}
+                              {row.has_uzum_api_key ? renderUzumSyncButton(row.tenant_id) : null}
                               <UITooltip>
                                 <TooltipTrigger asChild>
                                   <Button

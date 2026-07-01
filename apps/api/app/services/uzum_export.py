@@ -2079,6 +2079,7 @@ def _build_expenses_rows(payments: list[dict[str, Any]], shop_names: dict[int, s
         service_name = str(p.get("name") or "")
         rows.append(
             {
+                "Магазины": _shop_label(shop_names, shop_id),
                 "Источник": _expense_source_label(p.get("source"), service_name),
                 "Услуга": service_name,
                 "Статус": EXPENSE_STATUS_RU.get(str(p.get("status") or ""), p.get("status") or ""),
@@ -2088,7 +2089,6 @@ def _build_expenses_rows(payments: list[dict[str, Any]], shop_names: dict[int, s
                 "Количество": p.get("amount"),
                 "Сумма (сумы)": p.get("paymentPrice"),
                 "Тип операции": EXPENSE_TYPE_RU.get(str(p.get("type") or ""), p.get("type") or ""),
-                "_shop": _shop_label(shop_names, shop_id),
             }
         )
     return columns, rows

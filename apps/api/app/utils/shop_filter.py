@@ -156,3 +156,33 @@ def shop_filter_condition(
         cond = f"{outer_table_alias}.shop_id = CAST(:shop_id AS uuid)" if outer_table_alias else "shop_id = CAST(:shop_id AS uuid)"
         return cond, {"shop_id": shop_id}
     return "", {}
+
+
+def expenses_shop_filter_condition(
+    shop: Optional[str],
+    shop_id: Optional[str],
+    *,
+    outer_table_alias: str = "fe",
+) -> tuple[str, dict]:
+    """
+    Filter fact_expenses by shop name (shop_raw) or shop_id (dim_shop UUID).
+
+    - shop (string): normalized match on shop_raw (from Uzum API / expenses report).
+    - shop_id (UUID): fe.shop_id = :shop_id.
+    """
+    shop_norm = normalize_shop(shop)
+    alias = outer_table_alias.strip() or "fe"
+    if shop_norm:
+        return (
+            (
+                f"upper(regexp_replace(trim(COALESCE({alias}.shop_raw, '')), "
+                f"'\\s+', ' ', 'g')) = :shop_norm"
+            ),
+            {"shop_norm": shop_norm},
+        )
+    if shop_id:
+        return (
+            f"{alias}.shop_id = CAST(:shop_id AS uuid)",
+            {"shop_id": shop_id},
+        )
+    return "", {}

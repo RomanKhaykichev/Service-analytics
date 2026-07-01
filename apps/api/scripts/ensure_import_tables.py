@@ -79,6 +79,7 @@ def main():
                 user_id uuid NOT NULL,
                 upload_batch_id uuid NOT NULL,
                 row_num int NOT NULL,
+                shop_raw text,
                 source_raw text,
                 service_raw text,
                 status_raw text,
@@ -90,6 +91,7 @@ def main():
                 operation_type_raw text
             )
         """))
+        conn.execute(text(f"ALTER TABLE {schema}.stg_expenses ADD COLUMN IF NOT EXISTS shop_raw text"))
         conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_stg_expenses_user_batch ON {schema}.stg_expenses (user_id, upload_batch_id)"))
         conn.commit()
 
@@ -149,6 +151,8 @@ def main():
             CREATE TABLE IF NOT EXISTS {schema}.fact_expenses (
                 user_id uuid NOT NULL,
                 upload_batch_id uuid NOT NULL,
+                shop_raw text,
+                shop_id uuid,
                 source text,
                 service text,
                 status text,
@@ -161,6 +165,8 @@ def main():
                 UNIQUE (user_id, operation_id)
             )
         """))
+        conn.execute(text(f"ALTER TABLE {schema}.fact_expenses ADD COLUMN IF NOT EXISTS shop_raw text"))
+        conn.execute(text(f"ALTER TABLE {schema}.fact_expenses ADD COLUMN IF NOT EXISTS shop_id uuid"))
         conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_fact_expenses_user_batch ON {schema}.fact_expenses (user_id, upload_batch_id)"))
         conn.commit()
 

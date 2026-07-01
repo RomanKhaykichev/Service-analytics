@@ -37,12 +37,21 @@ SALES_COLUMN_ORDER = [
 ]
 
 CANONICAL_EXPENSES = {
-    "Источник", "Услуга", "Статус", "ID операции", "Дата списания", "Стоимость (сумы)",
-    "Количество", "Сумма (сумы)", "Тип операции",
+    "Магазины",
+    "Источник",
+    "Услуга",
+    "Статус",
+    "ID операции",
+    "Дата списания",
+    "Стоимость (сумы)",
+    "Количество",
+    "Сумма (сумы)",
+    "Тип операции",
 }
 
 # Column order in Uzum expenses-report XLSX (header row 2 in cabinet export).
 EXPENSES_COLUMN_ORDER = [
+    "Магазины",
     "Источник",
     "Услуга",
     "Статус",
@@ -235,6 +244,10 @@ UZ_TO_RU_SALES: Dict[str, str] = {
 
 # Expenses (Отчет по услугам) — варианты UZUM (Yechilish sanasi, Qiymati (soʻm))
 UZ_TO_RU_EXPENSES: Dict[str, str] = {
+    _n("Do'kon"): "Магазины",
+    _n("Dokon"): "Магазины",
+    _n("Do'konlar"): "Магазины",
+    _n("Do'kon nomi"): "Магазины",
     _n("Manba"): "Источник",
     _n("Xizmat"): "Услуга",
     _n("Holat"): "Статус",

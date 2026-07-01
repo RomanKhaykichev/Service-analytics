@@ -33,7 +33,7 @@ from app.utils.product_image import (
     uzum_cdn_fetch_candidates,
 )
 from app.utils.barcode import barcode_norm_sql
-from app.utils.shop_filter import normalize_shop, shop_filter_condition, storage_barcode_filter_sql
+from app.utils.shop_filter import normalize_shop, shop_filter_condition, storage_barcode_filter_sql, expenses_shop_filter_condition
 from app.services.uzum_time import sql_uz_calendar_date
 from app.schemas import (
     RevenueDailyResponse,
@@ -627,6 +627,11 @@ async def get_uzum_services_daily(
             "exp_date_from": exp_from.isoformat() if exp_from else date_from_iso,
             "exp_date_to": exp_to.isoformat() if exp_to else date_to_iso,
         }
+        expenses_shop_frag, expenses_shop_params = expenses_shop_filter_condition(
+            shop, shop_id, outer_table_alias="fe"
+        )
+        params_expenses.update(expenses_shop_params)
+        expenses_shop_condition = f"AND {expenses_shop_frag}" if expenses_shop_frag else ""
         
         # 1) Expenses (expenses-report): storage, ads, fines — те же формулы, что в KPI Summary (по дням)
         # Реклама: SUM(Стоимость) Маркетинг+Оплата минус Маркетинг+Возврат
@@ -634,33 +639,34 @@ async def get_uzum_services_daily(
         # Штрафы: SUM(Сумма) Услуга LIKE '%Штраф%' и Оплата минус Возврат
         query_expenses = text(f"""
             SELECT 
-                {sql_uz_calendar_date("date_written_off")} AS day,
+                {sql_uz_calendar_date("fe.date_written_off")} AS day,
                 COALESCE(SUM(
                     CASE
-                        WHEN upper(trim(COALESCE(source, ''))) = 'СКЛАД' AND upper(trim(COALESCE(operation_type, ''))) = 'ОПЛАТА' THEN COALESCE(cost_sum, 0)
-                        WHEN upper(trim(COALESCE(source, ''))) = 'СКЛАД' AND upper(trim(COALESCE(operation_type, ''))) = 'ВОЗВРАТ' THEN -COALESCE(cost_sum, 0)
+                        WHEN upper(trim(COALESCE(fe.source, ''))) = 'СКЛАД' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ОПЛАТА' THEN COALESCE(fe.cost_sum, 0)
+                        WHEN upper(trim(COALESCE(fe.source, ''))) = 'СКЛАД' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ВОЗВРАТ' THEN -COALESCE(fe.cost_sum, 0)
                         ELSE 0
                     END
                 ), 0) AS storage,
                 COALESCE(SUM(
                     CASE
-                        WHEN upper(trim(COALESCE(source, ''))) = 'МАРКЕТИНГ' AND upper(trim(COALESCE(operation_type, ''))) = 'ОПЛАТА' THEN COALESCE(cost_sum, 0)
-                        WHEN upper(trim(COALESCE(source, ''))) = 'МАРКЕТИНГ' AND upper(trim(COALESCE(operation_type, ''))) = 'ВОЗВРАТ' THEN -COALESCE(cost_sum, 0)
+                        WHEN upper(trim(COALESCE(fe.source, ''))) = 'МАРКЕТИНГ' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ОПЛАТА' THEN COALESCE(fe.cost_sum, 0)
+                        WHEN upper(trim(COALESCE(fe.source, ''))) = 'МАРКЕТИНГ' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ВОЗВРАТ' THEN -COALESCE(fe.cost_sum, 0)
                         ELSE 0
                     END
                 ), 0) AS ads,
                 COALESCE(SUM(
                     CASE
-                        WHEN upper(COALESCE(service, '')) LIKE '%ШТРАФ%' AND upper(trim(COALESCE(operation_type, ''))) = 'ОПЛАТА' THEN COALESCE(amount_sum, 0)
-                        WHEN upper(COALESCE(service, '')) LIKE '%ШТРАФ%' AND upper(trim(COALESCE(operation_type, ''))) = 'ВОЗВРАТ' THEN -COALESCE(amount_sum, 0)
+                        WHEN upper(COALESCE(fe.service, '')) LIKE '%ШТРАФ%' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ОПЛАТА' THEN COALESCE(fe.amount_sum, 0)
+                        WHEN upper(COALESCE(fe.service, '')) LIKE '%ШТРАФ%' AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ВОЗВРАТ' THEN -COALESCE(fe.amount_sum, 0)
                         ELSE 0
                     END
                 ), 0) AS fines
-            FROM {qname("fact_expenses")}
-            WHERE user_id = CAST(:user_id AS uuid)
-                AND date_written_off >= CAST(:exp_date_from AS date)
-                AND date_written_off < CAST(:exp_date_to AS date) + INTERVAL '1 day'
-            GROUP BY {sql_uz_calendar_date("date_written_off")}
+            FROM {qname("fact_expenses")} fe
+            WHERE fe.user_id = CAST(:user_id AS uuid)
+                AND fe.date_written_off >= CAST(:exp_date_from AS date)
+                AND fe.date_written_off < CAST(:exp_date_to AS date) + INTERVAL '1 day'
+                {expenses_shop_condition}
+            GROUP BY {sql_uz_calendar_date("fe.date_written_off")}
             ORDER BY day ASC
         """)
         
@@ -1867,13 +1873,18 @@ async def get_daily_summary(
 
     shop_norm = normalize_shop(shop)
     shop_condition_frag, shop_params = shop_filter_condition(shop, shop_id, outer_table_alias="fs")
+    expenses_shop_frag, expenses_shop_params = expenses_shop_filter_condition(
+        shop, shop_id, outer_table_alias="fe"
+    )
     params = {
         "user_id": str(user_id),
         "date_from": date_from_iso,
         "date_to": date_to_iso,
     }
     params.update(shop_params)
+    params.update(expenses_shop_params)
     shop_condition = f"AND {shop_condition_frag}" if shop_condition_frag else ""
+    expenses_shop_condition = f"AND {expenses_shop_frag}" if expenses_shop_frag else ""
 
     metrics_sql = get_sales_metrics_sql(table_alias="fs")
 
@@ -1934,6 +1945,7 @@ async def get_daily_summary(
                     WHERE fe.user_id = CAST(:user_id AS uuid)
                         AND fe.date_written_off >= CAST(:date_from AS date)
                         AND fe.date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'
+                        {expenses_shop_condition}
                     GROUP BY {sql_uz_calendar_date("fe.date_written_off")}
                 )
                 SELECT
@@ -2015,6 +2027,7 @@ async def get_daily_summary(
                     WHERE fe.user_id = CAST(:user_id AS uuid)
                         AND fe.date_written_off >= CAST(:date_from AS date)
                         AND fe.date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'
+                        {expenses_shop_condition}
                     GROUP BY {sql_uz_calendar_date("fe.date_written_off")}
                 ),
                 daily_joined AS (

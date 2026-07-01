@@ -5,10 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from app.routes import shops, products, charts, auth, debug, kpi, imports, extra_expenses, sales, filters, admin, track, support_tickets, uzum_seller
 from app.settings import get_settings, get_cors_origins
-from app.db import engine
-import logging
+from app.db import engine, ensure_fact_expenses_shop_columns
 from urllib.parse import urlparse
 from sqlalchemy import text
+import logging
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -112,6 +112,7 @@ def check_alembic_migrations():
 
 # Check migrations on startup
 check_alembic_migrations()
+ensure_fact_expenses_shop_columns()
 
 # Determine if documentation should be enabled
 is_prod = settings.APP_ENV == "prod"

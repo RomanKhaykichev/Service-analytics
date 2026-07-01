@@ -54,6 +54,19 @@ def qname(name: str) -> str:
     return f"{settings.DB_SCHEMA}.{name}"
 
 
+def ensure_fact_expenses_shop_columns() -> None:
+    """Idempotent DDL for expenses shop filter (also in alembic 20260628_exp_shop)."""
+    schema = settings.DB_SCHEMA
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE {schema}.stg_expenses ADD COLUMN IF NOT EXISTS shop_raw text"))
+            conn.execute(text(f"ALTER TABLE {schema}.fact_expenses ADD COLUMN IF NOT EXISTS shop_raw text"))
+            conn.execute(text(f"ALTER TABLE {schema}.fact_expenses ADD COLUMN IF NOT EXISTS shop_id uuid"))
+        logger.info("fact_expenses shop columns ensured (shop_raw, shop_id)")
+    except Exception as e:
+        logger.warning("Could not ensure fact_expenses shop columns: %s", e)
+
+
 def get_db() -> Generator[Session, None, None]:
     """
     Database dependency for FastAPI.
