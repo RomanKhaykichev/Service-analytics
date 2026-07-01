@@ -28,6 +28,7 @@ from app.services.uzum_api_helpers import (
     UZUM_SHOP_UNAVAILABLE,
     UZUM_SYNC_REPORT_TYPES,
     normalize_api_key,
+    uzum_accept_language,
     uzum_error_means_invalid_key,
     validate_api_key,
     validate_api_key_shops,
@@ -450,7 +451,8 @@ def run_uzum_sync_for_user(
 
     row = db.execute(
         text(f"""
-            SELECT uzum_seller_api_key, is_active, trial_ends_at, phone, phone_verified_at
+            SELECT uzum_seller_api_key, is_active, trial_ends_at, phone, phone_verified_at,
+                   preferred_language
             FROM {qname("users")}
             WHERE id = CAST(:user_id AS uuid)
         """),
@@ -459,7 +461,10 @@ def run_uzum_sync_for_user(
     if not row:
         raise ValueError("User not found")
 
-    stored_key, is_active, trial_ends_at, phone, phone_verified_at = row[0], row[1], row[2], row[3], row[4]
+    stored_key, is_active, trial_ends_at, phone, phone_verified_at, preferred_language = (
+        row[0], row[1], row[2], row[3], row[4], row[5]
+    )
+    accept_language = uzum_accept_language(preferred_language)
     key = normalize_api_key(api_key or (stored_key or ""))
     explicit_key = api_key is not None
     active_log_id = log_id
@@ -522,7 +527,7 @@ def run_uzum_sync_for_user(
         )
 
     try:
-        client = UzumApiClient(key)
+        client = UzumApiClient(key, accept_language=accept_language)
         accessible_shop_ids, _name_map = prepare_sync_shop_scope(
             client,
             db,

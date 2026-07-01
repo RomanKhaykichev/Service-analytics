@@ -29,6 +29,7 @@ from app.services.uzum_api_helpers import (
     UZUM_KEY_INSUFFICIENT_ACCESS,
     UZUM_SHOP_UNAVAILABLE,
     normalize_api_key,
+    uzum_accept_language,
     uzum_error_means_invalid_key,
     validate_api_key,
     validate_api_key_shops,
@@ -80,6 +81,28 @@ def _get_user_uzum_api_key(db: Session, user_id: UUID) -> Optional[str]:
     return key.strip() if isinstance(key, str) and key.strip() else None
 
 
+def _get_user_uzum_accept_language(db: Session, user_id: UUID) -> str:
+    user = db.query(User).filter(User.id == user_id).first()
+    return uzum_accept_language(user.preferred_language if user else None)
+
+
+def _persist_sync_accept_language(db: Session, user_id: UUID, accept_language: Optional[str]) -> None:
+    if not accept_language:
+        return
+    lang = uzum_accept_language(accept_language)
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return
+    user.preferred_language = lang
+    db.commit()
+
+
+def _uzum_report_client(db: Session, user_id: UUID, api_key: str):
+    from app.services.uzum_export import UzumApiClient
+
+    return UzumApiClient(api_key, accept_language=_get_user_uzum_accept_language(db, user_id))
+
+
 def _save_user_uzum_api_key(db: Session, user_id: UUID, api_key: str) -> None:
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -88,8 +111,11 @@ def _save_user_uzum_api_key(db: Session, user_id: UUID, api_key: str) -> None:
     db.commit()
 
 
-def _headers_for_mode(api_key: str, mode: AuthMode) -> dict[str, str]:
-    base = {"Accept": "application/json", "Accept-Language": "ru-RU"}
+def _headers_for_mode(api_key: str, mode: AuthMode, *, accept_language: Optional[str] = None) -> dict[str, str]:
+    base = {
+        "Accept": "application/json",
+        "Accept-Language": uzum_accept_language(accept_language),
+    }
     if mode == "bearer":
         return {**base, "Authorization": f"Bearer {api_key}"}
     if mode == "authorization_raw":
@@ -290,10 +316,11 @@ def list_uzum_report_templates(user_id: UUID = Depends(require_user)):
 def export_uzum_report(
     body: UzumExportBody,
     user_id: UUID = Depends(require_user),
+    db: Session = Depends(get_db),
 ):
     """Download XLSX in the same shape as manual Uzum reports (bold = no API field)."""
-    _ = user_id
     api_key = normalize_api_key(body.api_key)
+    client = _uzum_report_client(db, user_id, api_key)
     try:
         columns, rows, filename, warnings = build_report(
             body.report_type,
@@ -301,6 +328,7 @@ def export_uzum_report(
             date_from=body.date_from,
             date_to=body.date_to,
             shop_ids=body.shop_ids,
+            client=client,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -330,11 +358,12 @@ def export_uzum_report(
 def preview_uzum_report(
     body: UzumExportBody,
     user_id: UUID = Depends(require_user),
+    db: Session = Depends(get_db),
 ):
     """Preview first rows; column names include mapped flag for UI styling."""
-    _ = user_id
     api_key = normalize_api_key(body.api_key)
     limit = body.preview_limit or 50
+    client = _uzum_report_client(db, user_id, api_key)
     try:
         columns, rows, filename, warnings = build_report(
             body.report_type,
@@ -342,6 +371,7 @@ def preview_uzum_report(
             date_from=body.date_from,
             date_to=body.date_to,
             shop_ids=body.shop_ids,
+            client=client,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -368,6 +398,10 @@ class UzumSyncBody(BaseModel):
     api_key: str = Field(min_length=1, max_length=512)
     date_from: Optional[str] = Field(default=None, description="YYYY-MM-DD, default: Jan 1 current year")
     date_to: Optional[str] = Field(default=None, description="YYYY-MM-DD, default: today")
+    accept_language: Optional[str] = Field(
+        default=None,
+        description="UI language for product titles from Uzum API: ru | uz",
+    )
 
 
 class UzumSyncStartResponse(BaseModel):
@@ -415,6 +449,7 @@ def start_uzum_reports_sync(
         )
 
     _save_user_uzum_api_key(db, user_id, api_key)
+    _persist_sync_accept_language(db, user_id, body.accept_language)
 
     if user_has_running_manual_sync(db, user_id):
         raise HTTPException(
@@ -488,6 +523,7 @@ def sync_uzum_reports_to_service(
         )
 
     _save_user_uzum_api_key(db, user_id, api_key)
+    _persist_sync_accept_language(db, user_id, body.accept_language)
 
     if user_has_running_manual_sync(db, user_id):
         raise HTTPException(

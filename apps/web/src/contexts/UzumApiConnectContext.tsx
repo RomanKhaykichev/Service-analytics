@@ -83,7 +83,7 @@ function UzumApiConnectProgressBanner() {
 }
 
 export function UzumApiConnectProvider({ children }: { children: ReactNode }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
@@ -141,7 +141,7 @@ export function UzumApiConnectProvider({ children }: { children: ReactNode }) {
       setWarnings([]);
 
       try {
-        const result = await syncUzumReportsToService(key, user?.plan);
+        const result = await syncUzumReportsToService(key, user?.plan, language);
         setLoadingProgress(100);
         if (result.warnings?.length) {
           setWarnings(result.warnings);
@@ -166,7 +166,7 @@ export function UzumApiConnectProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     },
-    [queryClient, t, user?.plan],
+    [language, queryClient, t, user?.plan],
   );
 
   const refreshData = useCallback(

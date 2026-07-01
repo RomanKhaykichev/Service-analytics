@@ -59,7 +59,11 @@ export function getYearToDateRange(): { dateFrom: string; dateTo: string } {
   return getSyncDateRange();
 }
 
-export async function startUzumSync(apiKey: string, plan?: string | null): Promise<{ sync_id: string }> {
+export async function startUzumSync(
+  apiKey: string,
+  plan?: string | null,
+  acceptLanguage?: string | null,
+): Promise<{ sync_id: string }> {
   const { dateFrom, dateTo } = getSyncDateRange(plan);
   return apiPost<{ ok: boolean; sync_id: string; status: string }>(
     "/api/uzum-seller/reports/sync/start",
@@ -67,6 +71,7 @@ export async function startUzumSync(apiKey: string, plan?: string | null): Promi
       api_key: apiKey.trim(),
       date_from: dateFrom,
       date_to: dateTo,
+      ...(acceptLanguage ? { accept_language: acceptLanguage } : {}),
     },
     { timeoutMs: START_TIMEOUT_MS },
   );
@@ -116,12 +121,13 @@ async function pollUzumSyncUntilDone(
 export async function syncUzumReportsToService(
   apiKey: string,
   plan?: string | null,
+  acceptLanguage?: string | null,
 ): Promise<UzumSyncResult> {
   const { dateFrom, dateTo } = getSyncDateRange(plan);
 
   let syncId: string;
   try {
-    const started = await startUzumSync(apiKey, plan);
+    const started = await startUzumSync(apiKey, plan, acceptLanguage);
     syncId = started.sync_id;
   } catch (err) {
     if (isNetworkError(err)) {

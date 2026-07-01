@@ -23,7 +23,7 @@ from app.services.uzum_time import (
     parse_to_epoch_ms,
     timezone_metadata,
 )
-from app.services.uzum_api_helpers import build_query_params
+from app.services.uzum_api_helpers import build_query_params, uzum_accept_language
 from app.utils.column_mappings import (
     CANONICAL_EXPENSES,
     CANONICAL_LEFTOUT_API,
@@ -973,11 +973,11 @@ def _is_transient_request_error(exc: BaseException) -> bool:
 
 
 class UzumApiClient:
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, *, accept_language: Optional[str] = None):
         self._headers = {
             "Authorization": api_key,
             "Accept": "application/json",
-            "Accept-Language": "ru-RU",
+            "Accept-Language": uzum_accept_language(accept_language),
         }
         self.warnings: list[str] = []
         self.shop_sync_status: dict[int, dict[str, Any]] = {}

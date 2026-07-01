@@ -40,13 +40,29 @@ def normalize_api_key(raw: str) -> str:
     return key
 
 
+def uzum_accept_language(preferred: Optional[str] = None) -> str:
+    """Map app UI language to Uzum OpenAPI Accept-Language (ru | uz)."""
+    raw = (preferred or "ru").strip().lower()
+    if raw.startswith("uz"):
+        return "uz"
+    return "ru"
+
+
 def uzum_error_means_invalid_key(exc: BaseException) -> bool:
     msg = str(exc).lower()
     return any(marker in msg for marker in _INVALID_KEY_MARKERS)
 
 
-def _headers_for_mode(api_key: str, mode: str = DEFAULT_AUTH_MODE) -> dict[str, str]:
-    base = {"Accept": "application/json", "Accept-Language": "ru-RU"}
+def _headers_for_mode(
+    api_key: str,
+    mode: str = DEFAULT_AUTH_MODE,
+    *,
+    accept_language: Optional[str] = None,
+) -> dict[str, str]:
+    base = {
+        "Accept": "application/json",
+        "Accept-Language": uzum_accept_language(accept_language),
+    }
     if mode == "bearer":
         return {**base, "Authorization": f"Bearer {api_key}"}
     if mode == "authorization_raw":
