@@ -362,7 +362,7 @@ function Dashboard() {
         </div>
       ),
       value: formatCurrency((metrics.revenue ?? 0) * (taxPercent / 100)),
-      tooltip: ""
+      tooltip: t('summary.expense.taxesTooltip')
     },
     {
       icon: <Info className="w-4 h-4" />,
