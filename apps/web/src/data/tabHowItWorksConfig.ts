@@ -2,7 +2,10 @@ import type { DashboardTabId } from "@/data/trainingVideos";
 
 export interface TabHowItWorksItem {
   textKey: string;
+  /** Текст после иконки «?» как у метрик на сводке */
+  textKeyAfter?: string;
   italic?: boolean;
+  metricHelpIcon?: boolean;
 }
 
 export interface TabHowItWorksTabConfig {
@@ -15,7 +18,11 @@ export const TAB_HOW_IT_WORKS_CONFIG: Record<DashboardTabId, TabHowItWorksTabCon
     videoId: "1",
     items: [
       { textKey: "howItWorks.summary.item1" },
-      { textKey: "howItWorks.summary.item2" },
+      {
+        textKey: "howItWorks.summary.item2Before",
+        textKeyAfter: "howItWorks.summary.item2After",
+        metricHelpIcon: true,
+      },
       { textKey: "howItWorks.summary.item4" },
       { textKey: "howItWorks.summary.item3" },
     ],

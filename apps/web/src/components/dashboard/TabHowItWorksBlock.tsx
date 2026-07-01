@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CircleHelp, ChevronDown, PlayCircle } from "lucide-react";
+import { CircleHelp, ChevronDown, PlayCircle, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -103,6 +103,47 @@ interface TabHowItWorksPanelProps {
   className?: string;
 }
 
+function HowItWorksListItemText({
+  item,
+  t,
+}: {
+  item: { textKey: string; textKeyAfter?: string; italic?: boolean; metricHelpIcon?: boolean };
+  t: (key: string) => string;
+}) {
+  if (item.metricHelpIcon && item.textKeyAfter) {
+    const before = item.textKey ? t(item.textKey) : "";
+    const after = t(item.textKeyAfter);
+    return (
+      <span className={cn(item.italic && "text-muted-foreground/80 italic")}>
+        {before ? (
+          <>
+            {before}{" "}
+            <HelpCircle
+              className="inline h-3 w-3 shrink-0 text-muted-foreground/50 align-[-2px]"
+              aria-hidden
+            />{" "}
+            {after}
+          </>
+        ) : (
+          <>
+            <HelpCircle
+              className="inline h-3 w-3 shrink-0 text-muted-foreground/50 align-[-2px]"
+              aria-hidden
+            />{" "}
+            {after}
+          </>
+        )}
+      </span>
+    );
+  }
+
+  return (
+    <span className={cn(item.italic && "text-muted-foreground/80 italic")}>
+      {t(item.textKey)}
+    </span>
+  );
+}
+
 /** Развёрнутый блок под вкладками */
 export function TabHowItWorksPanel({ tab, expanded, className }: TabHowItWorksPanelProps) {
   const { t } = useLanguage();
@@ -135,9 +176,7 @@ export function TabHowItWorksPanel({ tab, expanded, className }: TabHowItWorksPa
                 {config.items.map((item) => (
                   <li key={item.textKey} className="flex items-start gap-2">
                     <span className="text-blue-600 dark:text-blue-400">•</span>
-                    <span className={cn(item.italic && "text-muted-foreground/80 italic")}>
-                      {t(item.textKey)}
-                    </span>
+                    <HowItWorksListItemText item={item} t={t} />
                   </li>
                 ))}
               </ul>
