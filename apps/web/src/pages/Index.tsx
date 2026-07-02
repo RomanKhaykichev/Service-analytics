@@ -406,6 +406,17 @@ function Dashboard() {
     }
   ] : [];
 
+  const fbsStockQty = metrics?.fbsStockQuantity ?? 0;
+  const fbsStockHasData = metrics?.fbsStockHasData ?? false;
+  const fbsWarehouseMetrics = metrics ? [
+    {
+      icon: <Warehouse className="w-4 h-4" />,
+      label: t('summary.warehouse.stock'),
+      value: formatQuantity(fbsStockQty, qtyUnit),
+      tooltip: t('summary.warehouse.fbsStockTooltip')
+    }
+  ] : [];
+
   return (
     <MainLayout>
       {/* Header with title and actions */}
@@ -660,7 +671,10 @@ function Dashboard() {
                 <div className="bg-card rounded-xl border border-border p-4"><LoadingBlock /></div>
                 <div className="bg-card rounded-xl border border-border p-4"><LoadingBlock /></div>
                 <div className="bg-card rounded-xl border border-border p-4"><LoadingBlock /></div>
-                <div className="bg-card rounded-xl border border-border p-4"><LoadingBlock /></div>
+                <div className="flex h-full min-h-0 w-full min-w-0 flex-col gap-4">
+                  <div className="bg-card rounded-xl border border-border p-4 shrink-0"><LoadingBlock /></div>
+                  <div className="bg-card rounded-xl border border-border p-4 flex-1 min-h-0"><LoadingBlock /></div>
+                </div>
               </>
             ) : error ? (
               <div className="col-span-4 text-center text-destructive py-8">
@@ -675,42 +689,58 @@ function Dashboard() {
                   titleColor="text-destructive" 
                   metrics={expenseMetrics} 
                 />
-                <SummaryBlock 
-                  title={t('summary.blockWarehouse')} 
-                  titleColor="text-warning" 
-                  metrics={warehouseMetrics} 
-                  customHeightClass="h-auto"
-                  customOverflowClass="overflow-visible"
-                  customPadding="px-4 pb-4"
-                  customSpacing="space-y-1"
-                  emptyState={
-                    !loading && showStockZeroWarning ? (
-                      <Alert variant="destructive" className="m-0">
-                        <AlertTriangle className="h-4 w-4" />
-                        <AlertTitle>{t('alert.stockZero')}</AlertTitle>
-                        <AlertDescription>
-                          <p className="mb-2">
-                            {stockZeroReason === "all_zero_in_snapshot"
-                              ? t('alert.stockZeroReasonAll')
-                              : t('alert.stockZeroDesc')}
-                          </p>
-                          {(stockSkuTotal > 0 || stockSkuWithStock >= 0 || stockSnapshotAt) && (
-                            <div className="text-xs text-muted-foreground space-y-1">
-                              {stockSkuTotal > 0 && (
-                                <p>SKU: {stockSkuTotal}, с остатком: {stockSkuWithStock}</p>
-                              )}
-                              {stockSnapshotAt && (
-                                <p>{t('common.snapshot')}: {new Date(stockSnapshotAt).toLocaleString("ru-RU")}</p>
-                              )}
-                            </div>
-                          )}
-                        </AlertDescription>
-                      </Alert>
-                    ) : !loading && !stockHasData && stockSource === null ? (
-                      <p className="text-sm text-muted-foreground m-0">{t('alert.noStockData')}</p>
-                    ) : undefined
-                  }
-                />
+                <div className="flex h-full min-h-0 w-full min-w-0 flex-col gap-4">
+                  <SummaryBlock 
+                    title={t('summary.blockWarehouse')} 
+                    titleColor="text-warning" 
+                    metrics={warehouseMetrics} 
+                    customHeightClass="h-auto shrink-0"
+                    customOverflowClass="overflow-visible"
+                    customPadding="px-4 pb-4"
+                    customSpacing="space-y-1"
+                    emptyState={
+                      !loading && showStockZeroWarning ? (
+                        <Alert variant="destructive" className="m-0">
+                          <AlertTriangle className="h-4 w-4" />
+                          <AlertTitle>{t('alert.stockZero')}</AlertTitle>
+                          <AlertDescription>
+                            <p className="mb-2">
+                              {stockZeroReason === "all_zero_in_snapshot"
+                                ? t('alert.stockZeroReasonAll')
+                                : t('alert.stockZeroDesc')}
+                            </p>
+                            {(stockSkuTotal > 0 || stockSkuWithStock >= 0 || stockSnapshotAt) && (
+                              <div className="text-xs text-muted-foreground space-y-1">
+                                {stockSkuTotal > 0 && (
+                                  <p>SKU: {stockSkuTotal}, с остатком: {stockSkuWithStock}</p>
+                                )}
+                                {stockSnapshotAt && (
+                                  <p>{t('common.snapshot')}: {new Date(stockSnapshotAt).toLocaleString("ru-RU")}</p>
+                                )}
+                              </div>
+                            )}
+                          </AlertDescription>
+                        </Alert>
+                      ) : !loading && !stockHasData && stockSource === null ? (
+                        <p className="text-sm text-muted-foreground m-0">{t('alert.noStockData')}</p>
+                      ) : undefined
+                    }
+                  />
+                  <SummaryBlock 
+                    title={t('summary.blockWarehouseFbs')} 
+                    titleColor="text-warning" 
+                    metrics={fbsWarehouseMetrics} 
+                    customHeightClass="flex-1 min-h-0"
+                    customOverflowClass="overflow-visible"
+                    customPadding="px-4 pb-4"
+                    customSpacing="space-y-1"
+                    emptyState={
+                      !loading && !fbsStockHasData && stockSource === null ? (
+                        <p className="text-sm text-muted-foreground m-0">{t('alert.noStockData')}</p>
+                      ) : undefined
+                    }
+                  />
+                </div>
               </>
             )}
           </div>

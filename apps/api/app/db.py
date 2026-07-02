@@ -67,6 +67,22 @@ def ensure_fact_expenses_shop_columns() -> None:
         logger.warning("Could not ensure fact_expenses shop columns: %s", e)
 
 
+def ensure_fact_leftout_fbs_qty_column() -> None:
+    """Idempotent DDL for FBS stock (also in alembic 20260629_fbs_qty)."""
+    schema = settings.DB_SCHEMA
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    f"ALTER TABLE {schema}.fact_leftout_old_snapshot "
+                    "ADD COLUMN IF NOT EXISTS fbs_qty integer NOT NULL DEFAULT 0"
+                )
+            )
+        logger.info("fact_leftout_old_snapshot.fbs_qty column ensured")
+    except Exception as e:
+        logger.warning("Could not ensure fact_leftout_old_snapshot.fbs_qty: %s", e)
+
+
 def get_db() -> Generator[Session, None, None]:
     """
     Database dependency for FastAPI.

@@ -616,6 +616,7 @@ def kpi_summary(
         # Последний батч: строго upload_batch_id для leftout_old (MAX(loaded_at) по fact → один batch_id).
         # Фильтр магазина: баркоды выбранного магазина из fact_storage_snapshot (последний снапшот storage); по shop_norm (shop_raw) или по shop_id (dim_shop).
         stock_quantity = 0.0
+        fbs_stock_quantity = 0.0
         stock_cost = 0.0
         stock_retail_price = 0.0
         stock_sku_total = 0
@@ -670,7 +671,8 @@ def kpi_summary(
                         SUM(CASE WHEN COALESCE(lo.in_sale_qty, 0) > 0 THEN 1 ELSE 0 END) AS stock_sku_with_stock,
                         MAX(lo.loaded_at) AS stock_snapshot_at,
                         COALESCE(SUM(COALESCE(lo.in_sale_qty, 0) * COALESCE(lo.price_sum, 0)), 0) AS stock_retail_price,
-                        COALESCE(SUM(COALESCE(lo.in_sale_qty, 0) * COALESCE(lo.cost_sum, 0)), 0) AS stock_cost
+                        COALESCE(SUM(COALESCE(lo.in_sale_qty, 0) * COALESCE(lo.cost_sum, 0)), 0) AS stock_cost,
+                        COALESCE(SUM(COALESCE(lo.fbs_qty, 0)), 0) AS fbs_stock_quantity
                     FROM {stock_old_table} lo
                     WHERE lo.user_id = CAST(:user_id AS uuid)
                         AND lo.upload_batch_id = CAST(:stock_batch_id AS uuid)
@@ -686,10 +688,11 @@ def kpi_summary(
                         stock_snapshot_at = stock_row[3]
                         stock_retail_price = float(stock_row[4] or 0)
                         stock_cost = float(stock_row[5] or 0)
+                        fbs_stock_quantity = float(stock_row[6] or 0)
                         stock_source = "fact"
                         logger.info(
                             f"stock (leftout_old): source=fact, batch_id={stock_batch_id}, loaded_at={stock_loaded_at}, "
-                            f"row_count={stock_sku_total}, sum_in_sale={stock_quantity}, shop_norm={shop_norm}, shop_id={shop_id}"
+                            f"row_count={stock_sku_total}, sum_in_sale={stock_quantity}, sum_fbs={fbs_stock_quantity}, shop_norm={shop_norm}, shop_id={shop_id}"
                         )
                         # stock_is_zero / stock_has_data финально выставляются ниже
                 except Exception as e:
@@ -720,13 +723,15 @@ def kpi_summary(
             stock_quantity_out = "нет данных"
             stock_cost_out = "нет данных"
             stock_retail_price_out = "нет данных"
+            fbs_stock_quantity_out = "нет данных"
         else:
             stock_quantity_out = stock_quantity
             stock_cost_out = stock_cost
             stock_retail_price_out = stock_retail_price
+            fbs_stock_quantity_out = fbs_stock_quantity
         logger.info(
             f"stock (leftout_old): source={stock_source}, source_api={stock_source_api}, batch_id={stock_batch_id}, loaded_at={stock_loaded_at}, "
-            f"quantity={stock_quantity}, cost={stock_cost}, retail_price={stock_retail_price}, "
+            f"quantity={stock_quantity}, fbs_quantity={fbs_stock_quantity}, cost={stock_cost}, retail_price={stock_retail_price}, "
             f"sku_total={stock_sku_total}, sku_with_stock={stock_sku_with_stock}, has_data={stock_has_data}, is_zero={stock_is_zero}, reason={stock_zero_reason}, shop_norm={shop_norm}"
         )
 
@@ -958,6 +963,8 @@ def kpi_summary(
             "stockZeroReason": stock_zero_reason,
             "stockSource": stock_source_api,
             "stockBatchId": str(stock_batch_id) if stock_batch_id else None,
+            "fbsStockQuantity": fbs_stock_quantity_out,
+            "fbsStockHasData": stock_has_data,
             "period_range": period_range_dict
         }
         

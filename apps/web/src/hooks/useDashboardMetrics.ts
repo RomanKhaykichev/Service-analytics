@@ -48,6 +48,10 @@ interface DashboardMetrics {
   stockIsZero: boolean;
   stockZeroReason: string | null;
   stockSource: 'leftout_old' | null;
+
+  // Склад FBS
+  fbsStockQuantity: number;
+  fbsStockHasData: boolean;
 }
 
 /**

@@ -1691,7 +1691,7 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
         # cost_sum/price_sum: numeric(18,2), пусто→NULL (колонки nullable)
         result = db.execute(text(f"""
             INSERT INTO {fact_table} (
-                user_id, upload_batch_id, barcode, barcode_norm, in_sale_qty, cost_sum, price_sum, loaded_at
+                user_id, upload_batch_id, barcode, barcode_norm, in_sale_qty, fbs_qty, cost_sum, price_sum, loaded_at
             )
             SELECT
                 sl.user_id,
@@ -1699,6 +1699,10 @@ def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) 
                 NULLIF(trim(sl.barcode_raw), '') AS barcode,
                 NULLIF(trim(regexp_replace(COALESCE(sl.barcode_raw, ''), '\\s+', '', 'g')), '') AS barcode_norm,
                 GREATEST(0, {sql_parse_int("sl.in_sale_raw")}) AS in_sale_qty,
+                GREATEST(0, COALESCE(
+                    {sql_parse_int("sl.data->>'Остаток FBS'")},
+                    0
+                )) AS fbs_qty,
                 CAST(({sql_parse_decimal("sl.cost_raw")}) AS numeric(18,2)) AS cost_sum,
                 CAST(({sql_parse_decimal("sl.price_raw")}) AS numeric(18,2)) AS price_sum,
                 now() AS loaded_at

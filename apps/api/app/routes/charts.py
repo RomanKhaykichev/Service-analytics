@@ -1356,6 +1356,10 @@ async def get_products_table(
             price = _parse_num(data.get("Стоимость продажи (сумы)"))
             turnover = _parse_turnover(data)
             stock = _parse_int(data.get("Общий остаток") or data.get("В продаже") or in_sale_raw)
+            fbs_stock = _parse_int(
+                data.get("Остаток FBS")
+                or _get_data_ru_uz(data, ["Остаток FBS"], [])
+            )
             storage_cost = _parse_num(data.get("Стоимость хранения 1 дня, сум") or data.get("Стоимость хранения 1 дня"))
             barcode = _str_val(data.get("Штрихкод")) or barcode_raw
             product_image_url = _extract_product_image_url_from_data(data)
@@ -1415,6 +1419,7 @@ async def get_products_table(
                 profit=profit,
                 turnover=turnover,
                 stock=stock,
+                fbs_stock=fbs_stock,
                 size_group=size_group or "-",
                 cogs=display_cogs,
                 cogs_total=cogs_total,

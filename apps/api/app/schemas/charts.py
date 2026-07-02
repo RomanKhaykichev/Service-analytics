@@ -184,6 +184,7 @@ class ProductsTableItem(BaseModel):
     profit: float = 0.0                 # Прибыль = Выручка - Себестоимость(заверш.) - Комиссия - Логистика - (Выручка*1%)
     turnover: Optional[float] = None   # Оборачиваемость (leftout_old)
     stock: Optional[int] = None         # Остаток = Общий остаток (leftout_old)
+    fbs_stock: Optional[int] = None     # Остаток FBS (leftout_old)
     size_group: Optional[str] = None   # Габаритная группа; «Неопределенная» → «-»
     cogs: float = 0.0                   # Себестоимость (сумы) (sells_report) - удельная себестоимость для отображения
     cogs_total: float = 0.0             # Общая себестоимость = сумма (cogs_sum × (qty − returns_qty)) по завершённым продажам

@@ -2219,6 +2219,17 @@ def _leftout_storage_daily_fee(cat: SkuCatalogEntry, in_sale: int) -> Any:
     return int(round(price * in_sale))
 
 
+def _fbs_stock_qty(
+    cat: SkuCatalogEntry,
+    fbs_stock_row: Optional[dict[str, Any]] = None,
+) -> int:
+    """FBS остаток: quantityFbs из каталога и/или amount из /v3/fbs/sku/stocks."""
+    qty = _qty_int(cat.quantity_fbs)
+    if fbs_stock_row:
+        qty = max(qty, _qty_int(fbs_stock_row.get("amount")))
+    return qty
+
+
 def _leftout_to_ship_qty(
     cat: SkuCatalogEntry,
     fbs_stock_row: Optional[dict[str, Any]] = None,
@@ -2248,6 +2259,7 @@ def _leftout_row_dict(
     fbs_stock_row: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     to_ship = _leftout_to_ship_qty(cat, fbs_stock_row)
+    fbs_stock = _fbs_stock_qty(cat, fbs_stock_row)
     in_sale = _qty_int(cat.quantity_active)
     returned = _qty_int(cat.quantity_returned)
     defect = _qty_int(cat.quantity_defected)
@@ -2285,6 +2297,7 @@ def _leftout_row_dict(
         "ID товара": cat.product_id,
         "К отправке": to_ship,
         "В продаже": in_sale,
+        "Остаток FBS": fbs_stock,
         "Возврат": returned,
         "Брак": defect,
         "Себест. (сумы)": cost,

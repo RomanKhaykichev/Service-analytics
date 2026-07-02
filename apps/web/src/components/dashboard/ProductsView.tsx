@@ -42,6 +42,7 @@ export interface ProductsTableItemType {
   profit: number;
   turnover: number | null;
   stock: number | null;
+  fbs_stock: number | null;
   size_group: string | null;
   cogs: number;
   cogs_total: number;
@@ -70,6 +71,7 @@ type SortField =
   | "profit"
   | "turnover"
   | "stock"
+  | "fbs_stock"
   | "cogs"
   | "commission"
   | "logistics"
@@ -200,6 +202,7 @@ export function ProductsView({
         profit: sum((r) => r.profit),
         turnover: same((r) => r.turnover) ?? null,
         stock: rows.every((r) => r.stock != null) ? sum((r) => r.stock ?? 0) : null,
+        fbs_stock: rows.every((r) => r.fbs_stock != null) ? sum((r) => r.fbs_stock ?? 0) : null,
         size_group: same((r) => r.size_group) ?? null,
         cogs: null, // При группировке по карточкам себестоимость не суммируется, отображается "—"
         cogs_total: sum((r) => r.cogs_total ?? 0), // Суммируем общую себестоимость для расчёта прибыли
@@ -352,6 +355,7 @@ export function ProductsView({
     lostRevenue: 0,
     turnover: p.turnover ?? 0,
     stock: p.stock ?? 0,
+    fbsStock: p.fbs_stock ?? 0,
     endsIn: "—",
     costPrice: p.cogs ?? null,
     cogsTotal: p.cogs_total ?? 0,
@@ -432,6 +436,9 @@ export function ProductsView({
           logistics: sum((r) => r.logistics ?? 0),
           stock: productVariants.every((r) => r.stock != null)
             ? sum((r) => r.stock ?? 0)
+            : null,
+          fbs_stock: productVariants.every((r) => r.fbs_stock != null)
+            ? sum((r) => r.fbs_stock ?? 0)
             : null,
           cogs: first.cogs,
           product_image_url:
@@ -552,8 +559,11 @@ export function ProductsView({
                 <SortableHeader field="turnover" className="text-center min-w-[100px] whitespace-nowrap">
                   {t('table.turnover')}
                 </SortableHeader>
-                <SortableHeader field="stock" className="text-center min-w-[80px]">
-                  {t('table.stock')}
+                <SortableHeader field="stock" className="text-center min-w-[80px] whitespace-nowrap">
+                  {t('table.stockFbo')}
+                </SortableHeader>
+                <SortableHeader field="fbs_stock" className="text-center min-w-[80px] whitespace-nowrap">
+                  {t('table.stockFbs')}
                 </SortableHeader>
                 <SortableHeader field="size_group" className="text-center min-w-[100px]">
                   {t('table.sizeGroup')}
@@ -590,7 +600,7 @@ export function ProductsView({
             <TableBody>
               {sortedProducts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={18} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={19} className="text-center text-muted-foreground py-8">
                     {t('table.noDataProducts')}
                   </TableCell>
                 </TableRow>
@@ -642,6 +652,9 @@ export function ProductsView({
                   </TableCell>
                   <TableCell className="text-center font-medium">
                     {product.stock != null ? formatNumber(product.stock) : "—"}
+                  </TableCell>
+                  <TableCell className="text-center font-medium">
+                    {product.fbs_stock != null ? formatNumber(product.fbs_stock) : "—"}
                   </TableCell>
                   <TableCell className="text-center">
                     <span className={cn("inline-block px-2 py-0.5 rounded-md text-sm font-medium", getSizeGroupColorClass(product.size_group))}>

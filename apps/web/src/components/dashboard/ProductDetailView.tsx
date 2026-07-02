@@ -19,7 +19,8 @@ interface ProductVariant {
   char2: string; // Хар-ка 2 = 4 часть из SKU
   char3: string; // Хар-ка 3 = 5 часть из SKU
   sales_qty: number; // Заказы
-  stock: number | null; // Остатки
+  stock: number | null; // Остатки FBO
+  fbs_stock: number | null; // Остатки FBS
   size_group: string | null; // Габ. группа
   barcode: string | null; // Штрихкод
   storage_cost_per_day: number | null; // Хранение сут/сум
@@ -35,6 +36,7 @@ interface Product {
   lostRevenue: number;
   turnover: number;
   stock: number;
+  fbsStock: number;
   endsIn: string;
   costPrice: number | null;
   /** Сумма себестоимости (cogs_sum × qty) по завершённым — для блока Расходы как на Сводке */
@@ -58,6 +60,7 @@ interface ProductDetailViewProps {
     sku: string | null;
     sales_qty: number;
     stock: number | null;
+    fbs_stock?: number | null;
     size_group: string | null;
     barcode: string | null;
     storage_cost_per_day: number | null;
@@ -264,6 +267,7 @@ export function ProductDetailView({
       char3: skuParts[4] || "—", // 5 часть (индекс 4)
       sales_qty: v.sales_qty,
       stock: v.stock,
+      fbs_stock: v.fbs_stock ?? null,
       size_group: v.size_group,
       barcode: v.barcode,
       storage_cost_per_day: v.storage_cost_per_day,
@@ -356,6 +360,9 @@ export function ProductDetailView({
     { icon: <Warehouse className="w-4 h-4" />, label: t('summary.warehouse.stock'), value: formatQuantity(product.stock, qtyUnit), tooltip: t('summary.warehouse.stockTooltip') },
     { icon: <Tag className="w-4 h-4" />, label: t('summary.warehouse.cost'), value: formatCurrency(stockCost), tooltip: "" },
     { icon: <ShoppingBag className="w-4 h-4" />, label: t('summary.warehouse.retailPrice'), value: formatCurrency(stockRetail), tooltip: t('summary.warehouse.retailPriceTooltip') },
+  ];
+  const fbsWarehouseMetrics = [
+    { icon: <Warehouse className="w-4 h-4" />, label: t('summary.warehouse.stock'), value: formatQuantity(product.fbsStock, qtyUnit), tooltip: t('summary.warehouse.fbsStockTooltip') },
   ];
 
   return <div className="space-y-6">
@@ -459,7 +466,8 @@ export function ProductDetailView({
                   <tr className="border-b border-border">
                     <th colSpan={3} className="px-3 py-2 text-left text-muted-foreground font-medium">{t('product.params')}</th>
                     <th className="px-3 py-2 text-center text-muted-foreground font-medium">{t('product.orders')}</th>
-                    <th className="px-3 py-2 text-center text-muted-foreground font-medium">{t('product.stock')}</th>
+                    <th className="px-3 py-2 text-center text-muted-foreground font-medium">{t('product.stockFbo')}</th>
+                    <th className="px-3 py-2 text-center text-muted-foreground font-medium">{t('product.stockFbs')}</th>
                     <th className="px-3 py-2 text-center text-muted-foreground font-medium">{t('product.sizeGroup')}</th>
                     <th className="px-3 py-2 text-center text-muted-foreground font-medium">{t('product.barcode')}</th>
                     <th className="px-3 py-2 text-center text-muted-foreground font-medium">
@@ -480,6 +488,7 @@ export function ProductDetailView({
                           <td className="px-3 py-2 text-left text-foreground">{variant.char3}</td>
                           <td className="px-3 py-2 text-center text-foreground font-medium">{formatNumber(variant.sales_qty)}</td>
                           <td className="px-3 py-2 text-center text-foreground">{variant.stock != null ? formatNumber(variant.stock) : "—"}</td>
+                          <td className="px-3 py-2 text-center text-foreground">{variant.fbs_stock != null ? formatNumber(variant.fbs_stock) : "—"}</td>
                           <td className="px-3 py-2 text-center">
                             {variant.size_group && variant.size_group !== "-" ? (
                               <span className={`px-2 py-0.5 rounded text-xs font-medium ${getSizeGroupColorClass(variant.size_group)}`}>
@@ -498,7 +507,7 @@ export function ProductDetailView({
                     })
                   ) : (
                     <tr>
-                      <td colSpan={8} className="px-3 py-4 text-center text-muted-foreground">
+                      <td colSpan={9} className="px-3 py-4 text-center text-muted-foreground">
                         {t('product.noVariants')}
                       </td>
                     </tr>
@@ -513,6 +522,9 @@ export function ProductDetailView({
                       </td>
                       <td className="px-3 py-2 text-center text-foreground font-semibold">
                         {formatNumber(productVariants.reduce((sum, v) => sum + (v.stock ?? 0), 0))}
+                      </td>
+                      <td className="px-3 py-2 text-center text-foreground font-semibold">
+                        {formatNumber(productVariants.reduce((sum, v) => sum + (v.fbs_stock ?? 0), 0))}
                       </td>
                       <td></td>
                       <td></td>
@@ -529,11 +541,26 @@ export function ProductDetailView({
       </div>
 
       {/* 4 KPI Blocks */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-stretch">
         <SummaryBlock title={t('summary.blockSales')} titleColor="text-chart-4" metrics={salesMetrics} />
         <SummaryBlock title={t('summary.blockFinances')} titleColor="text-warning" metrics={financeMetrics} />
         <SummaryBlock title={t('summary.blockExpenses')} titleColor="text-destructive" metrics={expenseMetrics} />
-        <SummaryBlock title={t('summary.blockWarehouse')} titleColor="text-warning" metrics={warehouseMetrics} />
+        <div className="flex h-full min-h-0 w-full min-w-0 flex-col gap-4">
+          <SummaryBlock
+            title={t('summary.blockWarehouse')}
+            titleColor="text-warning"
+            metrics={warehouseMetrics}
+            customHeightClass="h-auto shrink-0"
+            customOverflowClass="overflow-visible"
+          />
+          <SummaryBlock
+            title={t('summary.blockWarehouseFbs')}
+            titleColor="text-warning"
+            metrics={fbsWarehouseMetrics}
+            customHeightClass="flex-1 min-h-0"
+            customOverflowClass="overflow-visible"
+          />
+        </div>
       </div>
 
       {/* Продажи по дням — данные по выбранному периоду из фильтра дат */}
