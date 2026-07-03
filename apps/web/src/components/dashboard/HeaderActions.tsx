@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from "react";
-import { HelpCircle, User, ChevronDown, LogOut, CreditCard, Globe, PlayCircle, MessageCircle, ShieldCheck, KeyRound } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Bell, HelpCircle, User, ChevronDown, LogOut, CreditCard, Globe, PlayCircle, MessageCircle, ShieldCheck, KeyRound, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,12 +19,16 @@ import { useNavigate, Link } from "react-router-dom";
 import { useLanguage, type Language } from "@/contexts/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useStorageShops } from "@/hooks/useStorageShops";
+import { apiGet } from "@/lib/api";
+import { formatCurrency } from "@/lib/formatters";
 import { toast } from "sonner";
 
 const headerLanguages: { code: Language; label: string }[] = [
   { code: "ru", label: "Русский" },
   { code: "uz", label: "O'zbekcha" },
 ];
+
+const DISMISSED_EXPENSE_NOTIFICATIONS_PREFIX = "dismissed_expense_notifications";
 
 function getUserDisplayName(user: { full_name?: string; user_metadata?: { full_name?: string }; email?: string } | null): string {
   if (!user) return "Пользователь";
@@ -35,6 +40,83 @@ function getUserDisplayName(user: { full_name?: string; user_metadata?: { full_n
 
 interface HeaderActionsProps {
   apiConnectRef?: React.RefObject<UzumApiConnectDialogHandle | null>;
+}
+
+interface ExpenseNotification {
+  id: string;
+  service: string;
+  service_key?: string;
+  service_number?: string | null;
+  written_off_date: string | null;
+  amount_sum: number;
+}
+
+interface ExpenseNotificationsResponse {
+  items: ExpenseNotification[];
+  count: number;
+}
+
+function formatNotificationDate(value: string | null): string {
+  if (!value) return "—";
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("ru-RU");
+}
+
+function appendNotificationNumber(label: string, number?: string | null): string {
+  return number ? `${label} № ${number}` : label;
+}
+
+function getExpenseNotificationService(notification: ExpenseNotification, language: Language): string {
+  const labels: Record<string, { ru: string; uz: string }> = {
+    storage_return: {
+      ru: "Оплата за услуги хранения собранного возврата по накладной",
+      uz: "Sonli yukxat boʻyicha yigʻilgan qaytarishni saqlash xizmatlari uchun toʻlov",
+    },
+    warehouse_return: {
+      ru: "Обработка возврата со склада по накладной",
+      uz: "Sonli yuk xati bo‘yicha ombordan qaytarishni qayta ishlash",
+    },
+    utilization_invoice: {
+      ru: "Обработка накладной утилизации",
+      uz: "Sonli yuk xati bo'yicha ombordan qaytarishni qayta ishlash",
+    },
+    fine_discrepancy: {
+      ru: "Штраф за расхождения при приемке накладной",
+      uz: "Qabuldagi tafovut uchun jarima",
+    },
+    fine: {
+      ru: "Штраф",
+      uz: "Jarima",
+    },
+  };
+
+  const label = notification.service_key ? labels[notification.service_key] : undefined;
+  if (!label) return notification.service;
+  return appendNotificationNumber(label[language === "uz" ? "uz" : "ru"], notification.service_number);
+}
+
+function getDismissedExpenseNotificationsKey(userId: string): string {
+  return `${DISMISSED_EXPENSE_NOTIFICATIONS_PREFIX}:${userId}`;
+}
+
+function readDismissedExpenseNotificationIds(userId: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(getDismissedExpenseNotificationsKey(userId));
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeDismissedExpenseNotificationIds(userId: string, ids: Set<string>): void {
+  try {
+    localStorage.setItem(getDismissedExpenseNotificationsKey(userId), JSON.stringify([...ids]));
+  } catch {
+    // If storage is unavailable, keep the UI-only removal for the current state.
+  }
 }
 
 export function HeaderActions({ apiConnectRef: apiConnectRefProp }: HeaderActionsProps = {}) {
@@ -52,6 +134,9 @@ export function HeaderActions({ apiConnectRef: apiConnectRefProp }: HeaderAction
     navigate('/landing?auth=open');
   };
   const [profileOpen, setProfileOpen] = useState(false);
+  const [expenseNotifications, setExpenseNotifications] = useState<ExpenseNotification[]>([]);
+  const [expenseNotificationsCount, setExpenseNotificationsCount] = useState(0);
+  const [expenseNotificationsLoading, setExpenseNotificationsLoading] = useState(false);
   const apiConnectRefInternal = useRef<UzumApiConnectDialogHandle>(null);
   const apiConnectRef = apiConnectRefProp ?? apiConnectRefInternal;
   const helpConnectApiRef = useRef<HelpConnectApiDialogHandle>(null);
@@ -85,6 +170,43 @@ export function HeaderActions({ apiConnectRef: apiConnectRefProp }: HeaderAction
     (user.plan ?? "trial").toLowerCase() !== "paid" &&
     user.trial_days_left != null &&
     user.trial_days_left <= 0;
+
+  const loadExpenseNotifications = useCallback(async () => {
+    if (!user?.id) {
+      setExpenseNotifications([]);
+      setExpenseNotificationsCount(0);
+      return;
+    }
+
+    setExpenseNotificationsLoading(true);
+    try {
+      const data = await apiGet<ExpenseNotificationsResponse>("/api/notifications/expenses", { limit: 20 });
+      const dismissedIds = readDismissedExpenseNotificationIds(user.id);
+      const items = (data.items ?? []).filter((item) => !dismissedIds.has(item.id));
+      const totalCount = data.count ?? data.items?.length ?? 0;
+      setExpenseNotifications(items);
+      setExpenseNotificationsCount(Math.max(0, totalCount - dismissedIds.size));
+    } catch {
+      setExpenseNotifications([]);
+      setExpenseNotificationsCount(0);
+    } finally {
+      setExpenseNotificationsLoading(false);
+    }
+  }, [user?.id]);
+
+  const dismissExpenseNotification = useCallback((id: string) => {
+    if (!user?.id) return;
+
+    const dismissedIds = readDismissedExpenseNotificationIds(user.id);
+    dismissedIds.add(id);
+    writeDismissedExpenseNotificationIds(user.id, dismissedIds);
+    setExpenseNotifications((items) => items.filter((item) => item.id !== id));
+    setExpenseNotificationsCount((count) => Math.max(0, count - 1));
+  }, [user?.id]);
+
+  useEffect(() => {
+    void loadExpenseNotifications();
+  }, [loadExpenseNotifications]);
 
   // Открываем окно «Тариф закончился» сразу после входа, если триал закончился
   useEffect(() => {
@@ -125,6 +247,77 @@ export function HeaderActions({ apiConnectRef: apiConnectRefProp }: HeaderAction
       <HelpConnectApiDialog ref={helpConnectApiRef} disabled={isTrialExpired} />
 
       <div className="flex items-center gap-1 sm:gap-1.5">
+      {/* Notifications */}
+      <DropdownMenu onOpenChange={(open) => open && void loadExpenseNotifications()}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t("header.notifications")}
+                  className="relative shrink-0 h-9 w-8 px-0 sm:h-10 sm:w-9"
+                >
+                  <Bell className="w-4 h-4 sm:w-5 sm:h-5" aria-hidden />
+                  {expenseNotificationsCount > 0 && (
+                    <Badge className="absolute -right-1 -top-1 h-4 min-w-4 px-1 text-[10px] leading-none">
+                      {expenseNotificationsCount > 99 ? "99+" : expenseNotificationsCount}
+                    </Badge>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {t("header.notifications")}
+          </TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="end" className="w-80 bg-card border-border">
+          <DropdownMenuLabel className="text-base font-semibold">{t("header.notifications")}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {expenseNotificationsLoading ? (
+            <div className="px-3 py-4 text-sm text-muted-foreground">{t("expense.loading")}</div>
+          ) : expenseNotifications.length === 0 ? (
+            <div className="px-3 py-4 text-sm text-muted-foreground">{t("header.noNotifications")}</div>
+          ) : (
+            <div className="max-h-80 overflow-y-auto">
+              {expenseNotifications.map((notification) => (
+                <div key={notification.id} className="flex gap-2 border-b border-border/50 px-3 py-2 last:border-0">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">
+                      {getExpenseNotificationService(notification, language)}
+                    </p>
+                    <div className="mt-1 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                      <span>{formatNotificationDate(notification.written_off_date)}</span>
+                      <span className="font-semibold text-foreground">
+                        {formatCurrency(notification.amount_sum, language === "uz" ? "so'm" : "сум")}
+                      </span>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t("header.deleteNotification")}
+                    title={t("header.deleteNotification")}
+                    className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      dismissExpenseNotification(notification.id);
+                    }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
       {/* Help — заметная кнопка, подпись на sm+, подсказка при наведении */}
       <DropdownMenu>
         <Tooltip>
