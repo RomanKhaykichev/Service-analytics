@@ -55,6 +55,42 @@ from app.auth import (
 router = APIRouter()
 
 
+def _refresh_token_expires_at() -> datetime:
+    settings = get_settings()
+    return datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TTL_DAYS)
+
+
+def _persist_refresh_token(db: Session, user_id: UUID, refresh_token: str) -> str:
+    """
+    Save refresh token hash. On rare duplicate hash, revoke the conflict and retry once with a new token.
+    Returns the refresh token that was persisted (may differ from input after retry).
+    """
+    token = refresh_token
+    expires_at = _refresh_token_expires_at()
+    for attempt in range(2):
+        token_hash = hash_token(token)
+        conflict = db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).first()
+        if conflict and conflict.revoked_at is None:
+            conflict.revoked_at = datetime.now(timezone.utc)
+        db.add(
+            RefreshToken(
+                user_id=user_id,
+                token_hash=token_hash,
+                expires_at=expires_at,
+            )
+        )
+        try:
+            db.flush()
+            return token
+        except IntegrityError:
+            db.rollback()
+            if attempt == 0:
+                token = create_refresh_token(str(user_id))
+                continue
+            raise
+    return token
+
+
 def _is_prod_cookie_mode(settings) -> bool:
     """Same idea as deps._is_production_env: secure / SameSite=None for real deployments."""
     if (getattr(settings, "ENV", "") or "").strip().lower() == "prod":
@@ -471,20 +507,7 @@ async def login(
     # Create tokens
     access_token = create_access_token(str(user.id))
     refresh_token = create_refresh_token(str(user.id))
-    
-    # Store refresh token hash
-    refresh_token_hash = hash_token(refresh_token)
-    from datetime import timedelta
-    from app.settings import get_settings
-    settings = get_settings()
-    expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TTL_DAYS)
-    
-    db_refresh_token = RefreshToken(
-        user_id=user.id,
-        token_hash=refresh_token_hash,
-        expires_at=expires_at
-    )
-    db.add(db_refresh_token)
+    refresh_token = _persist_refresh_token(db, user.id, refresh_token)
     
     now_utc = datetime.now(timezone.utc)
     touch_last_login_at(db, user.id, now_utc)
@@ -602,20 +625,7 @@ async def refresh(
         # Create new tokens
         new_access_token = create_access_token(str(user_id))
         new_refresh_token = create_refresh_token(str(user_id))
-        
-        # Store new refresh token
-        new_refresh_token_hash = hash_token(new_refresh_token)
-        from datetime import timedelta
-        from app.settings import get_settings
-        settings = get_settings()
-        expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TTL_DAYS)
-        
-        new_db_refresh_token = RefreshToken(
-            user_id=user_id,
-            token_hash=new_refresh_token_hash,
-            expires_at=expires_at
-        )
-        db.add(new_db_refresh_token)
+        new_refresh_token = _persist_refresh_token(db, user_id, new_refresh_token)
         
         now_utc = datetime.now(timezone.utc)
         touch_last_login_at(db, user_id, now_utc)

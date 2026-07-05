@@ -303,7 +303,9 @@ def _update_sync_log(
     error_message: Optional[str] = None,
     error_detail: Optional[str] = None,
     upload_batch_id: Optional[str] = None,
+    trigger: Optional[str] = None,
 ) -> None:
+    trigger_sql = ", trigger = :trigger" if trigger is not None else ""
     db.execute(
         text(f"""
             UPDATE {qname("uzum_sync_log")}
@@ -316,6 +318,7 @@ def _update_sync_log(
                     WHEN :upload_batch_id IS NULL THEN NULL
                     ELSE CAST(:upload_batch_id AS uuid)
                 END
+                {trigger_sql}
             WHERE id = CAST(:log_id AS uuid)
               AND user_id = CAST(:user_id AS uuid)
         """),
@@ -327,6 +330,7 @@ def _update_sync_log(
             "error_message": error_message,
             "error_detail": error_detail,
             "upload_batch_id": upload_batch_id,
+            **({"trigger": trigger} if trigger is not None else {}),
         },
     )
     db.commit()
@@ -356,6 +360,7 @@ def _write_sync_log(
             error_message=error_message,
             error_detail=error_detail,
             upload_batch_id=upload_batch_id,
+            trigger=trigger if status != "running" else None,
         )
         return log_id
     return _insert_sync_log(
@@ -475,13 +480,17 @@ def run_uzum_sync_for_user(
         error_message: Optional[str] = None,
         error_detail: Optional[str] = None,
         upload_batch_id: Optional[str] = None,
+        sync_mode: Optional[str] = None,
     ) -> str:
+        effective_trigger = trigger
+        if status == "success" and sync_mode:
+            effective_trigger = f"{trigger}_{sync_mode}"
         return _write_sync_log(
             db,
             user_id=user_id,
             started_at=started_at,
             status=status,
-            trigger=trigger,
+            trigger=effective_trigger,
             log_id=active_log_id,
             error_message=error_message,
             error_detail=error_detail,
@@ -609,6 +618,7 @@ def run_uzum_sync_for_user(
     finished_log_id = _finish(
         "success",
         upload_batch_id=str(batch_id) if batch_id else None,
+        sync_mode=fetch_dates.mode,
     )
     if explicit_key:
         _persist_uzum_api_key(db, user_id, key)

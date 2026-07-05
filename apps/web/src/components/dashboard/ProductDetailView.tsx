@@ -14,6 +14,18 @@ import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getSizeGroupColorClass } from "@/lib/utils";
 import { ProductThumbnail } from "@/components/dashboard/ProductThumbnail";
+
+function formatProductRatingLine(
+  rating: number | null | undefined,
+  feedbackQuantity: number | null | undefined,
+  ratingPrefix: string,
+): string | null {
+  if (rating == null && feedbackQuantity == null) return null;
+  const ratingValue = rating != null ? rating.toFixed(1) : "—";
+  const count = feedbackQuantity ?? 0;
+  return `${ratingPrefix} ${ratingValue} (${count}) ⭐️`;
+}
+
 interface ProductVariant {
   char1: string; // Хар-ка 1 = 3 часть из SKU
   char2: string; // Хар-ка 2 = 4 часть из SKU
@@ -53,6 +65,8 @@ interface Product {
   category: string;
   status: string;
   product_image_url?: string | null;
+  rating?: number | null;
+  feedback_quantity?: number | null;
 }
 interface ProductDetailViewProps {
   product: Product;
@@ -332,6 +346,12 @@ export function ProductDetailView({
         )
       : product.price * product.stock;
 
+  const ratingLine = formatProductRatingLine(
+    product.rating,
+    product.feedback_quantity,
+    t("product.ratingPrefix"),
+  );
+
   const qtyUnit = t('common.pieces');
   const salesMetrics = [
     { icon: <ShoppingCart className="w-4 h-4" />, label: t('summary.sales.orders'), value: formatQuantity(product.sales, qtyUnit), subValue: formatCurrency(ordersValue), tooltip: t('summary.sales.ordersTooltip') },
@@ -412,7 +432,10 @@ export function ProductDetailView({
                   <p className="text-foreground font-medium font-mono">{product.id}</p>
                 </div>
               </div>
-              <div className="col-span-1 flex items-center justify-center">
+              <div className="col-span-1 flex flex-col items-end justify-start gap-2 pr-1">
+                {ratingLine && (
+                  <p className="text-sm text-muted-foreground text-right">{ratingLine}</p>
+                )}
                 <ProductThumbnail
                   imageUrl={product.product_image_url}
                   alt={product.name}

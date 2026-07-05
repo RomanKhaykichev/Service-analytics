@@ -53,6 +53,8 @@ export interface ProductsTableItemType {
   abc_revenue: string | null;
   barcode: string | null;
   product_image_url: string | null;
+  rating?: number | null;
+  feedback_quantity?: number | null;
   storage_cost_per_day: number | null;
   shop: string | null;
 }
@@ -211,6 +213,8 @@ export function ProductsView({
         barcode: rows.length > 1 ? "—" : (first.barcode ?? null),
         product_image_url:
           rows.map((r) => r.product_image_url?.trim()).find((url) => url) ?? null,
+        rating: first.rating ?? null,
+        feedback_quantity: first.feedback_quantity ?? null,
         // Для группировки по карточкам показываем сумму хранения по всем вариантам карточки.
         storage_cost_per_day: rows.some((r) => r.storage_cost_per_day != null)
           ? sum((r) => r.storage_cost_per_day ?? 0)
@@ -370,6 +374,8 @@ export function ProductsView({
     category: p.size_group ?? "",
     status: "active",
     product_image_url: p.product_image_url ?? null,
+    rating: p.rating ?? null,
+    feedback_quantity: p.feedback_quantity ?? null,
   });
 
   // Отдельный запрос для карточки товара без фильтрации по магазину

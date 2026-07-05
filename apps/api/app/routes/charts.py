@@ -903,6 +903,16 @@ def _extract_product_image_url_from_data(data: dict) -> Optional[str]:
     return resolve_product_image_url(raw)
 
 
+def _extract_product_rating_from_data(data: dict) -> Optional[float]:
+    raw = _get_data_ru_uz(data, ["Рейтинг"], [])
+    return _parse_num(raw)
+
+
+def _extract_feedback_quantity_from_data(data: dict) -> Optional[int]:
+    raw = _get_data_ru_uz(data, ["Количество отзывов"], [])
+    return _parse_int(raw)
+
+
 def _parse_num(v) -> Optional[float]:
     """Parse number from data cell (int/float/string with comma)."""
     if v is None:
@@ -1363,6 +1373,8 @@ async def get_products_table(
             storage_cost = _parse_num(data.get("Стоимость хранения 1 дня, сум") or data.get("Стоимость хранения 1 дня"))
             barcode = _str_val(data.get("Штрихкод")) or barcode_raw
             product_image_url = _extract_product_image_url_from_data(data)
+            rating = _extract_product_rating_from_data(data)
+            feedback_quantity = _extract_feedback_quantity_from_data(data)
 
             # Габаритная группа и Магазин — только из seller-storage (fact_storage_snapshot), колонка Магазин = shop_raw
             shop = None
@@ -1430,6 +1442,8 @@ async def get_products_table(
                 abc_revenue=abc_revenue_by_barcode.get(barcode_norm),
                 barcode=barcode,
                 product_image_url=product_image_url,
+                rating=rating,
+                feedback_quantity=feedback_quantity,
                 storage_cost_per_day=storage_cost,
                 shop=shop,
             ))

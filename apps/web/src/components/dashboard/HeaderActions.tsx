@@ -28,6 +28,7 @@ const headerLanguages: { code: Language; label: string }[] = [
   { code: "uz", label: "O'zbekcha" },
 ];
 
+const DISMISSED_NOTIFICATIONS_PREFIX = "dismissed_header_notifications";
 const DISMISSED_EXPENSE_NOTIFICATIONS_PREFIX = "dismissed_expense_notifications";
 
 function getUserDisplayName(user: { full_name?: string; user_metadata?: { full_name?: string }; email?: string } | null): string {
@@ -38,8 +39,16 @@ function getUserDisplayName(user: { full_name?: string; user_metadata?: { full_n
   return "Пользователь";
 }
 
+export interface RatingNotificationProduct {
+  product_id: string;
+  product_name: string;
+  rating: number | null;
+  feedback_quantity: number | null;
+}
+
 interface HeaderActionsProps {
   apiConnectRef?: React.RefObject<UzumApiConnectDialogHandle | null>;
+  onOpenRatingProduct?: (product: RatingNotificationProduct) => void;
 }
 
 interface ExpenseNotification {
@@ -54,6 +63,51 @@ interface ExpenseNotification {
 interface ExpenseNotificationsResponse {
   items: ExpenseNotification[];
   count: number;
+}
+
+interface RatingNotification {
+  id: string;
+  product_id: string;
+  product_name: string;
+  rating: number | null;
+  feedback_quantity: number | null;
+  updated_at?: string | null;
+}
+
+interface RatingNotificationsResponse {
+  items: RatingNotification[];
+  count: number;
+}
+
+type HeaderNotification =
+  | { kind: "expense"; data: ExpenseNotification }
+  | { kind: "rating"; data: RatingNotification };
+
+function getNotificationSortTime(notification: HeaderNotification): number {
+  if (notification.kind === "expense") {
+    const date = notification.data.written_off_date;
+    if (!date) return 0;
+    const parsed = new Date(`${date}T12:00:00`);
+    return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+  }
+  const updatedAt = notification.data.updated_at;
+  if (!updatedAt) return 0;
+  const parsed = new Date(updatedAt);
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+}
+
+function sortNotificationsNewestFirst(items: HeaderNotification[]): HeaderNotification[] {
+  return [...items].sort((a, b) => {
+    const timeDiff = getNotificationSortTime(b) - getNotificationSortTime(a);
+    if (timeDiff !== 0) return timeDiff;
+    if (a.kind === "expense" && b.kind === "expense") {
+      return (b.data.amount_sum ?? 0) - (a.data.amount_sum ?? 0);
+    }
+    if (a.kind === "rating" && b.kind === "rating") {
+      return (a.data.rating ?? 0) - (b.data.rating ?? 0);
+    }
+    return 0;
+  });
 }
 
 function formatNotificationDate(value: string | null): string {
@@ -96,30 +150,58 @@ function getExpenseNotificationService(notification: ExpenseNotification, langua
   return appendNotificationNumber(label[language === "uz" ? "uz" : "ru"], notification.service_number);
 }
 
-function getDismissedExpenseNotificationsKey(userId: string): string {
-  return `${DISMISSED_EXPENSE_NOTIFICATIONS_PREFIX}:${userId}`;
+function getDismissedNotificationsKey(userId: string): string {
+  return `${DISMISSED_NOTIFICATIONS_PREFIX}:${userId}`;
 }
 
-function readDismissedExpenseNotificationIds(userId: string): Set<string> {
+function readDismissedNotificationIds(userId: string): Set<string> {
   try {
-    const raw = localStorage.getItem(getDismissedExpenseNotificationsKey(userId));
-    if (!raw) return new Set();
-    const parsed = JSON.parse(raw);
-    return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
+    const raw = localStorage.getItem(getDismissedNotificationsKey(userId));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
+    }
+    // Migrate legacy expense-only dismissals.
+    const legacyRaw = localStorage.getItem(getDismissedExpenseNotificationsKey(userId));
+    if (!legacyRaw) return new Set();
+    const legacyParsed = JSON.parse(legacyRaw);
+    const legacyIds = new Set(Array.isArray(legacyParsed) ? legacyParsed.filter((id): id is string => typeof id === "string") : []);
+    if (legacyIds.size > 0) {
+      writeDismissedNotificationIds(userId, legacyIds);
+    }
+    return legacyIds;
   } catch {
     return new Set();
   }
 }
 
-function writeDismissedExpenseNotificationIds(userId: string, ids: Set<string>): void {
+function writeDismissedNotificationIds(userId: string, ids: Set<string>): void {
   try {
-    localStorage.setItem(getDismissedExpenseNotificationsKey(userId), JSON.stringify([...ids]));
+    localStorage.setItem(getDismissedNotificationsKey(userId), JSON.stringify([...ids]));
   } catch {
     // If storage is unavailable, keep the UI-only removal for the current state.
   }
 }
 
-export function HeaderActions({ apiConnectRef: apiConnectRefProp }: HeaderActionsProps = {}) {
+function getDismissedExpenseNotificationsKey(userId: string): string {
+  return `${DISMISSED_EXPENSE_NOTIFICATIONS_PREFIX}:${userId}`;
+}
+
+function formatProductRatingNotification(
+  rating: number | null | undefined,
+  feedbackQuantity: number | null | undefined,
+  ratingPrefix: string,
+): string | null {
+  if (rating == null && feedbackQuantity == null) return null;
+  const ratingValue = rating != null ? rating.toFixed(1) : "—";
+  const count = feedbackQuantity ?? 0;
+  return `${ratingPrefix} ${ratingValue} (${count}) ⭐️`;
+}
+
+export function HeaderActions({
+  apiConnectRef: apiConnectRefProp,
+  onOpenRatingProduct,
+}: HeaderActionsProps = {}) {
   const { t, language, setLanguage } = useLanguage();
   const { user, signOut } = useAuth();
   const { shops, loading: shopsLoading } = useStorageShops();
@@ -134,9 +216,10 @@ export function HeaderActions({ apiConnectRef: apiConnectRefProp }: HeaderAction
     navigate('/landing?auth=open');
   };
   const [profileOpen, setProfileOpen] = useState(false);
-  const [expenseNotifications, setExpenseNotifications] = useState<ExpenseNotification[]>([]);
-  const [expenseNotificationsCount, setExpenseNotificationsCount] = useState(0);
-  const [expenseNotificationsLoading, setExpenseNotificationsLoading] = useState(false);
+  const [notifications, setNotifications] = useState<HeaderNotification[]>([]);
+  const [notificationsCount, setNotificationsCount] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const apiConnectRefInternal = useRef<UzumApiConnectDialogHandle>(null);
   const apiConnectRef = apiConnectRefProp ?? apiConnectRefInternal;
   const helpConnectApiRef = useRef<HelpConnectApiDialogHandle>(null);
@@ -171,42 +254,91 @@ export function HeaderActions({ apiConnectRef: apiConnectRefProp }: HeaderAction
     user.trial_days_left != null &&
     user.trial_days_left <= 0;
 
-  const loadExpenseNotifications = useCallback(async () => {
+  const loadNotifications = useCallback(async () => {
     if (!user?.id) {
-      setExpenseNotifications([]);
-      setExpenseNotificationsCount(0);
+      setNotifications([]);
+      setNotificationsCount(0);
       return;
     }
 
-    setExpenseNotificationsLoading(true);
+    setNotificationsLoading(true);
     try {
-      const data = await apiGet<ExpenseNotificationsResponse>("/api/notifications/expenses", { limit: 20 });
-      const dismissedIds = readDismissedExpenseNotificationIds(user.id);
-      const items = (data.items ?? []).filter((item) => !dismissedIds.has(item.id));
-      const totalCount = data.count ?? data.items?.length ?? 0;
-      setExpenseNotifications(items);
-      setExpenseNotificationsCount(Math.max(0, totalCount - dismissedIds.size));
+      const [expensesResult, ratingsResult] = await Promise.allSettled([
+        apiGet<ExpenseNotificationsResponse>("/api/notifications/expenses"),
+        apiGet<RatingNotificationsResponse>("/api/notifications/ratings"),
+      ]);
+      const dismissedIds = readDismissedNotificationIds(user.id);
+
+      const expensesData =
+        expensesResult.status === "fulfilled" ? expensesResult.value : { items: [], count: 0 };
+      const ratingsData =
+        ratingsResult.status === "fulfilled" ? ratingsResult.value : { items: [], count: 0 };
+
+      const expenseItems: HeaderNotification[] = (expensesData.items ?? [])
+        .filter((item) => !dismissedIds.has(item.id))
+        .map((item) => ({ kind: "expense", data: item }));
+
+      const ratingItems: HeaderNotification[] = (ratingsData.items ?? [])
+        .filter((item) => !dismissedIds.has(item.id))
+        .map((item) => ({ kind: "rating", data: item }));
+
+      const merged = sortNotificationsNewestFirst([...expenseItems, ...ratingItems]);
+      const totalCount = (expensesData.count ?? 0) + (ratingsData.count ?? 0);
+
+      setNotifications(merged);
+      setNotificationsCount(Math.max(0, totalCount - dismissedIds.size));
     } catch {
-      setExpenseNotifications([]);
-      setExpenseNotificationsCount(0);
+      setNotifications([]);
+      setNotificationsCount(0);
     } finally {
-      setExpenseNotificationsLoading(false);
+      setNotificationsLoading(false);
     }
   }, [user?.id]);
 
-  const dismissExpenseNotification = useCallback((id: string) => {
+  // Подгружаем счётчик уведомлений с задержкой, чтобы не мешать первому входу в сервис.
+  useEffect(() => {
+    if (!user?.id) return;
+    const timer = window.setTimeout(() => {
+      void loadNotifications();
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [user?.id, loadNotifications]);
+
+  const dismissNotification = useCallback((id: string) => {
     if (!user?.id) return;
 
-    const dismissedIds = readDismissedExpenseNotificationIds(user.id);
+    const dismissedIds = readDismissedNotificationIds(user.id);
     dismissedIds.add(id);
-    writeDismissedExpenseNotificationIds(user.id, dismissedIds);
-    setExpenseNotifications((items) => items.filter((item) => item.id !== id));
-    setExpenseNotificationsCount((count) => Math.max(0, count - 1));
+    writeDismissedNotificationIds(user.id, dismissedIds);
+    setNotifications((items) => items.filter((item) => item.data.id !== id));
+    setNotificationsCount((count) => Math.max(0, count - 1));
   }, [user?.id]);
 
-  useEffect(() => {
-    void loadExpenseNotifications();
-  }, [loadExpenseNotifications]);
+  const dismissAllNotifications = useCallback(async () => {
+    if (!user?.id) return;
+
+    const [expensesResult, ratingsResult] = await Promise.allSettled([
+      apiGet<ExpenseNotificationsResponse>("/api/notifications/expenses"),
+      apiGet<RatingNotificationsResponse>("/api/notifications/ratings"),
+    ]);
+
+    const dismissedIds = readDismissedNotificationIds(user.id);
+
+    if (expensesResult.status === "fulfilled") {
+      for (const item of expensesResult.value.items ?? []) {
+        dismissedIds.add(item.id);
+      }
+    }
+    if (ratingsResult.status === "fulfilled") {
+      for (const item of ratingsResult.value.items ?? []) {
+        dismissedIds.add(item.id);
+      }
+    }
+
+    writeDismissedNotificationIds(user.id, dismissedIds);
+    setNotifications([]);
+    setNotificationsCount(0);
+  }, [user?.id]);
 
   // Открываем окно «Тариф закончился» сразу после входа, если триал закончился
   useEffect(() => {
@@ -248,7 +380,13 @@ export function HeaderActions({ apiConnectRef: apiConnectRefProp }: HeaderAction
 
       <div className="flex items-center gap-1 sm:gap-1.5">
       {/* Notifications */}
-      <DropdownMenu onOpenChange={(open) => open && void loadExpenseNotifications()}>
+      <DropdownMenu
+        open={notificationsOpen}
+        onOpenChange={(open) => {
+          setNotificationsOpen(open);
+          if (open) void loadNotifications();
+        }}
+      >
         <Tooltip>
           <TooltipTrigger asChild>
             <span className="inline-flex">
@@ -260,59 +398,137 @@ export function HeaderActions({ apiConnectRef: apiConnectRefProp }: HeaderAction
                   className="relative shrink-0 h-9 w-8 px-0 sm:h-10 sm:w-9"
                 >
                   <Bell className="w-4 h-4 sm:w-5 sm:h-5" aria-hidden />
-                  {expenseNotificationsCount > 0 && (
+                  {notificationsCount > 0 && (
                     <Badge className="absolute -right-1 -top-1 h-4 min-w-4 px-1 text-[10px] leading-none">
-                      {expenseNotificationsCount > 99 ? "99+" : expenseNotificationsCount}
+                      {notificationsCount > 99 ? "99+" : notificationsCount}
                     </Badge>
                   )}
                 </Button>
               </DropdownMenuTrigger>
             </span>
           </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {t("header.notifications")}
+          <TooltipContent side="bottom" className="max-w-xs text-center">
+            {t("header.notificationsTooltip")}
           </TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="end" className="w-80 bg-card border-border">
-          <DropdownMenuLabel className="text-base font-semibold">{t("header.notifications")}</DropdownMenuLabel>
+          <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+            <DropdownMenuLabel className="p-0 text-base font-semibold">
+              {t("header.notifications")}
+            </DropdownMenuLabel>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-auto shrink-0 px-2 py-1 text-xs font-normal text-muted-foreground hover:text-foreground"
+              disabled={notificationsLoading || (notifications.length === 0 && notificationsCount === 0)}
+              aria-label={t("header.deleteAllNotifications")}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void dismissAllNotifications();
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              {t("header.deleteAllNotifications")}
+            </Button>
+          </div>
           <DropdownMenuSeparator />
-          {expenseNotificationsLoading ? (
+          {notificationsLoading ? (
             <div className="px-3 py-4 text-sm text-muted-foreground">{t("expense.loading")}</div>
-          ) : expenseNotifications.length === 0 ? (
+          ) : notifications.length === 0 ? (
             <div className="px-3 py-4 text-sm text-muted-foreground">{t("header.noNotifications")}</div>
           ) : (
             <div className="max-h-80 overflow-y-auto">
-              {expenseNotifications.map((notification) => (
-                <div key={notification.id} className="flex gap-2 border-b border-border/50 px-3 py-2 last:border-0">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">
-                      {getExpenseNotificationService(notification, language)}
-                    </p>
-                    <div className="mt-1 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                      <span>{formatNotificationDate(notification.written_off_date)}</span>
-                      <span className="font-semibold text-foreground">
-                        {formatCurrency(notification.amount_sum, language === "uz" ? "so'm" : "сум")}
-                      </span>
+              {notifications.map((notification) => {
+                if (notification.kind === "expense") {
+                  const item = notification.data;
+                  return (
+                    <div key={item.id} className="flex gap-2 border-b border-border/50 px-3 py-2 last:border-0">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground">
+                          {getExpenseNotificationService(item, language)}
+                        </p>
+                        <div className="mt-1 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                          <span>{formatNotificationDate(item.written_off_date)}</span>
+                          <span className="font-semibold text-foreground">
+                            {formatCurrency(item.amount_sum, language === "uz" ? "so'm" : "сум")}
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t("header.deleteNotification")}
+                        title={t("header.deleteNotification")}
+                        className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          dismissNotification(item.id);
+                        }}
+                        onPointerDown={(event) => event.stopPropagation()}
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden />
+                      </Button>
                     </div>
+                  );
+                }
+
+                const item = notification.data;
+                const ratingLine = formatProductRatingNotification(
+                  item.rating,
+                  item.feedback_quantity,
+                  t("product.ratingPrefix"),
+                );
+                return (
+                  <div key={item.id} className="flex gap-2 border-b border-border/50 px-3 py-2 last:border-0">
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 rounded-md text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:bg-transparent"
+                      disabled={!onOpenRatingProduct || !item.product_id}
+                      aria-label={t("notification.openProductCard")}
+                      onClick={() => {
+                        if (!onOpenRatingProduct || !item.product_id) return;
+                        onOpenRatingProduct({
+                          product_id: item.product_id,
+                          product_name: item.product_name,
+                          rating: item.rating,
+                          feedback_quantity: item.feedback_quantity,
+                        });
+                        setNotificationsOpen(false);
+                      }}
+                    >
+                      <p className="text-sm font-medium text-foreground">
+                        {t("notification.lowRating")}
+                      </p>
+                      {item.product_name ? (
+                        <p className="mt-1 text-xs text-muted-foreground truncate">{item.product_name}</p>
+                      ) : null}
+                      {ratingLine ? (
+                        <p className="mt-1 text-xs text-muted-foreground">{ratingLine}</p>
+                      ) : null}
+                    </button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t("header.deleteNotification")}
+                      title={t("header.deleteNotification")}
+                      className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        dismissNotification(item.id);
+                      }}
+                      onPointerDown={(event) => event.stopPropagation()}
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden />
+                    </Button>
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label={t("header.deleteNotification")}
-                    title={t("header.deleteNotification")}
-                    className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      dismissExpenseNotification(notification.id);
-                    }}
-                    onPointerDown={(event) => event.stopPropagation()}
-                  >
-                    <Trash2 className="h-4 w-4" aria-hidden />
-                  </Button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </DropdownMenuContent>

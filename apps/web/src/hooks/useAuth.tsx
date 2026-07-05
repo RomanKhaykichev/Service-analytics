@@ -116,15 +116,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSession({ user: u });
         }
       } catch (err: unknown) {
-        if (cancelled) return;
-        // Если refresh не удался (AuthExpiredError) или другая 401-причина — разлогиниваем
-        if (err instanceof AuthExpiredError) {
-          clearAuthTokens();
+        if (!cancelled) {
+          // Если refresh не удался (AuthExpiredError) или другая 401-причина — разлогиниваем
+          if (err instanceof AuthExpiredError) {
+            clearAuthTokens();
+          }
+          setUser(null);
+          setSession(null);
         }
-        setUser(null);
-        setSession(null);
       } finally {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       }
     })();
     return () => { cancelled = true; };

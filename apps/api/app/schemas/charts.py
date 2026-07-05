@@ -195,6 +195,8 @@ class ProductsTableItem(BaseModel):
     abc_revenue: Optional[str] = None  # ABC выручка
     barcode: Optional[str] = None     # Штрихкод (leftout_old)
     product_image_url: Optional[str] = None  # Превью товара (left-out-report, «Ссылка на товар»)
+    rating: Optional[float] = None  # Рейтинг товара (Uzum API, product.rating)
+    feedback_quantity: Optional[int] = None  # Количество отзывов (Uzum API, product.feedbackQuantity)
     storage_cost_per_day: Optional[float] = None  # Стоимость хранения 1 дня, сум
     shop: Optional[str] = None         # Магазин (sells_report)
 

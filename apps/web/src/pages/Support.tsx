@@ -27,9 +27,19 @@ import { apiPost } from "@/lib/api";
 
 const faqItemsRu = [
   {
-    question: "Как загрузить отчёты в PROFiboard?",
+    question: "Как подключить API в PROFiboard?",
     answer:
-      "Нажмите кнопку загрузки отчётов в шапке панели. Доступны типы: продажи (sells-report), склад (seller-storage-report), затраты (expenses-report), left-out и другие шаблоны. Нужны файлы XLSX в ожидаемом формате — после успешной загрузки данные появятся на сводке и в разделах аналитики.",
+      "Создаёте API-ключ в кабинете Uzum Seller и вставляете его в раздел «Настройки → API-токен» в ScaleUp. Пошаговая инструкция со скриншотами — во вкладке «Инструкции». Занимает пару минут.",
+  },
+  {
+    question: "Безопасно ли передавать API-ключ?",
+    answer:
+      "Да. Ключ — это не логин и пароль от кабинета. Он даёт сервису доступ только к данным магазина (заказы, расходы, товары, остатки, накладные). Ключ не дает возможности корректировать данные в ЛК, только собирать для анализа. Контроль остаётся за вами: ключ в любой момент можно отозвать в кабинете Uzum, и доступ сразу прекратится.",
+  },
+  {
+    question: "Можно ли доверять вашим данным?",
+    answer:
+      "Информация тянется напрямую из официального API маркетплейса вашего ЛК, без ручного ввода.",
   },
   {
     question: "Чем пробный тариф отличается от платного?",
@@ -41,23 +51,23 @@ const faqItemsRu = [
     answer:
       "В меню «Помощь» выберите «Видео-уроки» или откройте раздел «Обучение»: ролики по всем вкладкам сервиса.",
   },
-  {
-    question: "Как сменить язык интерфейса?",
-    answer:
-      "Нажмите на своё имя в шапке → пункт «Язык» и выберите русский или узбекский.",
-  },
-  {
-    question: "После загрузки файла данные не обновились — что проверить?",
-    answer:
-      "Обновите страницу. Убедитесь, что файл соответствует типу отчёта и шаблону. Текст ошибки, если загрузка не прошла, показывается в окне загрузки отчётов.",
-  },
 ];
 
 const faqItemsUz = [
   {
-    question: "PROFiboardga hisobotlarni qanday yuklash mumkin?",
+    question: "PROFiboardga API qanday ulash mumkin?",
     answer:
-      "Panel sarlavhasidagi hisobot yuklash tugmasini bosing. Mavjud turlar: sotuvlar (sells-report), ombor (seller-storage-report), xarajatlar (expenses-report), left-out va boshqa shablonlar. Kutilgan formatdagi XLSX fayllar kerak — muvaffaqiyatli yuklangandan keyin maʼlumotlar svodka va tahlil bo‘limlarida paydo bo‘ladi.",
+      "Uzum Seller kabinetida API-kalit yaratasiz va uni ScaleUp’dagi «Sozlamalar → API-token» bo‘limiga joylashtirasiz. Skrinshotli bosqichma-bosqich yo‘riqnoma — «Yo‘riqnomalar» bo‘limida. Bir necha daqiqa vaqt oladi.",
+  },
+  {
+    question: "Sizga API-kalit berish xavfsizmi?",
+    answer:
+      "Ha. Kalit — bu kabinetdan login va parol emas. U xizmatga faqat do‘kon ma’lumotlariga (buyurtmalar, xarajatlar, tovarlar, qoldiqlar, yuk xatlari) rasmiy Uzum API orqali kirish huquqini beradi — u orqali shaxsiy kabinetingizga kirib bo‘lmaydi. Nazorat sizda qoladi: kalitni istalgan vaqtda Uzum kabinetida bekor qilish mumkin, va kirish darhol to‘xtaydi.",
+  },
+  {
+    question: "Ma'lumotlar qayerdan olinadi - ularga ishonsa bo'ladimi?",
+    answer:
+      "Hammasi to‘g‘ridan-to‘g‘ri marketpleysning rasmiy API’sidan olinadi, qo‘lda kiritishsiz.",
   },
   {
     question: "Sinov tarifi to‘lovli tarifdan qanday farq qiladi?",
@@ -68,16 +78,6 @@ const faqItemsUz = [
     question: "Video qo‘llanmalarni qayerdan ko‘rish mumkin?",
     answer:
       "«Yordam» menyusida «Video-darsliklar»ni tanlang yoki «O‘qitish» bo‘limini oching: xizmatning barcha bo‘limlari bo‘yicha rolliklar.",
-  },
-  {
-    question: "Interfeys tilini qanday almashtirish mumkin?",
-    answer:
-      "Sarlavhadagi ismingizni bosing → «Til» bandi, keyin rus yoki o‘zbek tilini tanlang.",
-  },
-  {
-    question: "Fayl yuklangandan keyin maʼlumotlar yangilanmadi — nima tekshirish kerak?",
-    answer:
-      "Sahifani yangilang. Fayl hisobot turi va shablonga mos kelishini tekshiring. Yuklash muvaffaqiyatsiz bo‘lsa, xato matni hisobot yuklash oynasida ko‘rsatiladi.",
   },
 ];
 

@@ -13,7 +13,7 @@ import { MonthlyTable } from "@/components/dashboard/MonthlyTable";
 import { DailyView } from "@/components/dashboard/DailyView";
 import { ExpensesView } from "@/components/dashboard/ExpensesView";
 import { ShipmentView } from "@/components/dashboard/ShipmentView";
-import { HeaderActions } from "@/components/dashboard/HeaderActions";
+import { HeaderActions, type RatingNotificationProduct } from "@/components/dashboard/HeaderActions";
 import type { UzumApiConnectDialogHandle } from "@/components/dashboard/UzumApiConnectDialog";
 import { ProductsView, type ProductsTableItemType } from "@/components/dashboard/ProductsView";
 import { TabHowItWorksTrigger, TabHowItWorksPanel } from "@/components/dashboard/TabHowItWorksBlock";
@@ -80,6 +80,40 @@ function Dashboard() {
   const [dailyViewKey, setDailyViewKey] = useState(0);
   const [howItWorksExpanded, setHowItWorksExpanded] = useState(false);
   const handleOpenProductHandled = useCallback(() => setProductToOpen(null), []);
+
+  const handleOpenRatingProduct = useCallback(
+    (product: RatingNotificationProduct) => {
+      setProductToOpen({
+        product_id: product.product_id,
+        product_name: product.product_name || null,
+        sku: null,
+        price: null,
+        sales_qty: 0,
+        returns_qty: 0,
+        revenue: 0,
+        profit: 0,
+        turnover: null,
+        stock: null,
+        fbs_stock: null,
+        size_group: null,
+        cogs: 0,
+        cogs_total: 0,
+        commission: 0,
+        logistics: 0,
+        abc_orders: null,
+        abc_profit: null,
+        abc_revenue: null,
+        barcode: null,
+        product_image_url: null,
+        rating: product.rating ?? null,
+        feedback_quantity: product.feedback_quantity ?? null,
+        storage_cost_per_day: null,
+        shop: null,
+      });
+      changeActiveTab("products");
+    },
+    [changeActiveTab],
+  );
   const apiConnectRef = useRef<UzumApiConnectDialogHandle>(null);
   const openApiConnect = useCallback(() => {
     apiConnectRef.current?.open();
@@ -498,7 +532,10 @@ function Dashboard() {
           </div>
           
           <div className="flex items-center gap-2">
-            <HeaderActions apiConnectRef={apiConnectRef} />
+            <HeaderActions
+              apiConnectRef={apiConnectRef}
+              onOpenRatingProduct={handleOpenRatingProduct}
+            />
           </div>
         </div>
         

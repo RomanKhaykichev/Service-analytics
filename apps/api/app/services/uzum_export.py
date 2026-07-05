@@ -663,6 +663,8 @@ class SkuCatalogEntry:
     shop_name: str
     preview_image: str
     quantity_on_photo_studio: Any
+    product_rating: Any = None
+    product_feedback_quantity: Any = None
 
 
 @dataclass
@@ -878,6 +880,8 @@ class ProductCatalogIndex:
                     )
                     or "",
                     quantity_on_photo_studio=sku.get("quantityOnPhotoStudio"),
+                    product_rating=product.get("rating"),
+                    product_feedback_quantity=product.get("feedbackQuantity"),
                 )
                 if sku_id is not None:
                     self.by_sku_id[(shop_id, sku_id)] = entry
@@ -2319,6 +2323,10 @@ def _leftout_row_dict(
         "Тариф, сум": tariff,
         "Стоимость хранения 1 дня, сум": _leftout_storage_daily_fee(cat, in_sale),
         "Ссылка на товар": cat.preview_image,
+        "Рейтинг": cat.product_rating if cat.product_rating not in (None, "") else "",
+        "Количество отзывов": (
+            cat.product_feedback_quantity if cat.product_feedback_quantity not in (None, "") else ""
+        ),
     }
 
 
