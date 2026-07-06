@@ -23,11 +23,17 @@ from app.utils.tenant_shop_allowlist import (
     set_user_allowed_shops_list,
     fetch_all_tenant_shop_labels,
     fetch_loaded_tenant_shop_labels,
+    fetch_shop_labels_for_admin_allowlist,
     count_tenant_shop_labels,
     merge_shop_labels,
     resolve_allowed_shop_labels,
     canonicalize_allowlist,
     norm_shop_label as _allow_norm_shop,
+)
+from app.utils.trial_shop import (
+    fetch_loaded_shop_labels,
+    get_effective_trial_display_shop,
+    is_trial_plan_user,
 )
 
 logger = logging.getLogger(__name__)
@@ -134,6 +140,7 @@ class TenantShopsResponse(BaseModel):
     allowed_shops: list[str] = []
     # Shops with imported report/fact data (italic in admin tooltip).
     loaded_shops: list[str] = []
+
 
 class DashboardFunnel(BaseModel):
     visited_site: int  # Зашли на сайт — количество человек, зашедших на сайт (лендинг)
@@ -1281,13 +1288,14 @@ async def admin_tenant_shops(
     """
     Список магазинов по тенанту (для подсказки в админке).
 
-    Все магазины пользователя; жирным — allowed по тарифу; курсивом — загружены в сервис.
+    Все магазины пользователя; жирным — выбранный trial-магазин (или allowed по тарифу); курсивом — загружены в сервис.
     """
     uid = str(tenant_id)
     shops: list[str] = []
     active_shop: Optional[str] = None
     allowed_shops: list[str] = []
     loaded_shops: list[str] = []
+    trial_display: Optional[str] = None
     try:
         if is_user_admin(tenant_id, db):
             max_shops = None
@@ -1309,8 +1317,8 @@ async def admin_tenant_shops(
             else:
                 max_shops = 1
 
-        shops = fetch_all_tenant_shop_labels(db, tenant_id)
-        loaded_shops = fetch_loaded_tenant_shop_labels(db, tenant_id)
+        shops = fetch_shop_labels_for_admin_allowlist(db, tenant_id)
+        loaded_shops = fetch_loaded_shop_labels(db, tenant_id)
         allowed_shops, active_shop = resolve_allowed_shop_labels(
             db, tenant_id, shops, max_shops=max_shops
         )
@@ -1701,11 +1709,6 @@ class ShopAllowlistPutBody(BaseModel):
     shops: list[str] = []
 
 
-def _ensure_users_allowed_shops_column(db: Session) -> None:
-    schema = get_settings().DB_SCHEMA
-    db.execute(text(f"ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS allowed_shops text"))
-
-
 @router.get("/admin/tenants/{tenant_id}/shop-allowlist", response_model=ShopAllowlistResponse)
 async def admin_tenant_shop_allowlist_get(
     tenant_id: UUID,
@@ -1714,15 +1717,22 @@ async def admin_tenant_shop_allowlist_get(
 ):
     """Список всех магазинов тенанта и явно разрешённые админом (override)."""
     uid = str(tenant_id)
-    _ensure_users_allowed_shops_column(db)
     r = db.execute(text(f"SELECT id FROM {qname('users')} WHERE id = :uid"), {"uid": uid}).fetchone()
     if not r:
         raise HTTPException(status_code=404, detail="Tenant not found")
-    all_shops = fetch_all_tenant_shop_labels(db, tenant_id)
+    all_shops = fetch_shop_labels_for_admin_allowlist(db, tenant_id)
     raw = get_user_allowed_shops_list(db, tenant_id)
     max_shops = get_user_max_shops(db, tenant_id)
-    selected = list(raw) if raw else []
-    uses_override = raw is not None
+    if raw:
+        selected = list(raw)
+        uses_override = True
+    elif is_trial_plan_user(db, tenant_id):
+        display = get_effective_trial_display_shop(db, tenant_id)
+        selected = [display] if display else []
+        uses_override = bool(display)
+    else:
+        selected = []
+        uses_override = False
     return ShopAllowlistResponse(
         tenant_id=uid,
         all_shops=all_shops,
@@ -1741,14 +1751,13 @@ async def admin_tenant_shop_allowlist_put(
 ):
     """Задать разрешённые магазины или сбросить (пустой список → авто по тарифу)."""
     uid = str(tenant_id)
-    _ensure_users_allowed_shops_column(db)
     r = db.execute(text(f"SELECT id FROM {qname('users')} WHERE id = :uid"), {"uid": uid}).fetchone()
     if not r:
         raise HTTPException(status_code=404, detail="Tenant not found")
     if is_user_admin(tenant_id, db):
         raise HTTPException(status_code=400, detail="Нельзя задавать список магазинов для аккаунта администратора")
 
-    all_shops = fetch_all_tenant_shop_labels(db, tenant_id)
+    all_shops = fetch_shop_labels_for_admin_allowlist(db, tenant_id)
     if not body.shops:
         set_user_allowed_shops_list(db, tenant_id, [])
         try:

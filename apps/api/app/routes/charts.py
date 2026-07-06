@@ -34,6 +34,7 @@ from app.utils.product_image import (
 )
 from app.utils.barcode import barcode_norm_sql
 from app.utils.shop_filter import normalize_shop, shop_filter_condition, storage_barcode_filter_sql, expenses_shop_filter_condition
+from app.utils.trial_shop import assert_trial_shop_filter_allowed
 from app.services.uzum_time import sql_uz_calendar_date
 from app.schemas import (
     RevenueDailyResponse,
@@ -89,6 +90,7 @@ async def get_revenue_daily(
     date_from_iso, date_to_iso, date_from, date_to_date, period_code, period_range_dict = resolve_date_range(
         date_from, date_to, period, db, user_id
     )
+    assert_trial_shop_filter_allowed(db, user_id, shop, shop_id)
     shop_norm = normalize_shop(shop)
     logger.info(f"get_revenue_daily: user_id={user_id}, period={period_code}, shop_id={shop_id}, shop={shop}, shop_norm={shop_norm}, product_id={product_id}, period_range={period_range_dict}")
     
@@ -122,7 +124,7 @@ async def get_revenue_daily(
         }
         
         # Shop filter: единый helper (storage barcode или shop_id)
-        shop_condition_frag, shop_params = shop_filter_condition(shop, shop_id, outer_table_alias="fact_sales")
+        shop_condition_frag, shop_params = shop_filter_condition(shop, shop_id, outer_table_alias="fact_sales", user_id=user_id, db=db)
         params.update(shop_params)
         shop_condition = f"AND {shop_condition_frag}" if shop_condition_frag else ""
 
@@ -277,6 +279,7 @@ async def get_stock_current(
 ):
     """Get current stock snapshot from v_product_current_stock. Filter by shop (seller-storage) via barcode set.
     Shop is string (shop_raw from fact_storage_snapshot); no CAST(shop AS uuid). View has no barcode_norm — use computed expr."""
+    assert_trial_shop_filter_allowed(db, user_id, shop, shop_id)
     shop_norm = normalize_shop(shop)
     logger.info(f"get_stock_current: user_id={user_id}, shop_id={shop_id}, shop={shop!r}, shop_norm={shop_norm!r}, q={q}, limit={limit}")
     try:
@@ -288,6 +291,8 @@ async def get_stock_current(
             shop_id,
             outer_table_alias="v",
             outer_barcode_norm_expr=barcode_norm_sql("v.barcode"),
+            user_id=user_id,
+            db=db,
         )
         params.update(shop_params)
         if shop_cond:
@@ -576,6 +581,7 @@ async def get_uzum_services_daily(
     date_from_iso, date_to_iso, date_from, date_to_date, period_code, period_range_dict = resolve_date_range(
         date_from, date_to, period, db, user_id
     )
+    assert_trial_shop_filter_allowed(db, user_id, shop, shop_id)
     shop_norm = normalize_shop(shop)
 
     # For period=all (or custom with no date_from), use MIN(date_written_off) or fallback
@@ -628,7 +634,7 @@ async def get_uzum_services_daily(
             "exp_date_to": exp_to.isoformat() if exp_to else date_to_iso,
         }
         expenses_shop_frag, expenses_shop_params = expenses_shop_filter_condition(
-            shop, shop_id, outer_table_alias="fe"
+            shop, shop_id, outer_table_alias="fe", user_id=user_id, db=db
         )
         params_expenses.update(expenses_shop_params)
         expenses_shop_condition = f"AND {expenses_shop_frag}" if expenses_shop_frag else ""
@@ -683,7 +689,7 @@ async def get_uzum_services_daily(
             "date_from": date_from_iso,
             "date_to": date_to_iso
         }
-        shop_condition_sales_frag, shop_sales_params = shop_filter_condition(shop, shop_id, outer_table_alias="fact_sales")
+        shop_condition_sales_frag, shop_sales_params = shop_filter_condition(shop, shop_id, outer_table_alias="fact_sales", user_id=user_id, db=db)
         params_sales.update(shop_sales_params)
         shop_condition_sales = f"AND {shop_condition_sales_frag}" if shop_condition_sales_frag else ""
         
@@ -807,6 +813,7 @@ async def get_shipment_recommendations(
     При shop: только строки, чей баркод есть в fact_storage_snapshot для выбранного магазина.
     """
     try:
+        assert_trial_shop_filter_allowed(db, user_id, shop, None)
         shop_norm = normalize_shop(shop)
         params_batch = {"user_id": str(user_id)}
         shop_filter_sql = ""
@@ -1045,6 +1052,7 @@ async def get_products_table(
         abc_date_to_iso = data_end_date.isoformat()
         abc_date_from_iso = (data_end_date - timedelta(days=29)).isoformat()
 
+        assert_trial_shop_filter_allowed(db, user_id, shop, None)
         shop_norm = normalize_shop(shop)
         params_batch = {"user_id": str(user_id)}
         shop_filter_sql = ""
@@ -1707,6 +1715,7 @@ async def get_orders_sales_daily(
     date_from_iso, date_to_iso, date_from, date_to_date, period_code, period_range_dict = resolve_date_range(
         date_from, date_to, period, db, user_id
     )
+    assert_trial_shop_filter_allowed(db, user_id, shop, shop_id)
     shop_norm = normalize_shop(shop)
 
     # For period=all (or custom with no date_from), use MIN(date_created) or fallback
@@ -1770,7 +1779,7 @@ async def get_orders_sales_daily(
         }
         
         # Shop filter: единый helper (storage barcode или shop_id)
-        shop_condition_frag, shop_params = shop_filter_condition(shop, shop_id, outer_table_alias="fact_sales")
+        shop_condition_frag, shop_params = shop_filter_condition(shop, shop_id, outer_table_alias="fact_sales", user_id=user_id, db=db)
         params.update(shop_params)
         shop_condition = f"AND {shop_condition_frag}" if shop_condition_frag else ""
         
@@ -1891,9 +1900,11 @@ async def get_daily_summary(
             raise HTTPException(status_code=400, detail="Invalid shop_id. For seller-storage use 'shop' parameter.")
 
     shop_norm = normalize_shop(shop)
-    shop_condition_frag, shop_params = shop_filter_condition(shop, shop_id, outer_table_alias="fs")
+    shop_condition_frag, shop_params = shop_filter_condition(
+        shop, shop_id, outer_table_alias="fs", user_id=user_id, db=db
+    )
     expenses_shop_frag, expenses_shop_params = expenses_shop_filter_condition(
-        shop, shop_id, outer_table_alias="fe"
+        shop, shop_id, outer_table_alias="fe", user_id=user_id, db=db
     )
     params = {
         "user_id": str(user_id),

@@ -78,7 +78,9 @@ export async function startUzumSync(
 }
 
 export async function getUzumSyncStatus(syncId: string): Promise<UzumSyncStatus> {
-  return apiGet<UzumSyncStatus>(`/api/uzum-seller/reports/sync/status/${syncId}`);
+  return apiGet<UzumSyncStatus>(`/api/uzum-seller/reports/sync/status/${syncId}`, undefined, {
+    timeoutMs: 15_000,
+  });
 }
 
 async function pollUzumSyncUntilDone(

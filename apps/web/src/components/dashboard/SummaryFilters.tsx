@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Calendar, Store, BarChart3 } from "lucide-react";
+import { Calendar, Store, BarChart3, Lock } from "lucide-react";
 import { format, parseISO, startOfYear, startOfMonth, subDays } from "date-fns";
 import { ru } from "date-fns/locale";
 import {
@@ -27,6 +27,8 @@ import { useLanguage } from "@/contexts/LanguageContext";
 interface Shop {
   shop_id: string;
   shop_name?: string | null;
+  locked?: boolean;
+  is_trial_display?: boolean;
 }
 
 export interface DateRangeValue {
@@ -173,9 +175,23 @@ export function SummaryFilters({
           <SelectContent>
             <SelectItem value="all">{t('filter.allStores')}</SelectItem>
             {shops.map((shop) => (
-              <SelectItem key={shop.shop_id} value={shop.shop_id}>
-                {shop.shop_name ?? shop.shop_id}
-              </SelectItem>
+              shop.locked ? (
+                <SelectItem
+                  key={shop.shop_id}
+                  value={`locked-${shop.shop_id}`}
+                  disabled
+                  className="opacity-60"
+                >
+                  <span className="flex items-center gap-2">
+                    <Lock className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{shop.shop_name ?? shop.shop_id}</span>
+                  </span>
+                </SelectItem>
+              ) : (
+                <SelectItem key={shop.shop_id} value={shop.shop_id}>
+                  {shop.shop_name ?? shop.shop_id}
+                </SelectItem>
+              )
             ))}
           </SelectContent>
         </Select>

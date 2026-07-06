@@ -51,9 +51,11 @@ def test_shop_filter_condition_no_shop():
 
 
 def test_shop_filter_condition_with_shop():
-    """When shop is set, returns EXISTS fragment and shop_norm in params."""
+    """When shop is set, returns barcode EXISTS or dim_shop match and shop_norm in params."""
     cond, params = shop_filter_condition("  Shop A  ", None, outer_table_alias="fact_sales")
     assert "EXISTS" in cond
+    assert "dim_shop" in cond
+    assert " OR " in cond
     assert params == {"shop_norm": "SHOP A"}
 
 
@@ -66,9 +68,10 @@ def test_shop_filter_condition_with_shop_id():
 
 
 def test_shop_filter_condition_shop_overrides_shop_id():
-    """When both shop and shop_id are set, shop (barcode filter) wins."""
+    """When both shop and shop_id are set, shop (barcode/dim filter) wins."""
     cond, params = shop_filter_condition("Shop A", "550e8400-e29b-41d4-a716-446655440000", outer_table_alias="fs")
     assert "EXISTS" in cond
+    assert "dim_shop" in cond
     assert params == {"shop_norm": "SHOP A"}
 
 

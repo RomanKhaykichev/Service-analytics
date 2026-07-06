@@ -182,11 +182,25 @@ async function performTokenRefresh(): Promise<void> {
     return refreshPromise;
   }
   refreshPromise = (async () => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 10_000);
     try {
-      // Тело запроса пустое: refresh-токен берётся из HttpOnly cookie
-      const res = await apiPostNoAuth<{ access_token: string; refresh_token: string }>('/api/auth/refresh', {});
+      const baseUrl = getApiBaseUrl();
+      const url = buildUrl(baseUrl, '/api/auth/refresh');
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+        credentials: 'include',
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(`Refresh failed: HTTP ${response.status}`);
+      }
+      const res = (await response.json()) as { access_token: string; refresh_token: string };
       setAuthTokens(res.access_token, res.refresh_token);
     } finally {
+      window.clearTimeout(timeoutId);
       refreshPromise = null;
     }
   })();
@@ -206,48 +220,98 @@ function notifyAuthExpired(): void {
   }
 }
 
-async function handleWithRefresh(path: string, init: RequestInit): Promise<Response> {
+function isAbortError(err: unknown): boolean {
+  return (
+    (err instanceof DOMException && err.name === "AbortError") ||
+    (err instanceof Error && err.name === "AbortError")
+  );
+}
+
+function formatApiClientError(err: unknown): Error {
+  if (isAbortError(err)) {
+    return new Error(
+      "Сервер долго не отвечает. Подождите немного и обновите страницу.",
+    );
+  }
+  if (err instanceof TypeError && err.message === "Failed to fetch") {
+    return new Error(
+      "Не удалось подключиться к API. Убедитесь, что сервер запущен (uvicorn на порту 8000).",
+    );
+  }
+  return err instanceof Error ? err : new Error(String(err));
+}
+
+function combineAbortSignals(...signals: AbortSignal[]): AbortSignal {
+  const controller = new AbortController();
+  for (const signal of signals) {
+    if (signal.aborted) {
+      controller.abort(signal.reason);
+      return controller.signal;
+    }
+    signal.addEventListener("abort", () => controller.abort(signal.reason), { once: true });
+  }
+  return controller.signal;
+}
+
+async function handleWithRefresh(
+  path: string,
+  init: RequestInit,
+  options?: { timeoutMs?: number },
+): Promise<Response> {
   const baseUrl = getApiBaseUrl();
   const url = buildUrl(baseUrl, path, init.method === 'GET' ? (init as any).params : undefined);
 
-  // Первый запрос
-  let response = await fetch(url, {
-    ...init,
-    credentials: 'include',
-  });
+  const timeoutMs = options?.timeoutMs ?? 30_000;
+  const timeoutController = new AbortController();
+  const timeoutId = window.setTimeout(() => timeoutController.abort(), timeoutMs);
+  const signal = init.signal
+    ? combineAbortSignals(init.signal, timeoutController.signal)
+    : timeoutController.signal;
 
-  if (response.status !== 401) {
-    return response;
-  }
-
-  // 401: пробуем обновить access-токен через refresh cookie
   try {
-    await performTokenRefresh();
-  } catch {
-    clearAuthTokens();
-    notifyAuthExpired();
-    throw new AuthExpiredError();
+    // Первый запрос
+    let response = await fetch(url, {
+      ...init,
+      signal,
+      credentials: 'include',
+    });
+
+    if (response.status !== 401) {
+      return response;
+    }
+
+    // 401: пробуем обновить access-токен через refresh cookie
+    try {
+      await performTokenRefresh();
+    } catch {
+      clearAuthTokens();
+      notifyAuthExpired();
+      throw new AuthExpiredError();
+    }
+
+    // Повторяем исходный запрос с обновлённым access-токеном
+    const retryHeaders = {
+      ...(init.headers ?? {}),
+      ...getAuthHeaders(),
+    };
+
+    response = await fetch(url, {
+      ...init,
+      headers: retryHeaders,
+      signal,
+      credentials: 'include',
+    });
+
+    if (response.status === 401) {
+      clearAuthTokens();
+      notifyAuthExpired();
+      throw new AuthExpiredError();
+    }
+
+    return response;
+  } finally {
+    window.clearTimeout(timeoutId);
   }
-
-  // Повторяем исходный запрос с обновлённым access-токеном
-  const retryHeaders = {
-    ...(init.headers ?? {}),
-    ...getAuthHeaders(),
-  };
-
-  response = await fetch(url, {
-    ...init,
-    headers: retryHeaders,
-    credentials: 'include',
-  });
-
-  if (response.status === 401) {
-    clearAuthTokens();
-    notifyAuthExpired();
-    throw new AuthExpiredError();
-  }
-
-  return response;
 }
 
 /**
@@ -301,22 +365,17 @@ export async function apiGet<T>(
   params?: Record<string, any>,
   options?: { timeoutMs?: number },
 ): Promise<T> {
-  const controller = new AbortController();
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  if (options?.timeoutMs) {
-    timeoutId = setTimeout(() => controller.abort(), options.timeoutMs);
-  }
+  const timeoutMs = options?.timeoutMs ?? 30_000;
   try {
-    const headers = {
-      ...getAuthHeaders(),
-    };
-
-    const response = await handleWithRefresh(path, {
-      method: "GET",
-      headers,
-      signal: controller.signal,
-      ...(params ? { params } as any : {}),
-    });
+    const response = await handleWithRefresh(
+      path,
+      {
+        method: "GET",
+        headers: getAuthHeaders(),
+        ...(params ? { params } as any : {}),
+      },
+      { timeoutMs },
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -325,14 +384,7 @@ export async function apiGet<T>(
 
     return response.json();
   } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new Error(
-        "Не удалось подключиться к API. Убедитесь, что сервер запущен (uvicorn на порту 8000).",
-      );
-    }
-    throw err;
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
+    throw formatApiClientError(err);
   }
 }
 
@@ -429,16 +481,20 @@ export async function apiPost<T>(path: string, body: unknown, options?: { timeou
 /**
  * Make PUT request to API
  */
-export async function apiPut<T>(path: string, body: any): Promise<T> {
+export async function apiPut<T>(path: string, body: any, options?: { timeoutMs?: number }): Promise<T> {
   try {
-    const response = await handleWithRefresh(path, {
-      method: "PUT",
-      headers: {
-        ...getAuthHeaders(),
-        "Content-Type": "application/json",
+    const response = await handleWithRefresh(
+      path,
+      {
+        method: "PUT",
+        headers: {
+          ...getAuthHeaders(),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body),
-    });
+      options,
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -447,20 +503,7 @@ export async function apiPut<T>(path: string, body: any): Promise<T> {
 
     return response.json();
   } catch (error) {
-    // Handle network errors (CORS, connection refused, etc.)
-    if (error instanceof TypeError && error.message === "Failed to fetch") {
-      console.error("Network error:", {
-        url,
-        baseUrl,
-        path,
-        error: error.message
-      });
-      const apiUrl = getApiBaseUrl() || "http://127.0.0.1:8000";
-      throw new Error(
-        `Не удалось подключиться к серверу. Запустите API: откройте терминал в папке apps/api и выполните: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 (адрес: ${apiUrl})`
-      );
-    }
-    throw error;
+    throw formatApiClientError(error);
   }
 }
 

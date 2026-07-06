@@ -11,6 +11,7 @@ from app.utils.statuses import get_status_sql_condition
 from app.utils.barcode import barcode_norm_sql
 from app.utils.metrics import get_status_conditions, sql_cogs_line_amount
 from app.utils.shop_filter import normalize_shop, shop_filter_condition, storage_barcode_filter_sql, storage_barcode_filter_by_shop_id_sql, expenses_shop_filter_condition
+from app.utils.trial_shop import assert_trial_shop_filter_allowed
 from app.settings import get_settings
 from app.schemas import CumulativeRevenueResponse
 from fastapi import Depends
@@ -192,6 +193,7 @@ def kpi_summary(
                 status_code=400,
                 detail="Invalid shop_id format (must be UUID). For seller-storage filtering use 'shop' parameter instead."
             )
+    assert_trial_shop_filter_allowed(db, user_id, shop, shop_id)
     
     # Нормализуем shop для seller-storage фильтрации (единый helper)
     shop_norm = normalize_shop(shop)
@@ -246,7 +248,9 @@ def kpi_summary(
         }
         
         # Sales shop filter: by storage barcodes (shop_norm) or by shop_id (UUID) — единый helper
-        sales_shop_filter, sales_shop_params = shop_filter_condition(shop, shop_id, outer_table_alias="fact_sales")
+        sales_shop_filter, sales_shop_params = shop_filter_condition(
+            shop, shop_id, outer_table_alias="fact_sales", user_id=user_id, db=db
+        )
         params_base.update(sales_shop_params)
         
         # Build base WHERE conditions for sales (filtered by periodRange and shop)
@@ -380,7 +384,7 @@ def kpi_summary(
 
         expenses_where_parts = ["fe.user_id = CAST(:user_id AS uuid)"]
         expenses_shop_frag, expenses_shop_params = expenses_shop_filter_condition(
-            shop, shop_id, outer_table_alias="fe"
+            shop, shop_id, outer_table_alias="fe", user_id=user_id, db=db
         )
         expenses_params.update(expenses_shop_params)
         if expenses_shop_frag:

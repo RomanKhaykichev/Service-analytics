@@ -16,6 +16,7 @@ from app.utils.tenant_shop_allowlist import (
     norm_shop_label,
     resolve_allowed_shop_labels,
 )
+from app.utils.trial_shop import is_trial_plan_user
 
 logger = logging.getLogger(__name__)
 
@@ -47,13 +48,17 @@ def candidate_shop_ids_for_user(
 
     norm_to_id = {norm_shop_label(name): sid for sid, name in name_map.items()}
     explicit = get_user_allowed_shops_list(db, user_id)
-    if explicit:
+    # На trial allowed_shops задаёт только разрешённый магазин в UI, не сужает выгрузку.
+    if explicit and not is_trial_plan_user(db, user_id):
         candidates: list[int] = []
         for label in explicit:
             sid = norm_to_id.get(norm_shop_label(label))
             if sid is not None and sid not in candidates:
                 candidates.append(sid)
         return candidates
+
+    if is_trial_plan_user(db, user_id):
+        return list(name_map.keys())
 
     max_shops = get_user_max_shops(db, user_id)
     if max_shops is not None:

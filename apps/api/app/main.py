@@ -3,9 +3,15 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
-from app.routes import shops, products, charts, auth, debug, kpi, imports, extra_expenses, sales, filters, admin, track, support_tickets, uzum_seller, notifications
+from app.routes import shops, products, charts, auth, debug, kpi, imports, extra_expenses, sales, filters, admin, track, support_tickets, uzum_seller, notifications, trial_shop
 from app.settings import get_settings, get_cors_origins
-from app.db import engine, ensure_fact_expenses_shop_columns, ensure_fact_leftout_fbs_qty_column
+from app.db import (
+    engine,
+    ensure_dim_shop_uzum_columns,
+    ensure_fact_expenses_shop_columns,
+    ensure_fact_leftout_fbs_qty_column,
+    ensure_users_allowed_shops_column,
+)
 from urllib.parse import urlparse
 from sqlalchemy import text
 import logging
@@ -110,10 +116,12 @@ def check_alembic_migrations():
         logger.warning("This might indicate a database connection issue.")
 
 
-# Check migrations on startup
+# Check migrations on startup (non-blocking: failures are logged only)
 check_alembic_migrations()
 ensure_fact_expenses_shop_columns()
 ensure_fact_leftout_fbs_qty_column()
+ensure_users_allowed_shops_column()
+ensure_dim_shop_uzum_columns()
 
 # Determine if documentation should be enabled
 is_prod = settings.APP_ENV == "prod"
@@ -177,6 +185,7 @@ app.include_router(track.router, prefix="/api", tags=["track"])
 app.include_router(support_tickets.router, prefix="/api", tags=["support"])
 app.include_router(uzum_seller.router, prefix="/api", tags=["uzum-seller"])
 app.include_router(notifications.router, prefix="/api", tags=["notifications"])
+app.include_router(trial_shop.router, prefix="/api", tags=["trial"])
 
 
 @app.get("/health")

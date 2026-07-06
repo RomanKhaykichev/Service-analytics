@@ -18,6 +18,7 @@ from app.utils.tenant_shop_allowlist import (
     shop_names_loaded_first,
     upsert_dim_shop_names,
 )
+from app.utils.trial_shop import is_trial_plan_user
 from app.auth.access import require_active_access
 from app.settings import get_settings
 from app.utils.barcode import barcode_norm_sql
@@ -1898,30 +1899,29 @@ async def import_xlsx(
         if reportType in ("inventory", "storage") and "Магазин" in df.columns:
             saved_shops = get_saved_shop_names(db, user_id)
             max_shops = get_user_max_shops(db, user_id)
+            trial_all_shops = is_trial_plan_user(db, user_id)
             file_shop_names = _file_shop_names_ordered(df, "Магазин")
             _register_df_shops(db, user_id, df)
             explicit = get_user_allowed_shops_list(db, user_id)
-            if explicit:
+            if explicit and not trial_all_shops:
                 allowed_norms = {_allow_norm_shop(s) for s in explicit}
                 file_norms = {_allow_norm_shop(s) for s in file_shop_names}
                 extra_in_file = file_norms - allowed_norms
                 store_limit_exceeded = len(extra_in_file) > 0
                 store_limit_max = max_shops if store_limit_exceeded and max_shops is not None else None
                 allowed_shops = list(explicit)
-                skip_storage_filter = reportType == "storage" and max_shops == 1
-                if not skip_storage_filter:
+                if not (reportType == "storage" and max_shops == 1):
                     df = filter_df_by_allowed_shops(df, allowed_shops, "Магазин")
                 if df.empty and store_limit_exceeded:
                     logger.warning(
                         "Import: no rows left after explicit allowlist; file had shops outside allowed list",
                     )
-            elif max_shops is not None:
+            elif max_shops is not None and not trial_all_shops:
                 allowed_shops, store_limit_exceeded = compute_allowed_shops(
                     saved_shops, file_shop_names, max_shops
                 )
                 if store_limit_exceeded:
                     store_limit_max = max_shops
-                # Trial-only shop mismatch fix (только авто-тариф, без явного списка):
                 if not (reportType == "storage" and max_shops == 1):
                     df = filter_df_by_allowed_shops(df, allowed_shops, "Магазин")
                 if df.empty and store_limit_exceeded:
@@ -2236,17 +2236,17 @@ async def import_xlsx_batch(
                 # Ограничение по тарифу: явный allowlist или сохранённые + новые до лимита
                 if report_type in ("inventory", "storage") and "Магазин" in df.columns:
                     explicit_bt = get_user_allowed_shops_list(db, user_id)
+                    trial_all_shops = is_trial_plan_user(db, user_id)
                     file_shop_names = _file_shop_names_ordered(df, "Магазин")
                     _register_df_shops(db, user_id, df)
-                    if explicit_bt:
+                    if explicit_bt and not trial_all_shops:
                         allowed_norms = {_allow_norm_shop(s) for s in explicit_bt}
                         file_norms = {_allow_norm_shop(s) for s in file_shop_names}
                         exceeded = len(file_norms - allowed_norms) > 0
                         batch_store_limit_exceeded = batch_store_limit_exceeded or exceeded
-                        skip_storage_filter = report_type == "storage" and max_shops == 1
-                        if not skip_storage_filter:
+                        if not (report_type == "storage" and max_shops == 1):
                             df = filter_df_by_allowed_shops(df, list(explicit_bt), "Магазин")
-                    elif max_shops is not None:
+                    elif max_shops is not None and not trial_all_shops:
                         allowed_shops, exceeded = compute_allowed_shops(
                             saved_shops, file_shop_names, max_shops
                         )
@@ -2409,17 +2409,17 @@ def import_uzum_api_sync(
 
                 if report_type in ("inventory_old", "storage") and "Магазин" in df.columns:
                     explicit_bt = get_user_allowed_shops_list(db, user_id)
+                    trial_all_shops = is_trial_plan_user(db, user_id)
                     file_shop_names = _file_shop_names_ordered(df, "Магазин")
                     _register_df_shops(db, user_id, df)
-                    if explicit_bt:
+                    if explicit_bt and not trial_all_shops:
                         allowed_norms = {_allow_norm_shop(s) for s in explicit_bt}
                         file_norms = {_allow_norm_shop(s) for s in file_shop_names}
                         exceeded = len(file_norms - allowed_norms) > 0
                         batch_store_limit_exceeded = batch_store_limit_exceeded or exceeded
-                        skip_storage_filter = report_type == "storage" and max_shops == 1
-                        if not skip_storage_filter:
+                        if not (report_type == "storage" and max_shops == 1):
                             df = filter_df_by_allowed_shops(df, list(explicit_bt), "Магазин")
-                    elif max_shops is not None:
+                    elif max_shops is not None and not trial_all_shops:
                         allowed_shops, exceeded = compute_allowed_shops(
                             saved_shops, file_shop_names, max_shops
                         )
@@ -2455,8 +2455,7 @@ def import_uzum_api_sync(
                 )
             delete_user_sales_from_date(db, user_id, sales_replace_from)
             delete_user_expenses_from_date(db, user_id, expenses_replace_from)
-            delete_old_data(db, user_id, "storage")
-            delete_old_data(db, user_id, "inventory_old")
+            # storage / inventory_old: удаляем только перед импортом непустого отчёта (см. цикл ниже)
         else:
             delete_all_user_data(db, user_id)
         batch_id = create_batch(db, user_id)
@@ -2489,6 +2488,11 @@ def import_uzum_api_sync(
                 )
                 imported_counts[report_type] = 0
                 continue
+
+            if mode == "incremental" and report_type == "storage":
+                delete_old_data(db, user_id, "storage")
+            elif mode == "incremental" and report_type == "inventory_old":
+                delete_old_data(db, user_id, "inventory_old")
 
             try:
                 to_staging(df, mapping, str(user_id), batch_id, staging_table, db, file_type)

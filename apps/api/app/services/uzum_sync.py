@@ -155,7 +155,12 @@ def resolve_sync_fetch_dates(
     end = (date_to or today.isoformat())[:10]
 
     if force_full_sync:
-        start, resolved_end = resolve_full_sync_date_range_ytd(date_from=date_from, date_to=end)
+        if user_uses_trial_sync_window(db, user_id):
+            start, resolved_end = resolve_uzum_sync_date_range(
+                db, user_id, date_from=date_from, date_to=end
+            )
+        else:
+            start, resolved_end = resolve_full_sync_date_range_ytd(date_from=date_from, date_to=end)
         return UzumSyncFetchDates(
             mode="full",
             sales_from=start,

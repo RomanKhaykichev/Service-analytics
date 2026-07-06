@@ -23,6 +23,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
 import { useCumulativeRevenueGlobal } from "@/hooks/useCumulativeRevenueGlobal";
 import { useStorageShops } from "@/hooks/useStorageShops";
+import { useTrialShopSelection } from "@/hooks/useTrialShopSelection";
+import { TrialShopSelectDialog } from "@/components/dashboard/TrialShopSelectDialog";
 import { useRevenueDaily } from "@/hooks/useRevenueDaily";
 import { useStockCurrent } from "@/hooks/useStockCurrent";
 import { useUzumServicesDaily } from "@/hooks/useUzumServicesDaily";
@@ -171,6 +173,31 @@ function Dashboard() {
   const isSubscriptionActive =
     !!user?.is_admin ||
     (typeof user?.trial_days_left === "number" && user.trial_days_left > 0);
+
+  const {
+    needsSelection,
+    trialDisplayShop,
+    selectShop,
+    status: trialShopStatus,
+    loading: trialShopLoading,
+  } = useTrialShopSelection(isTrial10 && isSubscriptionActive);
+
+  const handleTrialShopConfirm = useCallback(
+    async (shopName: string) => {
+      await selectShop(shopName);
+      // Оставляем «Все магазины» — иначе жёсткий фильтр по одному магазину может обнулить KPI
+      setStore("all");
+    },
+    [selectShop],
+  );
+
+  useEffect(() => {
+    if (!isTrial10 || !trialDisplayShop) return;
+    const current = shops.find((s) => s.shop_id === store);
+    if (store !== "all" && current?.locked) {
+      setStore("all");
+    }
+  }, [isTrial10, trialDisplayShop, shops, store]);
 
   const handleTaxPercentKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
@@ -569,7 +596,9 @@ function Dashboard() {
           />
           <SummaryTabs activeTab={activeTab} onTabChange={handleTabChange} />
         </div>
-        {activeTab !== "expenses" && activeTab !== "monthly" ? (
+        {activeTab === "expenses" ? (
+          <div className="min-h-10" aria-hidden />
+        ) : (
           <SummaryFilters 
             dateFrom={dateFrom}
             dateTo={dateTo}
@@ -578,9 +607,9 @@ function Dashboard() {
             onStoreChange={setStore}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
-            showStoreFilter={activeTab !== "expenses" && activeTab !== "monthly"}
+            showStoreFilter
             showViewMode={activeTab === "daily"}
-            showPeriodFilter={activeTab !== "shipment"}
+            showPeriodFilter={activeTab !== "shipment" && activeTab !== "monthly"}
             shops={shops}
             minDate={minDate ?? undefined}
             maxDate={maxDate ?? undefined}
@@ -588,8 +617,6 @@ function Dashboard() {
             defaultDateFrom={defaultDateFrom ?? undefined}
             defaultDateTo={defaultDateTo ?? undefined}
           />
-        ) : (
-          <div className="min-h-10" aria-hidden />
         )}
       </div>
 
@@ -622,7 +649,7 @@ function Dashboard() {
         <div className="mt-6">
           <MonthlyTable
             year={monthlyYear ?? (maxYear ?? new Date().getFullYear())}
-            shop={null}
+            shop={selectedShop ?? null}
             taxPercent={taxPercent}
             yearSwitcher={
               minYear != null && maxYear != null ? (
@@ -788,6 +815,15 @@ function Dashboard() {
             <UzumServicesChart points={uzumServicesPoints} loading={uzumServicesLoading} error={uzumServicesError} />
           </div>
         </>
+      )}
+
+      {isTrial10 && (
+        <TrialShopSelectDialog
+          open={needsSelection}
+          shops={trialShopStatus?.loaded_shops ?? []}
+          shopsLoading={trialShopLoading}
+          onConfirm={handleTrialShopConfirm}
+        />
       )}
     </MainLayout>
   );

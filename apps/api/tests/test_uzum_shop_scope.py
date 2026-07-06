@@ -61,8 +61,29 @@ def test_candidate_shop_ids_explicit_allowlist(monkeypatch):
         "app.services.uzum_shop_scope.get_user_allowed_shops_list",
         lambda _db, _uid: ["Beta"],
     )
+    monkeypatch.setattr(
+        "app.services.uzum_shop_scope.is_trial_plan_user",
+        lambda _db, _uid: False,
+    )
 
     assert candidate_shop_ids_for_user(db, user_id, name_map) == [20]
+
+
+def test_candidate_shop_ids_trial_ignores_explicit_allowlist(monkeypatch):
+    db = MagicMock()
+    user_id = uuid4()
+    name_map = {10: "Alpha", 20: "Beta"}
+
+    monkeypatch.setattr(
+        "app.services.uzum_shop_scope.get_user_allowed_shops_list",
+        lambda _db, _uid: ["Beta"],
+    )
+    monkeypatch.setattr(
+        "app.services.uzum_shop_scope.is_trial_plan_user",
+        lambda _db, _uid: True,
+    )
+
+    assert candidate_shop_ids_for_user(db, user_id, name_map) == [10, 20]
 
 
 def test_candidate_shop_ids_all_when_no_override(monkeypatch):

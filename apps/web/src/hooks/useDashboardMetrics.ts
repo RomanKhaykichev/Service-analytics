@@ -61,8 +61,6 @@ interface DashboardMetrics {
 export function useDashboardMetrics(dateFrom: string, dateTo: string, shopId?: string, shop?: string) {
   const { user } = useAuth();
   const queryKey = ['kpiSummary', dateFrom, dateTo, shopId ?? 'all', shop ?? 'all'];
-  // Временный лог: при смене дат должен меняться queryKey и уходить новый запрос
-  console.log("queryKey kpiSummary", { date_from: dateFrom, date_to: dateTo, queryKey });
 
   const { data: metrics, isLoading: loading, error } = useQuery({
     queryKey,
@@ -70,11 +68,10 @@ export function useDashboardMetrics(dateFrom: string, dateTo: string, shopId?: s
       const params = shop
         ? buildQueryParams({ date_from: dateFrom, date_to: dateTo, shop })
         : buildQueryParams({ date_from: dateFrom, date_to: dateTo, shopId });
-      const url = `/api/kpi/summary?${new URLSearchParams(params as Record<string, string>).toString()}`;
-      console.log("fetch useDashboardMetrics", url);
       return await apiGet<DashboardMetrics>("/api/kpi/summary", params);
     },
     enabled: !!user && !!dateFrom && !!dateTo,
+    staleTime: 30_000,
   });
 
   return { 

@@ -4,6 +4,8 @@ import { apiGet } from "@/lib/api";
 interface Shop {
   shop_id: string;
   shop_name?: string;
+  locked?: boolean;
+  is_trial_display?: boolean;
 }
 
 interface ShopsResponse {
@@ -20,13 +22,15 @@ export function useStorageShops() {
     queryKey: ["storageShops"],
     queryFn: async () => {
       try {
-        return await apiGet<ShopsResponse>("/api/storage/shops");
+        return await apiGet<ShopsResponse>("/api/storage/shops", undefined, { timeoutMs: 15_000 });
       } catch (err) {
         // Если endpoint ещё не готов - возвращаем пустой список (не падаем)
         console.warn("Failed to load storage shops, endpoint may not be ready:", err);
         return { shops: [] } as ShopsResponse;
       }
     },
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
   });
 
   return {

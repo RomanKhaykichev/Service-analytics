@@ -17,8 +17,12 @@ export function useSalesDateRange() {
 
   const { data, isLoading: loading, error } = useQuery({
     queryKey: ["salesDateRange"],
-    queryFn: async () => apiGet<SalesDateRangeResponse>("/api/filters/date-bounds"),
+    queryFn: async () => apiGet<SalesDateRangeResponse>("/api/filters/date-bounds", undefined, {
+      timeoutMs: 15_000,
+    }),
     enabled: !!user,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
   return {

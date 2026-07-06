@@ -129,9 +129,10 @@ def test_first_api_sync_stays_full_for_trial(mock_uz_now, _mock_admin, _mock_pri
     assert dates.expenses_from == "2026-03-30"
 
 
+@patch("app.services.uzum_sync.user_uses_trial_sync_window", return_value=False)
 @patch("app.services.uzum_sync.user_has_prior_successful_api_sync", return_value=True)
 @patch("app.services.uzum_sync.uz_now")
-def test_admin_force_full_sync_uses_ytd(mock_uz_now, _mock_prior):
+def test_admin_force_full_sync_uses_ytd(mock_uz_now, _mock_prior, _mock_trial_window):
     mock_uz_now.return_value = datetime(2026, 5, 28, 12, 0, tzinfo=timezone.utc)
     user_id = uuid4()
     db = MagicMock()
@@ -142,6 +143,22 @@ def test_admin_force_full_sync_uses_ytd(mock_uz_now, _mock_prior):
     assert dates.sales_from == "2026-01-01"
     assert dates.sales_to == "2026-05-28"
     assert dates.expenses_from == "2026-01-01"
+
+
+@patch("app.services.uzum_sync.user_uses_trial_sync_window", return_value=True)
+@patch("app.services.uzum_sync.user_has_prior_successful_api_sync", return_value=True)
+@patch("app.services.uzum_sync.uz_now")
+def test_admin_force_full_sync_trial_uses_60_day_window(mock_uz_now, _mock_prior, _mock_trial_window):
+    mock_uz_now.return_value = datetime(2026, 5, 28, 12, 0, tzinfo=timezone.utc)
+    user_id = uuid4()
+    db = MagicMock()
+
+    dates = resolve_sync_fetch_dates(db, user_id, force_full_sync=True)
+
+    assert dates.mode == "full"
+    assert dates.sales_from == "2026-03-30"
+    assert dates.sales_to == "2026-05-28"
+    assert dates.expenses_from == "2026-03-30"
 
 
 def test_user_has_prior_successful_api_sync_true_when_row_exists():

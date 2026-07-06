@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
+import { useState, useEffect, useRef, createContext, useContext, ReactNode } from 'react';
 import {
   apiGet,
   apiPostNoAuth,
@@ -89,13 +89,42 @@ function mapUser(u: AuthResponse['user'] & { phone_verified_at?: string | null }
   };
 }
 
+const USER_CACHE_KEY = 'auth_user_snapshot';
+
+function readCachedUser(): User | null {
+  try {
+    if (!getAccessToken()) return null;
+    const raw = sessionStorage.getItem(USER_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as User;
+    return parsed?.id ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedUser(user: User | null): void {
+  try {
+    if (user) {
+      sessionStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
+    } else {
+      sessionStorage.removeItem(USER_CACHE_KEY);
+    }
+  } catch {
+    // sessionStorage may be unavailable
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<{ user: User } | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cachedUser = readCachedUser();
+  const [user, setUser] = useState<User | null>(cachedUser);
+  const [session, setSession] = useState<{ user: User } | null>(
+    cachedUser ? { user: cachedUser } : null,
+  );
+  const [loading, setLoading] = useState(() => !!getAccessToken() && !cachedUser);
+  const bootstrapGenerationRef = useRef(0);
 
   useEffect(() => {
-    let cancelled = false;
     const token = getAccessToken();
 
     if (!token) {
@@ -103,39 +132,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    const generation = ++bootstrapGenerationRef.current;
+
     (async () => {
       try {
-        const data = await apiGet<{ id: string; email?: string | null; full_name?: string | null; phone?: string | null; is_admin?: boolean; preferred_language?: string | null; phone_verified_at?: string | null }>(
+        const data = await apiGet<{ id: string; email?: string | null; full_name?: string | null; phone?: string | null; is_admin?: boolean; preferred_language?: string | null; phone_verified_at?: string | null; plan?: string | null; trial_ends_at?: string | null; trial_days_left?: number | null }>(
           '/api/auth/me',
           undefined,
           { timeoutMs: 15_000 },
         );
-        if (!cancelled) {
-          const u: User = mapUser(data);
-          setUser(u);
-          setSession({ user: u });
-        }
+        if (generation !== bootstrapGenerationRef.current) return;
+        const u: User = mapUser(data);
+        writeCachedUser(u);
+        setUser(u);
+        setSession({ user: u });
       } catch (err: unknown) {
-        if (!cancelled) {
-          // Если refresh не удался (AuthExpiredError) или другая 401-причина — разлогиниваем
-          if (err instanceof AuthExpiredError) {
-            clearAuthTokens();
-          }
+        if (generation !== bootstrapGenerationRef.current) return;
+        if (err instanceof AuthExpiredError) {
+          clearAuthTokens();
+          writeCachedUser(null);
           setUser(null);
           setSession(null);
         }
+        // Таймаут/сеть: оставляем кэшированного пользователя, если он есть
       } finally {
         setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+
+    return () => {
+      bootstrapGenerationRef.current++;
+    };
   }, []);
 
   useEffect(() => {
     const onAuthExpired = () => {
       clearAuthTokens();
+      writeCachedUser(null);
       setUser(null);
       setSession(null);
+      setLoading(false);
     };
     window.addEventListener("auth-expired", onAuthExpired);
     return () => {
@@ -170,8 +206,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       setAuthTokens(res.access_token, res.refresh_token);
       const u = mapUser(res.user);
+      writeCachedUser(u);
       setUser(u);
       setSession({ user: u });
+      setLoading(false);
       return { error: null };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Ошибка подтверждения';
@@ -196,8 +234,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await apiPostNoAuth<AuthResponse>('/api/auth/login', { email, password });
       setAuthTokens(res.access_token, res.refresh_token);
       const u = mapUser(res.user);
+      writeCachedUser(u);
       setUser(u);
       setSession({ user: u });
+      setLoading(false);
       return { error: null };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Ошибка входа';
@@ -213,6 +253,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // ignore
     }
     clearAuthTokens();
+    writeCachedUser(null);
     setUser(null);
     setSession(null);
   };
@@ -221,6 +262,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const data = await apiGet<AuthResponse['user']>('/api/auth/me');
       const u = mapUser(data);
+      writeCachedUser(u);
       setUser(u);
       setSession({ user: u });
     } catch {

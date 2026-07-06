@@ -53,6 +53,7 @@ def get_user_allowed_shops_list(db: Session, user_id: UUID) -> Optional[list[str
             {"uid": str(user_id)},
         ).fetchone()
     except Exception:
+        db.rollback()
         return None
     if not row or row[0] is None:
         return None
@@ -145,7 +146,6 @@ def merge_shop_labels(*lists: list[str]) -> list[str]:
 
 def upsert_dim_shop_names(db: Session, user_id: UUID | str, shop_names: list[str]) -> None:
     """Сохраняет все встреченные названия магазинов (в т.ч. до фильтра по тарифу)."""
-    ensure_dim_shop_uzum_columns(db)
     uid = str(user_id)
     seen: set[str] = set()
     for raw in shop_names:
@@ -168,16 +168,6 @@ def upsert_dim_shop_names(db: Session, user_id: UUID | str, shop_names: list[str
         )
 
 
-def ensure_dim_shop_uzum_columns(db: Session) -> None:
-    """uzum_shop_id + api_key_accessible — разделение «в аккаунте» / «доступно ключу»."""
-    for stmt in (
-        f"ALTER TABLE {qname('dim_shop')} ADD COLUMN IF NOT EXISTS uzum_shop_id INTEGER",
-        f"ALTER TABLE {qname('dim_shop')} "
-        f"ADD COLUMN IF NOT EXISTS api_key_accessible BOOLEAN NOT NULL DEFAULT false",
-    ):
-        db.execute(text(stmt))
-
-
 def register_uzum_api_dim_shops(
     db: Session,
     user_id: UUID | str,
@@ -187,7 +177,6 @@ def register_uzum_api_dim_shops(
     """
     Все магазины из /v1/shops в dim_shop; api_key_accessible=true только для доступных ключу.
     """
-    ensure_dim_shop_uzum_columns(db)
     uid = str(user_id)
     uzum_ids_in_response: list[int] = []
 
@@ -248,7 +237,6 @@ def register_uzum_api_dim_shops(
 
 def fetch_api_accessible_shop_labels(db: Session, user_id: UUID | str) -> list[str]:
     """Магазины dim_shop, помеченные как доступные текущему API-ключу."""
-    ensure_dim_shop_uzum_columns(db)
     uid = str(user_id)
     rows = db.execute(
         text(
@@ -265,6 +253,18 @@ def fetch_api_accessible_shop_labels(db: Session, user_id: UUID | str) -> list[s
         {"uid": uid},
     ).fetchall()
     return [str(r[0]) for r in rows or [] if r and r[0]]
+
+
+def fetch_shop_labels_for_admin_allowlist(db: Session, user_id: UUID | str) -> list[str]:
+    """
+    Список магазинов для диалога «Разрешённые магазины» в админке.
+    Быстрее полного UNION по snapshot-таблицам; включает dim_shop, API-ключ,
+    seller-storage, загруженные данные и текущий override.
+    """
+    override = get_user_allowed_shops_list(db, user_id) or []
+    dim = _fetch_dim_shop_names_ordered(db, user_id)
+    api_labels = fetch_api_accessible_shop_labels(db, user_id)
+    return merge_shop_labels(dim, api_labels, override)
 
 
 def fetch_all_tenant_shop_labels(db: Session, user_id: UUID | str) -> list[str]:
@@ -408,6 +408,16 @@ def resolve_allowed_shop_labels(
                 allowed.append(canon)
         active = allowed[0] if allowed else None
         return allowed, active
+
+    from app.utils.trial_shop import get_effective_trial_display_shop, is_trial_plan_user
+
+    if is_trial_plan_user(db, user_id):
+        display = get_effective_trial_display_shop(db, user_id)
+        if display:
+            n = norm_shop_label(display)
+            canon = label_by_norm.get(n, str(display).strip())
+            if is_valid_shop_label(canon):
+                return [canon], canon
 
     pool = shop_names_loaded_first(db, user_id)
     if max_shops is not None:

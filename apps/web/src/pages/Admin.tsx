@@ -62,6 +62,21 @@ function adminNormShopKey(s: string): string {
   return s.trim().replace(/\s+/g, " ").toUpperCase();
 }
 
+function adminMergeShopLabels(...lists: (string[] | null | undefined)[]): string[] {
+  const merged = new Map<string, string>();
+  for (const list of lists) {
+    for (const raw of list ?? []) {
+      const label = String(raw).trim();
+      if (!label) continue;
+      const key = adminNormShopKey(label);
+      if (!merged.has(key)) merged.set(key, label);
+    }
+  }
+  return [...merged.values()].sort((a, b) =>
+    adminNormShopKey(a).localeCompare(adminNormShopKey(b), "ru"),
+  );
+}
+
 function adminNormPhone(s: string): string {
   return (s || "").replace(/\D+/g, "");
 }
@@ -166,6 +181,7 @@ export default function Admin() {
         names: string[];
         allowedShops?: string[] | null;
         loadedShops?: string[] | null;
+        activeShop?: string | null;
       }
     >
   >({});
@@ -298,7 +314,7 @@ export default function Admin() {
         active_shop?: string | null;
         allowed_shops?: string[] | null;
         loaded_shops?: string[] | null;
-      }>(`/api/admin/tenants/${tenantId}/shops`);
+      }>(`/api/admin/tenants/${tenantId}/shops`, undefined, { timeoutMs: 60_000 });
       setTenantShops((prev) => ({
         ...prev,
         [tenantId]: {
@@ -307,6 +323,7 @@ export default function Admin() {
           names: res.shops ?? [],
           allowedShops: res.allowed_shops ?? null,
           loadedShops: res.loaded_shops ?? null,
+          activeShop: res.active_shop ?? null,
         },
       }));
     } catch (e) {
@@ -319,6 +336,7 @@ export default function Admin() {
           names: prev[tenantId]?.names ?? [],
           allowedShops: prev[tenantId]?.allowedShops ?? null,
           loadedShops: prev[tenantId]?.loadedShops ?? null,
+          activeShop: prev[tenantId]?.activeShop ?? null,
         },
       }));
     }
@@ -490,15 +508,31 @@ export default function Admin() {
     (async () => {
       setShopAllowLoading(true);
       try {
-        const d = await apiGet<{
-          all_shops: string[];
-          selected: string[];
-          max_shops: number | null;
-          uses_override: boolean;
-        }>(`/api/admin/tenants/${shopAllowTenantId}/shop-allowlist`);
+        const [d, shopsRes] = await Promise.all([
+          apiGet<{
+            all_shops: string[];
+            selected: string[];
+            max_shops: number | null;
+            uses_override: boolean;
+          }>(`/api/admin/tenants/${shopAllowTenantId}/shop-allowlist`, undefined, {
+            timeoutMs: 60_000,
+          }),
+          apiGet<{
+            shops: string[];
+            loaded_shops?: string[] | null;
+            active_shop?: string | null;
+          }>(`/api/admin/tenants/${shopAllowTenantId}/shops`, undefined, {
+            timeoutMs: 60_000,
+          }),
+        ]);
         if (cancelled) return;
         const labelByNorm = new Map<string, string>();
-        for (const l of d.all_shops) {
+        const allShops = adminMergeShopLabels(
+          d.all_shops,
+          shopsRes.shops,
+          shopsRes.loaded_shops,
+        );
+        for (const l of allShops) {
           labelByNorm.set(adminNormShopKey(l), l);
         }
         const selected = new Set<string>();
@@ -506,8 +540,15 @@ export default function Admin() {
           const canon = labelByNorm.get(adminNormShopKey(s));
           if (canon) selected.add(canon);
         }
+        if (selected.size === 0 && d.max_shops === 1) {
+          const fallback = shopsRes.active_shop ?? null;
+          if (fallback) {
+            const canon = labelByNorm.get(adminNormShopKey(fallback));
+            if (canon) selected.add(canon);
+          }
+        }
         setShopAllowPayload({
-          all_shops: d.all_shops,
+          all_shops: allShops,
           selected,
           max_shops: d.max_shops,
           uses_override: d.uses_override,
@@ -546,11 +587,18 @@ export default function Admin() {
 
   const handleSaveShopAllow = async () => {
     if (!shopAllowTenantId || !shopAllowPayload) return;
+    const tenantId = shopAllowTenantId;
     try {
-      await apiPut(`/api/admin/tenants/${shopAllowTenantId}/shop-allowlist`, {
+      await apiPut(`/api/admin/tenants/${tenantId}/shop-allowlist`, {
         shops: Array.from(shopAllowPayload.selected),
       });
       toast.success("Список разрешённых магазинов сохранён");
+      setTenantShops((prev) => {
+        const next = { ...prev };
+        delete next[tenantId];
+        return next;
+      });
+      void loadTenantShops(tenantId);
       setShopAllowTenantId(null);
       fetchTenants();
     } catch (e) {
@@ -1338,10 +1386,14 @@ export default function Admin() {
                                     tenantShops[row.tenant_id].names.map((name, idx) => {
                                       const allowedShops = tenantShops[row.tenant_id]?.allowedShops ?? [];
                                       const loadedShops = tenantShops[row.tenant_id]?.loadedShops ?? [];
+                                      const activeShop = tenantShops[row.tenant_id]?.activeShop ?? null;
                                       const allowedNorms = new Set(allowedShops.map(normShopLabel));
                                       const loadedNorms = new Set(loadedShops.map(normShopLabel));
-                                      const isAllowed = allowedNorms.has(normShopLabel(name));
-                                      const isLoaded = loadedNorms.has(normShopLabel(name));
+                                      const nameNorm = normShopLabel(name);
+                                      const isAllowed =
+                                        allowedNorms.has(nameNorm) ||
+                                        (!!activeShop && nameNorm === normShopLabel(activeShop));
+                                      const isLoaded = loadedNorms.has(nameNorm);
                                       return (
                                         <span key={`${name}-${idx}`}>
                                           <span
@@ -1789,7 +1841,7 @@ export default function Admin() {
           <DialogHeader>
             <DialogTitle>Разрешённые магазины</DialogTitle>
             <p className="text-sm text-muted-foreground">
-              Отметьте магазины, которые видит пользователь в сервисе и которые учитываются при загрузке отчётов с колонкой «Магазин».
+              Отметьте магазины, которые видит пользователь в сервисе. На trial обычно выбирается один магазин.
               Кнопка «По тарифу (авто)» сбрасывает ручной список.
             </p>
           </DialogHeader>

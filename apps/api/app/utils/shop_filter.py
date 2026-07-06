@@ -131,6 +131,8 @@ def shop_filter_condition(
     *,
     outer_table_alias: str = "fact_sales",
     outer_barcode_norm_expr: Optional[str] = None,
+    user_id: Optional["UUID"] = None,
+    db: Optional["Session"] = None,
 ) -> tuple[str, dict]:
     """
     Return (shop_condition_sql, params_update) for WHERE clause.
@@ -142,14 +144,25 @@ def shop_filter_condition(
 
     Caller merges params_update into their params and appends shop_condition_sql to WHERE (join with " AND ").
     """
+    if user_id is not None and db is not None:
+        from app.utils.trial_shop import assert_trial_shop_filter_allowed
+
+        assert_trial_shop_filter_allowed(db, user_id, shop, shop_id)
     shop_norm = normalize_shop(shop)
     if shop_norm:
+        barcode_frag = storage_barcode_filter_sql(
+            outer_table_alias,
+            prefix_and=False,
+            outer_barcode_norm_expr=outer_barcode_norm_expr,
+        )
+        dim_frag = f"""EXISTS (
+                SELECT 1 FROM {qname("dim_shop")} ds
+                WHERE ds.user_id = {outer_table_alias}.user_id
+                  AND ds.shop_id = {outer_table_alias}.shop_id
+                  AND upper(regexp_replace(trim(COALESCE(ds.shop_name, '')), '\\s+', ' ', 'g')) = :shop_norm
+            )"""
         return (
-            storage_barcode_filter_sql(
-                outer_table_alias,
-                prefix_and=False,
-                outer_barcode_norm_expr=outer_barcode_norm_expr,
-            ),
+            f"({barcode_frag} OR {dim_frag})",
             {"shop_norm": shop_norm},
         )
     if shop_id:
@@ -163,6 +176,8 @@ def expenses_shop_filter_condition(
     shop_id: Optional[str],
     *,
     outer_table_alias: str = "fe",
+    user_id: Optional["UUID"] = None,
+    db: Optional["Session"] = None,
 ) -> tuple[str, dict]:
     """
     Filter fact_expenses by shop name (shop_raw) or shop_id (dim_shop UUID).
@@ -170,6 +185,10 @@ def expenses_shop_filter_condition(
     - shop (string): normalized match on shop_raw (from Uzum API / expenses report).
     - shop_id (UUID): fe.shop_id = :shop_id.
     """
+    if user_id is not None and db is not None:
+        from app.utils.trial_shop import assert_trial_shop_filter_allowed
+
+        assert_trial_shop_filter_allowed(db, user_id, shop, shop_id)
     shop_norm = normalize_shop(shop)
     alias = outer_table_alias.strip() or "fe"
     if shop_norm:

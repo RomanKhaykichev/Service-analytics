@@ -7,6 +7,11 @@ from typing import Optional
 from app.db import get_db, qname
 from app.deps import require_user, is_user_admin
 from app.utils.tenant_shop_allowlist import get_user_allowed_shops_list, norm_shop_label
+from app.utils.trial_shop import (
+    get_effective_trial_display_shop,
+    is_trial_plan_user,
+    shop_is_selectable_for_trial,
+)
 from app.schemas import ShopsResponse, Shop
 
 logger = logging.getLogger(__name__)
@@ -132,8 +137,50 @@ async def get_storage_shops(
         max_shops = 1
 
     allow_override = get_user_allowed_shops_list(db, user_id)
+    is_trial = is_trial_plan_user(db, user_id)
+    trial_display: Optional[str] = None
+    if is_trial:
+        try:
+            trial_display = get_effective_trial_display_shop(db, user_id)
+        except Exception as exc:
+            logger.warning("get_storage_shops: trial display shop lookup failed: %s", exc)
+            trial_display = None
     
     logger.info(f"get_storage_shops: user_id={user_id}")
+    
+    def _finalize_shop_list(raw_shops: list[Shop]) -> list[Shop]:
+        # На trial allowed_shops от админа не скрывает магазины — только задаёт разрешённый для просмотра.
+        if allow_override and not is_trial:
+            allowed_norms = {norm_shop_label(s) for s in allow_override}
+            order_ix = {norm_shop_label(o): i for i, o in enumerate(allow_override)}
+            raw_shops = sorted(
+                [s for s in raw_shops if norm_shop_label(s.shop_name or s.shop_id) in allowed_norms],
+                key=lambda s: order_ix.get(norm_shop_label(s.shop_name or s.shop_id), 999),
+            )
+        elif max_shops is not None and not is_trial:
+            raw_shops = raw_shops[:max_shops]
+
+        if not is_trial:
+            return raw_shops
+
+        out: list[Shop] = []
+        for s in raw_shops:
+            selectable = shop_is_selectable_for_trial(
+                db, user_id, s.shop_id, trial_display=trial_display
+            )
+            is_display = (
+                trial_display is not None
+                and norm_shop_label(trial_display) == norm_shop_label(s.shop_id)
+            )
+            out.append(
+                Shop(
+                    shop_id=s.shop_id,
+                    shop_name=s.shop_name,
+                    locked=bool(trial_display) and not selectable,
+                    is_trial_display=is_display,
+                )
+            )
+        return out
     
     try:
         # 1) Prefer fact_storage_snapshot.shop_raw (persistent, survives staging clear)
@@ -171,15 +218,7 @@ async def get_storage_shops(
                 )
                 for row in rows
             ]
-            if allow_override:
-                allowed_norms = {norm_shop_label(s) for s in allow_override}
-                order_ix = {norm_shop_label(o): i for i, o in enumerate(allow_override)}
-                shops = sorted(
-                    [s for s in shops if norm_shop_label(s.shop_name) in allowed_norms],
-                    key=lambda s: order_ix.get(norm_shop_label(s.shop_name), 999),
-                )
-            elif max_shops is not None:
-                shops = shops[:max_shops]
+            shops = _finalize_shop_list(shops)
             return ShopsResponse(shops=shops)
         
         # 2) Fallback: stg_storage.shop_raw (when fact_storage_snapshot is empty)
@@ -215,19 +254,42 @@ async def get_storage_shops(
                 Shop(shop_id=row[0] or "", shop_name=row[1] or row[0] or "")
                 for row in rows
             ]
-            if allow_override:
-                allowed_norms = {norm_shop_label(s) for s in allow_override}
-                order_ix = {norm_shop_label(o): i for i, o in enumerate(allow_override)}
-                shops = sorted(
-                    [s for s in shops if norm_shop_label(s.shop_name) in allowed_norms],
-                    key=lambda s: order_ix.get(norm_shop_label(s.shop_name), 999),
-                )
-            elif max_shops is not None:
-                shops = shops[:max_shops]
+            shops = _finalize_shop_list(shops)
         else:
             logger.info(f"get_storage_shops: no shops found")
     except Exception as e:
         logger.error(f"Failed to query storage shops: {e}", exc_info=True)
         shops = []
-    
+
+    if not shops:
+        try:
+            query_dim = text(f"""
+                SELECT DISTINCT
+                    upper(regexp_replace(trim(ds.shop_name), '\\s+', ' ', 'g')) AS shop_norm,
+                    MIN(trim(ds.shop_name)) AS label
+                FROM {qname("dim_shop")} ds
+                WHERE ds.user_id = CAST(:user_id AS uuid)
+                  AND ds.shop_name IS NOT NULL
+                  AND TRIM(ds.shop_name) <> ''
+                  AND lower(TRIM(ds.shop_name)) NOT IN (
+                      'не определено', 'неопределено', 'undefined', 'null',
+                      '(не определено)', 'не определен'
+                  )
+                GROUP BY 1
+                ORDER BY 1
+            """)
+            dim_rows = db.execute(query_dim, {"user_id": str(user_id)}).fetchall()
+            if dim_rows:
+                logger.info(
+                    "get_storage_shops: fallback %s shops from dim_shop",
+                    len(dim_rows),
+                )
+                shops = [
+                    Shop(shop_id=row[0] or "", shop_name=row[1] or row[0] or "")
+                    for row in dim_rows
+                ]
+                shops = _finalize_shop_list(shops)
+        except Exception as exc:
+            logger.warning("get_storage_shops dim_shop fallback failed: %s", exc)
+
     return ShopsResponse(shops=shops)
