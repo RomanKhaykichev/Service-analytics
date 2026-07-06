@@ -92,6 +92,12 @@ function formatSyncDuration(
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+/** UI label for uzum_sync_log.trigger (DB value unchanged). */
+function formatSyncTrigger(trigger: string): string {
+  if (trigger === "manual_incremental") return "manual";
+  return trigger;
+}
+
 function statusClass(status: string): string {
   if (status === "success") return "text-green-700 dark:text-green-400";
   if (status === "failed") return "text-destructive";
@@ -176,7 +182,7 @@ export function UzumSyncLogsView() {
         [t("admin.uzumSyncLogs.finishedAt")]: formatLogDateTime(row.finished_at),
         [t("admin.uzumSyncLogs.duration")]: formatSyncDuration(row.started_at, row.finished_at),
         [t("admin.uzumSyncLogs.status")]: row.status,
-        [t("admin.uzumSyncLogs.trigger")]: row.trigger,
+        [t("admin.uzumSyncLogs.trigger")]: formatSyncTrigger(row.trigger),
         [t("admin.uzumSyncLogs.lastSync")]: formatLogDateTime(row.last_api_sync_at),
         [t("admin.uzumSyncLogs.error")]: row.error_message ?? "",
         [t("admin.uzumSyncLogs.errorDetailTitle")]: errorFullText(row),
@@ -385,7 +391,7 @@ export function UzumSyncLogsView() {
                     <TableCell className={cn("text-sm font-medium capitalize", statusClass(row.status))}>
                       {row.status}
                     </TableCell>
-                    <TableCell className="text-sm">{row.trigger}</TableCell>
+                    <TableCell className="text-sm">{formatSyncTrigger(row.trigger)}</TableCell>
                     <TableCell className="text-sm whitespace-nowrap">{formatLogDateTime(row.last_api_sync_at)}</TableCell>
                     <TableCell className="text-xs text-muted-foreground max-w-[220px]">
                       {summary ? (
