@@ -44,6 +44,12 @@ interface Product {
   price: number;
   sales: number;
   returns: number;
+  ordersValue: number;
+  processingQty: number;
+  processingValue: number;
+  completedQty: number;
+  completedValue: number;
+  returnsValue: number;
   revenue: number;
   lostRevenue: number;
   turnover: number;
@@ -300,15 +306,18 @@ export function ProductDetailView({
     const firstTwoParts = parts.slice(0, 2).join(" - ");
     return firstTwoParts || "—";
   };
-  // Блоки как на вкладке Сводка, но данные по ID карточки (агрегат по всем вариантам)
-  const completedQty = Math.max(product.sales - product.returns, 0);
-  const processingValue = 0; // цена В обработке
-  const completedValue = product.revenue; // цена Выкупы
-  const returnsValueNum = completedQty > 0 ? product.returns * (product.revenue / completedQty) : 0; // сумма возвратов (в формуле суммируется как положительное слагаемое)
-  // Цена Заказов = цена В обработке + цена Выкупы + цена Возвраты (все три суммируются; возвраты в строке отображаются с минусом)
-  const ordersValue = processingValue + completedValue + returnsValueNum;
-  const returnRate = product.sales > 0 ? (product.returns / product.sales) * 100 : 0;
-  const averageCheck = completedQty > 0 ? product.revenue / completedQty : product.sales > 0 ? product.revenue / product.sales : 0;
+  // Блоки как на вкладке Сводка: те же формулы по ID карточки (агрегат по всем вариантам)
+  const ordersQty = product.sales;
+  const ordersValue = product.ordersValue;
+  const processingQty = product.processingQty;
+  const processingValue = product.processingValue;
+  const completedQty = product.completedQty;
+  const completedValue = product.completedValue;
+  const returnsValueNum = product.returnsValue;
+  const returnRate = ordersQty > 0 ? (product.returns / ordersQty) * 100 : 0;
+  const qtyForAvgCheck = completedQty + processingQty;
+  const revenueForAvgCheck = completedValue + processingValue;
+  const averageCheck = qtyForAvgCheck > 0 ? Math.round(revenueForAvgCheck / qtyForAvgCheck) : 0;
   // Доп. расходы для этого товара (по наименованию) — как на вкладке Сводка с учетом ID карточки
   const { data: productExtraExpensesData } = useQuery({
     queryKey: ["kpiSummary-product-extra", dateFrom, dateTo, product.name],
@@ -354,8 +363,8 @@ export function ProductDetailView({
 
   const qtyUnit = t('common.pieces');
   const salesMetrics = [
-    { icon: <ShoppingCart className="w-4 h-4" />, label: t('summary.sales.orders'), value: formatQuantity(product.sales, qtyUnit), subValue: formatCurrency(ordersValue), tooltip: t('summary.sales.ordersTooltip') },
-    { icon: <Truck className="w-4 h-4" />, label: t('summary.sales.processing'), value: formatQuantity(0, qtyUnit), subValue: formatCurrency(processingValue), tooltip: t('summary.sales.processingTooltip') },
+    { icon: <ShoppingCart className="w-4 h-4" />, label: t('summary.sales.orders'), value: formatQuantity(ordersQty, qtyUnit), subValue: formatCurrency(ordersValue), tooltip: t('summary.sales.ordersTooltip') },
+    { icon: <Truck className="w-4 h-4" />, label: t('summary.sales.processing'), value: formatQuantity(processingQty, qtyUnit), subValue: formatCurrency(processingValue), tooltip: t('summary.sales.processingTooltip') },
     { icon: <Package className="w-4 h-4" />, label: t('summary.sales.completed'), value: formatQuantity(completedQty, qtyUnit), subValue: formatCurrency(completedValue), tooltip: t('summary.sales.completedTooltip') },
     { icon: <RotateCcw className="w-4 h-4" />, label: t('summary.sales.returns'), value: formatQuantity(product.returns, qtyUnit), subValue: product.returns > 0 ? `-${formatCurrency(returnsValueNum)}` : formatCurrency(0), tooltip: t('summary.sales.returnsTooltip') },
     { icon: <Percent className="w-4 h-4" />, label: t('summary.sales.returnRate'), value: formatPercent(returnRate), tooltip: t('summary.sales.returnRateTooltip') },

@@ -43,6 +43,38 @@ def get_status_conditions() -> Dict[str, str]:
     }
 
 
+def get_kpi_sales_breakdown_sql(table_alias: str = "fs") -> Dict[str, str]:
+    """
+    SQL-выражения для разбивки продаж как на вкладке Сводка (KPI summary).
+    Для использования в SELECT ... GROUP BY (например, по штрихкоду или товару).
+    """
+    conditions = get_status_conditions()
+    p = f"{table_alias}." if table_alias else ""
+    proc = conditions["processing"]
+    comp = conditions["completed"]
+    qty = f"COALESCE({p}qty, 0)"
+    revenue = f"COALESCE({p}revenue_sum, 0)"
+    returns = f"COALESCE({p}returns_qty, 0)"
+    price = f"COALESCE({p}price_sum, 0)"
+    return {
+        "processing_qty": f"COALESCE(SUM(CASE WHEN {proc} THEN {qty} ELSE 0 END), 0)",
+        "processing_value": f"COALESCE(SUM(CASE WHEN {proc} THEN {revenue} ELSE 0 END), 0)",
+        "completed_qty": f"COALESCE(SUM(CASE WHEN {comp} THEN {qty} ELSE 0 END), 0)",
+        "completed_value": f"COALESCE(SUM(CASE WHEN {comp} THEN {revenue} ELSE 0 END), 0)",
+        "returns_value": f"COALESCE(SUM({returns} * {price}), 0)",
+        "orders_qty": (
+            f"(COALESCE(SUM(CASE WHEN {proc} THEN {qty} ELSE 0 END), 0)"
+            f" + COALESCE(SUM(CASE WHEN {comp} THEN {qty} ELSE 0 END), 0)"
+            f" + COALESCE(SUM({returns}), 0))"
+        ),
+        "orders_value": (
+            f"(COALESCE(SUM(CASE WHEN {proc} THEN {revenue} ELSE 0 END), 0)"
+            f" + COALESCE(SUM(CASE WHEN {comp} THEN {revenue} ELSE 0 END), 0)"
+            f" + COALESCE(SUM({returns} * {price}), 0))"
+        ),
+    }
+
+
 def get_sales_metrics_sql(
     table_alias: str = ""
 ) -> Dict[str, str]:

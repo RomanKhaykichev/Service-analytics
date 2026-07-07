@@ -20,6 +20,7 @@ _STATUS_COMPLETED_SQL = " (" + get_status_sql_condition("completed") + ") "
 _STATUS_REVENUE_SQL = " ((" + get_status_sql_condition("completed") + ") OR (" + get_status_sql_condition("processing") + ")) "
 from app.utils.metrics import (
     get_status_conditions,
+    get_kpi_sales_breakdown_sql,
     get_sales_metrics_sql,
     get_profit_sql,
     get_avg_check_sql,
@@ -1131,11 +1132,19 @@ async def get_products_table(
             sales_params["date_from"] = date_from_iso
             sales_params["date_to"] = date_to_iso
         
+        sales_breakdown = get_kpi_sales_breakdown_sql("fs")
         sales_query = text(f"""
             SELECT
                 {fs_barcode_norm_expr} AS barcode_norm,
                 SUM(COALESCE(fs.qty, 0))::int AS sales_qty,
                 SUM(COALESCE(fs.returns_qty, 0))::int AS returns_qty,
+                ({sales_breakdown['orders_qty']})::int AS orders_qty,
+                ({sales_breakdown['orders_value']})::double precision AS orders_value,
+                ({sales_breakdown['processing_qty']})::int AS processing_qty,
+                ({sales_breakdown['processing_value']})::double precision AS processing_value,
+                ({sales_breakdown['completed_qty']})::int AS completed_qty,
+                ({sales_breakdown['completed_value']})::double precision AS completed_value,
+                ({sales_breakdown['returns_value']})::double precision AS returns_value,
                 SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.revenue_sum, 0) ELSE 0 END)::double precision AS revenue,
                 SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE({sql_cogs_line_amount("fs")}, 0) ELSE 0 END)::double precision AS cogs,
                 SUM(CASE WHEN {_STATUS_REVENUE_SQL} THEN COALESCE(fs.commission_sum, 0) ELSE 0 END)::double precision AS commission,
@@ -1148,13 +1157,13 @@ async def get_products_table(
         """)
         sales_result = db.execute(sales_query, sales_params)
         sales_by_barcode: dict = {}
-        for row in sales_result.fetchall():
-            bn = (row[0] or "").strip() if row[0] else ""
+        for row in sales_result.mappings().all():
+            bn = (row["barcode_norm"] or "").strip() if row["barcode_norm"] else ""
             if bn:
-                revenue_val = float(row[3] or 0)
-                cogs_total_val = float(row[4] or 0)
-                commission_val = float(row[5] or 0)
-                logistics_val = float(row[6] or 0)
+                revenue_val = float(row["revenue"] or 0)
+                cogs_total_val = float(row["cogs"] or 0)
+                commission_val = float(row["commission"] or 0)
+                logistics_val = float(row["logistics"] or 0)
                 # Прибыль по тому же принципу, что и в блоке Финансы:
                 # profit = revenue - (cogs + commission + logistics + налог 1% с выручки)
                 profit_val = (
@@ -1165,8 +1174,15 @@ async def get_products_table(
                     - (revenue_val * 0.01)
                 )
                 sales_by_barcode[bn] = {
-                    "sales_qty": int(row[1] or 0),
-                    "returns_qty": int(row[2] or 0),
+                    "sales_qty": int(row["sales_qty"] or 0),
+                    "returns_qty": int(row["returns_qty"] or 0),
+                    "orders_qty": int(row["orders_qty"] or 0),
+                    "orders_value": float(row["orders_value"] or 0),
+                    "processing_qty": int(row["processing_qty"] or 0),
+                    "processing_value": float(row["processing_value"] or 0),
+                    "completed_qty": int(row["completed_qty"] or 0),
+                    "completed_value": float(row["completed_value"] or 0),
+                    "returns_value": float(row["returns_value"] or 0),
                     "revenue": revenue_val,
                     "cogs_total": cogs_total_val,
                     "commission": commission_val,
@@ -1400,13 +1416,21 @@ async def get_products_table(
             if sales_row:
                 sales_qty = sales_row["sales_qty"]
                 returns_qty = sales_row["returns_qty"]
+                orders_qty = sales_row["orders_qty"]
+                orders_value = sales_row["orders_value"]
+                processing_qty = sales_row["processing_qty"]
+                processing_value = sales_row["processing_value"]
+                completed_qty = sales_row["completed_qty"]
+                completed_value = sales_row["completed_value"]
+                returns_value = sales_row["returns_value"]
                 revenue = sales_row["revenue"]
                 # По умолчанию cogs_total — агрегированная себестоимость по всем завершённым заказам.
                 cogs_total = sales_row["cogs_total"]
                 commission = sales_row["commission"]
                 logistics = sales_row["logistics"]
             else:
-                sales_qty = returns_qty = 0
+                sales_qty = returns_qty = orders_qty = processing_qty = completed_qty = 0
+                orders_value = processing_value = completed_value = returns_value = 0.0
                 revenue = cogs_total = commission = logistics = 0.0
 
             # Цена и Себестоимость для таблицы: используем значения от последней даты продаж, если есть.
@@ -1435,6 +1459,13 @@ async def get_products_table(
                 price=display_price,
                 sales_qty=sales_qty,
                 returns_qty=returns_qty,
+                orders_qty=orders_qty,
+                orders_value=orders_value,
+                processing_qty=processing_qty,
+                processing_value=processing_value,
+                completed_qty=completed_qty,
+                completed_value=completed_value,
+                returns_value=returns_value,
                 revenue=revenue,
                 profit=profit,
                 turnover=turnover,

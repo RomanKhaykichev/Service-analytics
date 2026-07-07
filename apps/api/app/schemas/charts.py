@@ -178,8 +178,15 @@ class ProductsTableItem(BaseModel):
     product_name: Optional[str] = None   # Наименование (leftout_old)
     sku: Optional[str] = None           # Артикул = SKU (leftout_old)
     price: Optional[float] = None       # Цена = Стоимость продажи (сумы) (leftout_old)
-    sales_qty: int = 0                  # Заказы = Количество (sells_report, всё кроме отмен)
+    sales_qty: int = 0                  # Количество (sells_report, без фильтра по статусу)
     returns_qty: int = 0                # Возвраты (sells_report)
+    orders_qty: int = 0                 # Заказы = В обработке + Выкупы + Возвраты (как на Сводке)
+    orders_value: float = 0.0           # Сумма заказов (как на Сводке)
+    processing_qty: int = 0             # В обработке (шт.)
+    processing_value: float = 0.0       # В обработке (сум)
+    completed_qty: int = 0              # Выкупы (шт.)
+    completed_value: float = 0.0        # Выкупы (сум)
+    returns_value: float = 0.0          # Возвраты (сум) = returns_qty × price_sum
     revenue: float = 0.0                # Выручка (сумы), статус «Завершен»
     profit: float = 0.0                 # Прибыль = Выручка - Себестоимость(заверш.) - Комиссия - Логистика - (Выручка*1%)
     turnover: Optional[float] = None   # Оборачиваемость (leftout_old)

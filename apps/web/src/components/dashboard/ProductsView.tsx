@@ -38,6 +38,13 @@ export interface ProductsTableItemType {
   price: number | null;
   sales_qty: number;
   returns_qty: number;
+  orders_qty: number;
+  orders_value: number;
+  processing_qty: number;
+  processing_value: number;
+  completed_qty: number;
+  completed_value: number;
+  returns_value: number;
   revenue: number;
   profit: number;
   turnover: number | null;
@@ -200,6 +207,13 @@ export function ProductsView({
         price: same((r) => r.price) ?? null,
         sales_qty: sum((r) => r.sales_qty),
         returns_qty: sum((r) => r.returns_qty),
+        orders_qty: sum((r) => r.orders_qty ?? 0),
+        orders_value: sum((r) => r.orders_value ?? 0),
+        processing_qty: sum((r) => r.processing_qty ?? 0),
+        processing_value: sum((r) => r.processing_value ?? 0),
+        completed_qty: sum((r) => r.completed_qty ?? 0),
+        completed_value: sum((r) => r.completed_value ?? 0),
+        returns_value: sum((r) => r.returns_value ?? 0),
         revenue: sum((r) => r.revenue),
         profit: sum((r) => r.profit),
         turnover: same((r) => r.turnover) ?? null,
@@ -353,8 +367,14 @@ export function ProductsView({
     name: p.product_name ?? "",
     article: p.sku ?? "",
     price: p.price ?? 0,
-    sales: p.sales_qty,
+    sales: p.orders_qty ?? p.sales_qty,
     returns: p.returns_qty,
+    ordersValue: p.orders_value ?? 0,
+    processingQty: p.processing_qty ?? 0,
+    processingValue: p.processing_value ?? 0,
+    completedQty: p.completed_qty ?? 0,
+    completedValue: p.completed_value ?? 0,
+    returnsValue: p.returns_value ?? 0,
     revenue: p.revenue,
     lostRevenue: 0,
     turnover: p.turnover ?? 0,
@@ -435,6 +455,13 @@ export function ProductsView({
           price: first.price,
           sales_qty: sum((r) => r.sales_qty),
           returns_qty: sum((r) => r.returns_qty),
+          orders_qty: sum((r) => r.orders_qty ?? 0),
+          orders_value: sum((r) => r.orders_value ?? 0),
+          processing_qty: sum((r) => r.processing_qty ?? 0),
+          processing_value: sum((r) => r.processing_value ?? 0),
+          completed_qty: sum((r) => r.completed_qty ?? 0),
+          completed_value: sum((r) => r.completed_value ?? 0),
+          returns_value: sum((r) => r.returns_value ?? 0),
           revenue: sum((r) => r.revenue),
           profit: sum((r) => r.profit),
           cogs_total: sum((r) => r.cogs_total ?? 0),
