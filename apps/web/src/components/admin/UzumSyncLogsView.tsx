@@ -95,6 +95,7 @@ function formatSyncDuration(
 /** UI label for uzum_sync_log.trigger (DB value unchanged). */
 function formatSyncTrigger(trigger: string): string {
   if (trigger === "manual_incremental") return "manual";
+  if (trigger === "scheduled_incremental") return "scheduled";
   return trigger;
 }
 

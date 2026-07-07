@@ -55,7 +55,7 @@ export function TrialShopSelectDialog({
             <Store className="h-5 w-5 text-primary" />
             {t("trialShop.title")}
           </DialogTitle>
-          <DialogDescription>{t("trialShop.description")}</DialogDescription>
+          <DialogDescription className="whitespace-pre-line">{t("trialShop.description")}</DialogDescription>
         </DialogHeader>
 
         <RadioGroup
