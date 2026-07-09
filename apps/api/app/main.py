@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
-from app.routes import shops, products, charts, auth, debug, kpi, imports, extra_expenses, sales, filters, admin, track, support_tickets, uzum_seller, notifications, trial_shop
+from app.routes import shops, products, charts, auth, debug, kpi, imports, extra_expenses, sales, filters, admin, track, support_tickets, uzum_seller, notifications, trial_shop, product_cogs
 from app.settings import get_settings, get_cors_origins
 from app.db import (
     engine,
@@ -186,6 +186,7 @@ app.include_router(support_tickets.router, prefix="/api", tags=["support"])
 app.include_router(uzum_seller.router, prefix="/api", tags=["uzum-seller"])
 app.include_router(notifications.router, prefix="/api", tags=["notifications"])
 app.include_router(trial_shop.router, prefix="/api", tags=["trial"])
+app.include_router(product_cogs.router, prefix="/api", tags=["product-cogs"])
 
 
 @app.get("/health")

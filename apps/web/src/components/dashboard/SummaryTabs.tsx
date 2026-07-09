@@ -10,6 +10,7 @@ const tabsData = [
   { id: "summary", labelKey: "tabs.summary" },
   { id: "daily", labelKey: "tabs.daily" },
   { id: "products", labelKey: "tabs.products" },
+  { id: "cogs", labelKey: "tabs.cogs" },
   { id: "expenses", labelKey: "tabs.expenses" },
   { id: "shipment", labelKey: "tabs.shipment" },
   { id: "monthly", labelKey: "tabs.summary" },
@@ -23,6 +24,7 @@ export function SummaryTabs({ activeTab, onTabChange }: SummaryTabsProps) {
       case "summary": return t('tabs.summary');
       case "daily": return t('tabs.daily');
       case "products": return t('tabs.products');
+      case "cogs": return t('tabs.cogs');
       case "expenses": return t('tabs.expensesExtra');
       case "shipment": return t('tabs.shipmentLabel');
       case "monthly": return t('tabs.monthly');

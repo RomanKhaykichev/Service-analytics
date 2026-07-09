@@ -16,6 +16,7 @@ import { ShipmentView } from "@/components/dashboard/ShipmentView";
 import { HeaderActions, type RatingNotificationProduct } from "@/components/dashboard/HeaderActions";
 import type { UzumApiConnectDialogHandle } from "@/components/dashboard/UzumApiConnectDialog";
 import { ProductsView, type ProductsTableItemType } from "@/components/dashboard/ProductsView";
+import { CogsView } from "@/components/dashboard/CogsView";
 import { TabHowItWorksTrigger, TabHowItWorksPanel } from "@/components/dashboard/TabHowItWorksBlock";
 import type { DashboardTabId } from "@/data/trainingVideos";
 import type { WeeklyInsightProduct } from "@/hooks/useSummaryWeeklyInsights";
@@ -42,6 +43,7 @@ const VALID_DASHBOARD_TABS = new Set([
   "summary",
   "daily",
   "products",
+  "cogs",
   "expenses",
   "shipment",
   "monthly",
@@ -609,7 +611,7 @@ function Dashboard() {
             onViewModeChange={setViewMode}
             showStoreFilter
             showViewMode={activeTab === "daily"}
-            showPeriodFilter={activeTab !== "shipment" && activeTab !== "monthly"}
+            showPeriodFilter={activeTab !== "shipment" && activeTab !== "monthly" && activeTab !== "cogs"}
             shops={shops}
             minDate={minDate ?? undefined}
             maxDate={maxDate ?? undefined}
@@ -709,6 +711,10 @@ function Dashboard() {
             openProduct={productToOpen}
             onOpenProductHandled={handleOpenProductHandled}
           />
+        </div>
+      ) : activeTab === "cogs" ? (
+        <div className="mt-6">
+          <CogsView shop={selectedShop} />
         </div>
       ) : activeTab === "expenses" ? (
         <div className="mt-6">

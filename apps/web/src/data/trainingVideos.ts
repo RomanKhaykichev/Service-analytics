@@ -9,6 +9,7 @@ export type DashboardTabId =
   | "summary"
   | "daily"
   | "products"
+  | "cogs"
   | "expenses"
   | "shipment"
   | "monthly";
@@ -61,6 +62,7 @@ export function getTrainingVideoForTab(tab: DashboardTabId): TrainingVideoItem |
     summary: "1",
     daily: "2",
     products: "3",
+    cogs: "3",
     expenses: "4",
     shipment: "5",
     monthly: "6",

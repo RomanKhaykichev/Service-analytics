@@ -883,6 +883,23 @@ def create_batch(db: Session, user_id: UUID) -> str:
     return str(batch_id)
 
 
+def mark_upload_batch_current(db: Session, user_id: UUID, batch_id: str) -> None:
+    """Mark batch as successful current snapshot for stock views (v_current_batch)."""
+    uid = str(user_id)
+    db.execute(
+        text(f"UPDATE {qname('upload_batch')} SET is_current = false WHERE user_id = CAST(:u AS uuid)"),
+        {"u": uid},
+    )
+    db.execute(
+        text(f"""
+            UPDATE {qname('upload_batch')}
+            SET status = 'success', is_current = true, error_message = NULL
+            WHERE upload_batch_id = CAST(:bid AS uuid) AND user_id = CAST(:u AS uuid)
+        """),
+        {"u": uid, "bid": batch_id},
+    )
+
+
 def populate_facts(db: Session, user_id: UUID, batch_id: str, report_type: str) -> int:
     """Populate fact tables from staging tables. Returns number of rows inserted."""
     user_id_str = str(user_id)
@@ -1978,10 +1995,7 @@ async def import_xlsx(
         db.commit()
         # Отметить батч как успешный для метрик админки (успех = загрузка Excel прошла без ошибки)
         try:
-            db.execute(
-                text(f"UPDATE {qname('upload_batch')} SET status = 'success' WHERE upload_batch_id = CAST(:bid AS uuid)"),
-                {"bid": batch_id},
-            )
+            mark_upload_batch_current(db, user_id, batch_id)
             db.commit()
         except Exception as e:
             logger.debug("upload_batch status update skipped: %s", e)
@@ -2297,10 +2311,7 @@ async def import_xlsx_batch(
         db.commit()
         # Отметить батч как успешный для метрик админки
         try:
-            db.execute(
-                text(f"UPDATE {qname('upload_batch')} SET status = 'success' WHERE upload_batch_id = CAST(:bid AS uuid)"),
-                {"bid": batch_id},
-            )
+            mark_upload_batch_current(db, user_id, batch_id)
             db.commit()
         except Exception as e:
             logger.debug("upload_batch status update skipped: %s", e)
@@ -2513,10 +2524,7 @@ def import_uzum_api_sync(
 
         db.commit()
         try:
-            db.execute(
-                text(f"UPDATE {qname('upload_batch')} SET status = 'success' WHERE upload_batch_id = CAST(:bid AS uuid)"),
-                {"bid": batch_id},
-            )
+            mark_upload_batch_current(db, user_id, batch_id)
             db.commit()
         except Exception as e:
             logger.debug("upload_batch status update skipped: %s", e)
