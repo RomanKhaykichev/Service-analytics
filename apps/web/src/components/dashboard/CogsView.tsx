@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Search, ChevronUp, ChevronDown, History, Trash2 } from "lucide-react";
+import { Pencil, Search, ChevronUp, ChevronDown, History, Trash2, Download, Upload, Package, CircleAlert, BadgeCheck } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,11 +18,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ProductThumbnail } from "@/components/dashboard/ProductThumbnail";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { apiGet, apiPut, apiDelete, buildQueryParams } from "@/lib/api";
+import { apiGet, apiPut, apiDelete, apiGetDownload, apiUploadFile, buildQueryParams } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -62,6 +77,12 @@ interface ProductCogsHistoryResponse {
   items: ProductCogsHistoryEntry[];
 }
 
+interface ProductCogsTemplateUploadResponse {
+  imported: number;
+  skipped: number;
+  errors: string[];
+}
+
 type SortField =
   | "product_name"
   | "barcode"
@@ -79,6 +100,10 @@ interface CogsViewProps {
 
 const HISTORY_VISIBLE_ROWS = 4;
 
+function hasCogsValue(value: number | null | undefined): boolean {
+  return value != null;
+}
+
 const PRODUCT_NAME_COLUMN_CLASS = cn(
   "sticky left-0 border-r border-border shrink-0",
   "w-[min(260px,72vw)] sm:w-[300px] md:w-[360px]",
@@ -86,7 +111,7 @@ const PRODUCT_NAME_COLUMN_CLASS = cn(
 );
 
 export function CogsView({ shop }: CogsViewProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState<SortField | null>("product_name");
@@ -95,12 +120,15 @@ export function CogsView({ shop }: CogsViewProps) {
   const [editValue, setEditValue] = useState("");
   const [editEffectiveFrom, setEditEffectiveFrom] = useState("");
   const [historyItem, setHistoryItem] = useState<ProductCogsItem | null>(null);
+  const [templateAppliedDialogOpen, setTemplateAppliedDialogOpen] = useState(false);
+  const [templateAppliedCount, setTemplateAppliedCount] = useState(0);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const todayIso = () => new Date().toISOString().slice(0, 10);
 
   const queryKey = ["product-cogs", shop ?? "all"];
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey,
     queryFn: async () => {
       const params = buildQueryParams({ shop: shop ?? undefined });
@@ -110,6 +138,39 @@ export function CogsView({ shop }: CogsViewProps) {
   });
 
   const items = data?.items ?? [];
+
+  const metrics = useMemo(() => {
+    const total = items.length;
+    const withoutCogs = items.filter(
+      (item) => !hasCogsValue(item.lk_cogs) && !hasCogsValue(item.actual_cogs)
+    ).length;
+    const profiboard = items.filter((item) => hasCogsValue(item.actual_cogs)).length;
+    return { total, withoutCogs, profiboard };
+  }, [items]);
+
+  const metricCards = useMemo(
+    () => [
+      {
+        key: "total",
+        icon: <Package className="h-4 w-4" />,
+        label: t("cogs.metricProducts"),
+        valueClassName: "text-blue-600 dark:text-blue-400",
+      },
+      {
+        key: "withoutCogs",
+        icon: <CircleAlert className="h-4 w-4" />,
+        label: t("cogs.metricWithoutCogs"),
+        valueClassName: "text-destructive",
+      },
+      {
+        key: "profiboard",
+        icon: <BadgeCheck className="h-4 w-4" />,
+        label: t("cogs.metricProfiboard"),
+        valueClassName: "text-success",
+      },
+    ],
+    [t]
+  );
 
   const historyQueryKey = [
     "product-cogs-history",
@@ -190,6 +251,55 @@ export function CogsView({ shop }: CogsViewProps) {
     },
     onError: (error: Error) => {
       toast.error(error.message || t("cogs.saveError"));
+    },
+  });
+
+  const downloadTemplateMutation = useMutation({
+    mutationFn: async (kind: "products" | "empty") => {
+      const params = buildQueryParams({ shop: shop ?? undefined, kind, lang: language });
+      const filename =
+        kind === "empty"
+          ? language === "uz"
+            ? "tannarx_bosh_shablon.xlsx"
+            : "sebestoimost_pustoy_shablon.xlsx"
+          : language === "uz"
+            ? "tannarx_tovarlar_shabloni.xlsx"
+            : "sebestoimost_tovary_shablon.xlsx";
+      await apiGetDownload("/api/product-cogs/template", params, filename);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || t("cogs.templateDownloadError"));
+    },
+  });
+
+  const yearStartLabel = useMemo(() => {
+    const year = new Date().getFullYear();
+    return `01.01.${year}`;
+  }, []);
+
+  const uploadTemplateMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const params = buildQueryParams({ shop: shop ?? undefined });
+      return apiUploadFile<ProductCogsTemplateUploadResponse>(
+        "/api/product-cogs/template",
+        file,
+        params
+      );
+    },
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey });
+      if (result.imported > 0) {
+        setTemplateAppliedCount(result.imported);
+        setTemplateAppliedDialogOpen(true);
+      } else {
+        toast.message(t("cogs.templateUploadedNone"));
+      }
+      if (result.errors.length > 0) {
+        toast.error(result.errors.slice(0, 3).join("\n"));
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || t("cogs.templateUploadError"));
     },
   });
 
@@ -399,21 +509,124 @@ export function CogsView({ shop }: CogsViewProps) {
     });
   };
 
+  const handleUploadTemplate = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    uploadTemplateMutation.mutate(file);
+  };
+
   return (
     <div className="w-full min-w-0 space-y-4">
-      <div className="relative flex-1 max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder={t("search.byNameArticle")}
-          className="pl-10 bg-background"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="relative flex-1 min-w-0 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder={t("search.byNameArticle")}
+            className="pl-10 bg-background"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+        <TooltipProvider delayDuration={200}>
+          <div className="flex flex-wrap items-stretch gap-2 shrink-0">
+            {metricCards.map((card) => (
+              <Tooltip key={card.key}>
+                <TooltipTrigger asChild>
+                  <div className="rounded-xl border border-border bg-card shadow-sm px-2.5 py-2 flex items-center gap-2 cursor-default">
+                    <div className="text-muted-foreground">{card.icon}</div>
+                    <span
+                      className={cn(
+                        "text-sm font-semibold tabular-nums whitespace-nowrap",
+                        card.valueClassName
+                      )}
+                    >
+                      {isLoading
+                        ? "—"
+                        : metrics[card.key as keyof typeof metrics]}
+                    </span>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="text-xs">{card.label}</p>
+                </TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
+        </TooltipProvider>
+        <div className="flex flex-wrap items-stretch gap-2 shrink-0 self-end xl:self-auto xl:ml-auto">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-auto min-w-[11rem] flex-col items-start gap-0.5 px-3 py-2 text-left"
+            onClick={() => downloadTemplateMutation.mutate("products")}
+            disabled={downloadTemplateMutation.isPending}
+          >
+            <span className="flex items-center gap-2 font-medium">
+              <Download className="h-4 w-4 shrink-0" />
+              {t("cogs.templateProducts")}
+            </span>
+            <span className="text-xs font-normal text-muted-foreground leading-snug">
+              {t("cogs.templateProductsHint")}
+            </span>
+          </Button>
+          <span className="self-center text-sm text-muted-foreground px-0.5">
+            {t("common.or")}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-auto min-w-[11rem] flex-col items-start gap-0.5 px-3 py-2 text-left"
+            onClick={() => downloadTemplateMutation.mutate("empty")}
+            disabled={downloadTemplateMutation.isPending}
+          >
+            <span className="flex items-center gap-2 font-medium">
+              <Download className="h-4 w-4 shrink-0" />
+              {t("cogs.templateEmpty")}
+            </span>
+            <span className="text-xs font-normal text-muted-foreground leading-snug">
+              {t("cogs.templateEmptyHint")}
+            </span>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={cn(
+              "h-auto w-auto flex-col items-start gap-0.5 px-2.5 py-2 text-left",
+              "bg-violet-200/80 hover:bg-violet-300/90 border-violet-400 text-violet-950",
+              "dark:bg-violet-900/70 dark:hover:bg-violet-800/80 dark:border-violet-600 dark:text-violet-50"
+            )}
+            onClick={() => uploadInputRef.current?.click()}
+            disabled={uploadTemplateMutation.isPending}
+          >
+            <span className="flex items-center gap-2 font-medium">
+              <Upload className="h-4 w-4 shrink-0" />
+              {uploadTemplateMutation.isPending ? t("cogs.templateUploading") : t("cogs.uploadLine1")}
+            </span>
+            <span className="text-xs font-normal text-muted-foreground leading-snug">
+              {t("cogs.uploadLine2")}
+            </span>
+          </Button>
+          <input
+            ref={uploadInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            onChange={handleUploadTemplate}
+          />
+        </div>
       </div>
 
       {isLoading ? (
         <div className="rounded-lg border border-border p-8 text-center text-muted-foreground">
           {t("cogs.loading")}
+        </div>
+      ) : isError ? (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-8 text-center text-destructive text-sm">
+          {error instanceof Error ? error.message : t("cogs.loadError")}
         </div>
       ) : (
         <div className="data-table animate-fade-in w-full min-w-0 max-w-full rounded-lg border border-border">
@@ -705,6 +918,22 @@ export function CogsView({ shop }: CogsViewProps) {
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={templateAppliedDialogOpen} onOpenChange={setTemplateAppliedDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("cogs.templateAppliedTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("cogs.templateAppliedMessage")
+                .replace("{count}", String(templateAppliedCount))
+                .replace("{date}", yearStartLabel)}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction>{t("cogs.templateAppliedOk")}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

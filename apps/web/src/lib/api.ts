@@ -572,4 +572,59 @@ export async function apiDelete<T>(path: string): Promise<T> {
   }
 }
 
+export async function apiGetDownload(
+  path: string,
+  params?: Record<string, string>,
+  filename = "download.xlsx",
+): Promise<void> {
+  const init: RequestInit & { params?: Record<string, string> } = {
+    method: "GET",
+    headers: getAuthHeaders(),
+  };
+  if (params) {
+    init.params = params;
+  }
+  const response = await handleWithRefresh(path, init);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `HTTP ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+export async function apiUploadFile<T>(
+  path: string,
+  file: File,
+  params?: Record<string, string>,
+): Promise<T> {
+  const form = new FormData();
+  form.append("file", file);
+  const init: RequestInit & { params?: Record<string, string> } = {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: form,
+  };
+  if (params) {
+    init.params = params;
+  }
+  const response = await handleWithRefresh(path, init);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || `HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
 export { AuthExpiredError };

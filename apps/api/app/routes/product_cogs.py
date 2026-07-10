@@ -1,13 +1,17 @@
 """Product unit COGS: Uzum LK source + Profiboard manual overrides."""
 from __future__ import annotations
 
+import io
 import logging
+import math
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import pandas as pd
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -19,6 +23,7 @@ from app.schemas.product_cogs import (
     ProductCogsHistoryResponse,
     ProductCogsItem,
     ProductCogsListResponse,
+    ProductCogsTemplateUploadResponse,
     ProductCogsUpsertRequest,
 )
 from app.utils.barcode import barcode_norm_sql
@@ -33,6 +38,56 @@ router = APIRouter()
 _status = get_status_conditions()
 _STATUS_REVENUE_SQL = f"(({_status['completed']}) OR ({_status['processing']}))"
 
+COGS_TEMPLATE_HEADER_MAP = {
+    "штрихкод": "barcode",
+    "shtrixkod": "barcode",
+    "barcode": "barcode",
+    "наименование": "product_name",
+    "tovar nomi": "product_name",
+    "sku": "sku",
+    "себестоимость (актуальная)": "actual_cogs",
+    "tannarx (aktual)": "actual_cogs",
+    "себестоимость": "actual_cogs",
+    "tannarx": "actual_cogs",
+    "actual_cogs": "actual_cogs",
+    "дата начиная с": "effective_from",
+    "boshlanish sanasi": "effective_from",
+    "дата": "effective_from",
+    "effective_from": "effective_from",
+}
+
+COGS_TEMPLATE_LOCALES: dict[str, dict[str, object]] = {
+    "ru": {
+        "sheet_name": "Себестоимость",
+        "empty_columns": ["Штрихкод", "Себестоимость (актуальная)"],
+        "products_columns": ["Штрихкод", "Наименование", "SKU", "Себестоимость (актуальная)"],
+        "products_instruction": "Заполните только колонку Себестоимость (актуальная).",
+        "empty_instruction": "Заполните колонки по товару Штрихкод и Себестоимость (актуальная).",
+        "empty_filename": "sebestoimost_pustoy_shablon.xlsx",
+        "products_filename": "sebestoimost_tovary_shablon.xlsx",
+    },
+    "uz": {
+        "sheet_name": "Tannarx",
+        "empty_columns": ["Shtrixkod", "Tannarx (aktual)"],
+        "products_columns": ["Shtrixkod", "Tovar nomi", "SKU", "Tannarx (aktual)"],
+        "products_instruction": "Faqat Tannarx (aktual) ustunini to'ldiring.",
+        "empty_instruction": "Har bir tovar uchun Shtrixkod va Tannarx (aktual) ustunlarini to'ldiring.",
+        "empty_filename": "tannarx_bosh_shablon.xlsx",
+        "products_filename": "tannarx_tovarlar_shabloni.xlsx",
+    },
+}
+
+
+def _resolve_cogs_template_lang(lang: Optional[str]) -> str:
+    normalized = (lang or "").strip().lower()
+    if normalized in ("uz", "uzbek", "o'z", "oz"):
+        return "uz"
+    return "ru"
+
+
+def _cogs_template_locale(lang: Optional[str]) -> dict[str, object]:
+    return COGS_TEMPLATE_LOCALES[_resolve_cogs_template_lang(lang)]
+
 
 def _str_val(v) -> Optional[str]:
     if v is None:
@@ -41,18 +96,29 @@ def _str_val(v) -> Optional[str]:
     return s if s else None
 
 
+def _safe_float(v) -> Optional[float]:
+    if v is None:
+        return None
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(n):
+        return None
+    return n
+
+
 def _parse_num(v) -> Optional[float]:
     if v is None:
         return None
     if isinstance(v, (int, float)):
-        return float(v)
+        return _safe_float(v)
     s = str(v).strip().replace(" ", "").replace(",", ".")
     if not s or s in ("-", "—"):
         return None
-    try:
-        return float(s)
-    except ValueError:
+    if s.lower() in ("nan", "inf", "-inf", "infinity", "-infinity"):
         return None
+    return _safe_float(s)
 
 
 def _normalize_barcode_norm(raw: str) -> str:
@@ -60,6 +126,83 @@ def _normalize_barcode_norm(raw: str) -> str:
     if bn.endswith(".0"):
         bn = bn[:-2]
     return bn
+
+
+def _normalize_template_header(value: object) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip().lower())
+
+
+def _parse_date_cell(value: object) -> Optional[str]:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if hasattr(value, "date") and callable(value.date):
+        try:
+            return value.date().isoformat()
+        except Exception:
+            pass
+    s = str(value).strip()
+    if not s or s.lower() in ("nan", "none", "-", "—"):
+        return None
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        return s
+    m = re.fullmatch(r"(\d{2})\.(\d{2})\.(\d{4})", s)
+    if m:
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    try:
+        parsed = pd.to_datetime(s, dayfirst=True, errors="coerce")
+        if pd.isna(parsed):
+            return None
+        return parsed.date().isoformat()
+    except Exception:
+        return None
+
+
+def _save_product_cogs(
+    db: Session,
+    user_id: UUID,
+    barcode_norm: str,
+    actual_cogs: float,
+    effective_from: str,
+    *,
+    barcode: Optional[str] = None,
+    sku: Optional[str] = None,
+    product_name: Optional[str] = None,
+    shop: Optional[str] = None,
+) -> None:
+    _ensure_manual_product_cogs_schema(db)
+    db.execute(
+        text(f"""
+            INSERT INTO {qname("manual_product_cogs")} (
+                user_id, barcode_norm, barcode, sku, product_name, shop, cogs_sum, effective_from, updated_at
+            ) VALUES (
+                CAST(:user_id AS uuid), :barcode_norm, :barcode, :sku, :product_name, :shop,
+                CAST(:cogs_sum AS numeric(18,2)), CAST(:effective_from AS date), now()
+            )
+            ON CONFLICT (user_id, barcode_norm) DO UPDATE SET
+                barcode = EXCLUDED.barcode,
+                sku = EXCLUDED.sku,
+                product_name = EXCLUDED.product_name,
+                shop = EXCLUDED.shop,
+                cogs_sum = EXCLUDED.cogs_sum,
+                effective_from = EXCLUDED.effective_from,
+                updated_at = now()
+        """),
+        {
+            "user_id": str(user_id),
+            "barcode_norm": barcode_norm,
+            "barcode": barcode,
+            "sku": sku,
+            "product_name": product_name,
+            "shop": shop,
+            "cogs_sum": actual_cogs,
+            "effective_from": effective_from,
+        },
+    )
+    _append_cogs_history(db, user_id, barcode_norm, actual_cogs, effective_from)
 
 
 def _extract_product_image_url_from_data(data: dict) -> Optional[str]:
@@ -261,8 +404,10 @@ def _get_lk_cogs_for_barcode(db: Session, user_id: UUID, barcode_norm: str) -> O
         """),
         {"user_id": str(user_id), "barcode_norm": barcode_norm},
     ).fetchone()
-    if sales_row and sales_row[0] and float(sales_row[0]) > 0:
-        return float(sales_row[0])
+    if sales_row and sales_row[0]:
+        unit_cogs = _safe_float(sales_row[0])
+        if unit_cogs is not None and unit_cogs > 0:
+            return unit_cogs
     return None
 
 
@@ -290,7 +435,8 @@ def _load_profiboard_periods(db: Session, user_id: UUID, barcode_norm: str) -> l
                 continue
             date_str = eff.isoformat() if hasattr(eff, "isoformat") else str(eff).strip()
             if date_str:
-                periods.append((date_str, float(row[1] or 0)))
+                cogs_val = _safe_float(row[1]) or 0.0
+                periods.append((date_str, cogs_val))
                 seen_dates.add(date_str)
 
     manual_tbl = qname("manual_product_cogs")
@@ -310,7 +456,8 @@ def _load_profiboard_periods(db: Session, user_id: UUID, barcode_norm: str) -> l
                 row[0].isoformat() if hasattr(row[0], "isoformat") else str(row[0]).strip()
             )
             if date_str and date_str not in seen_dates:
-                periods.append((date_str, float(row[1] or 0)))
+                cogs_val = _safe_float(row[1]) or 0.0
+                periods.append((date_str, cogs_val))
 
     periods.sort(key=lambda x: x[0])
     return periods
@@ -360,7 +507,9 @@ def _load_latest_profiboard_by_barcode(db: Session, user_id: UUID) -> dict[str, 
         eff_str = eff_raw.isoformat() if hasattr(eff_raw, "isoformat") else str(eff_raw).strip()
         if not eff_str:
             return
-        cogs_val = float(cogs_raw or 0)
+        cogs_val = _safe_float(cogs_raw)
+        if cogs_val is None:
+            return
         prev = latest.get(bn)
         if prev is None or eff_str > prev["effective_from"]:
             latest[bn] = {"cogs": cogs_val, "effective_from": eff_str}
@@ -461,7 +610,7 @@ def _load_manual_cogs_by_barcode(db: Session, user_id: UUID) -> dict[str, dict]:
                     eff.isoformat() if hasattr(eff, "isoformat") else str(eff).strip()
                 )
             manual_by_barcode[bn] = {
-                "cogs": float(row[1] or 0),
+                "cogs": _safe_float(row[1]) or 0.0,
                 "effective_from": effective_from_str,
                 "barcode": row[3],
                 "sku": row[4],
@@ -558,7 +707,10 @@ async def list_product_cogs(
         for row in db.execute(sales_cogs_query, {"user_id": str(user_id)}).fetchall():
             bn = (row[0] or "").strip() if row[0] else ""
             if bn:
-                sales_by_barcode[bn] = {"cogs": float(row[1] or 0), "price": float(row[2] or 0)}
+                sales_by_barcode[bn] = {
+                    "cogs": _safe_float(row[1]),
+                    "price": _safe_float(row[2]),
+                }
 
         first_sale_query = text(f"""
             SELECT {fs_barcode_norm_expr} AS barcode_norm, MIN(fs.date_created::date) AS first_sale_date
@@ -599,14 +751,16 @@ async def list_product_cogs(
 
             sales_row = sales_by_barcode.get(barcode_norm)
             if sales_row:
-                if not price or price <= 0:
-                    price = sales_row["price"] or price
-                if lk_cogs is None or lk_cogs <= 0:
-                    lk_cogs = sales_row["cogs"] if sales_row["cogs"] > 0 else lk_cogs
+                sales_price = sales_row.get("price")
+                sales_cogs = sales_row.get("cogs")
+                if (price is None or price <= 0) and sales_price is not None and sales_price > 0:
+                    price = sales_price
+                if (lk_cogs is None or lk_cogs <= 0) and sales_cogs is not None and sales_cogs > 0:
+                    lk_cogs = sales_cogs
 
             pb_row = latest_profiboard_by_barcode.get(barcode_norm)
             if pb_row:
-                actual_cogs = pb_row["cogs"]
+                actual_cogs = _safe_float(pb_row["cogs"])
                 effective_from_str = pb_row["effective_from"]
                 used_cogs = actual_cogs
                 calculation_source = "profiboard"
@@ -618,7 +772,8 @@ async def list_product_cogs(
 
             unit_margin = None
             if price is not None and used_cogs is not None:
-                unit_margin = price - used_cogs
+                margin = price - used_cogs
+                unit_margin = margin if math.isfinite(margin) else None
 
             date_str = effective_from_str
 
@@ -663,40 +818,17 @@ async def upsert_product_cogs(
     if not body.effective_from:
         raise HTTPException(status_code=400, detail="effective_from is required")
 
-    _ensure_manual_product_cogs_schema(db)
-
-    upsert_query = text(f"""
-        INSERT INTO {qname("manual_product_cogs")} (
-            user_id, barcode_norm, barcode, sku, product_name, shop, cogs_sum, effective_from, updated_at
-        ) VALUES (
-            CAST(:user_id AS uuid), :barcode_norm, :barcode, :sku, :product_name, :shop,
-            CAST(:cogs_sum AS numeric(18,2)), CAST(:effective_from AS date), now()
-        )
-        ON CONFLICT (user_id, barcode_norm) DO UPDATE SET
-            barcode = EXCLUDED.barcode,
-            sku = EXCLUDED.sku,
-            product_name = EXCLUDED.product_name,
-            shop = EXCLUDED.shop,
-            cogs_sum = EXCLUDED.cogs_sum,
-            effective_from = EXCLUDED.effective_from,
-            updated_at = now()
-        RETURNING barcode_norm, barcode, sku, product_name, cogs_sum, updated_at, effective_from
-    """)
-    row = db.execute(
-        upsert_query,
-        {
-            "user_id": str(user_id),
-            "barcode_norm": bn,
-            "barcode": body.barcode,
-            "sku": body.sku,
-            "product_name": body.product_name,
-            "shop": body.shop,
-            "cogs_sum": body.actual_cogs,
-            "effective_from": body.effective_from,
-        },
-    ).fetchone()
-
-    _append_cogs_history(db, user_id, bn, body.actual_cogs, body.effective_from)
+    _save_product_cogs(
+        db,
+        user_id,
+        bn,
+        body.actual_cogs,
+        body.effective_from,
+        barcode=body.barcode,
+        sku=body.sku,
+        product_name=body.product_name,
+        shop=body.shop,
+    )
     db.commit()
 
     resp = await list_product_cogs(user_id=user_id, shop=body.shop, db=db)
@@ -705,7 +837,7 @@ async def upsert_product_cogs(
             return item
 
     return ProductCogsItem(
-        barcode=row[1] if row else body.barcode,
+        barcode=body.barcode,
         barcode_norm=bn,
         product_name=body.product_name,
         sku=body.sku,
@@ -714,16 +846,8 @@ async def upsert_product_cogs(
         actual_cogs=body.actual_cogs,
         unit_margin=None,
         calculation_source="profiboard",
-        date=(
-            row[6].isoformat()
-            if row and row[6]
-            else body.effective_from
-        ),
-        effective_from=(
-            row[6].isoformat()
-            if row and row[6]
-            else body.effective_from
-        ),
+        date=body.effective_from,
+        effective_from=body.effective_from,
     )
 
 
@@ -836,4 +960,242 @@ async def delete_product_cogs_history_period(
         sku=sku,
         lk_cogs=lk_cogs,
         db=db,
+    )
+
+
+def _template_has_barcode_header(df: pd.DataFrame) -> bool:
+    for col in df.columns:
+        key = _normalize_template_header(col)
+        if COGS_TEMPLATE_HEADER_MAP.get(key) == "barcode":
+            return True
+    return False
+
+
+def _parse_cogs_template_rows(df: pd.DataFrame) -> list[dict[str, object]]:
+    if df is None or df.empty:
+        return []
+    col_map: dict[str, str] = {}
+    for col in df.columns:
+        key = _normalize_template_header(col)
+        mapped = COGS_TEMPLATE_HEADER_MAP.get(key)
+        if mapped:
+            col_map[mapped] = str(col)
+    if "barcode" not in col_map:
+        raise HTTPException(status_code=400, detail="В файле нет колонки «Штрихкод»")
+    rows: list[dict[str, object]] = []
+    for _, series in df.iterrows():
+        rows.append({field: series.get(col_name) for field, col_name in col_map.items()})
+    return rows
+
+
+def _autosize_excel_columns(
+    worksheet,
+    *,
+    min_width: float = 10,
+    max_width: float = 60,
+    start_row: int = 1,
+    max_column: Optional[int] = None,
+) -> None:
+    from openpyxl.utils import get_column_letter
+
+    for col_idx, column_cells in enumerate(worksheet.columns, start=1):
+        if max_column is not None and col_idx > max_column:
+            break
+        max_len = 0
+        for cell in column_cells:
+            if cell.row < start_row:
+                continue
+            value = cell.value
+            if value is None:
+                continue
+            max_len = max(max_len, len(str(value)))
+        if max_len > 0:
+            worksheet.column_dimensions[get_column_letter(col_idx)].width = min(
+                max(max_len + 2, min_width),
+                max_width,
+            )
+
+
+def _instruction_merge_end_column(instruction: str, table_column_count: int) -> int:
+    # Default Excel column width fits ~8 characters; merge extra columns without resizing them.
+    chars_per_col = 8
+    cols_for_text = math.ceil(len(instruction) / chars_per_col)
+    return max(table_column_count, cols_for_text)
+
+
+def _write_cogs_template_xlsx(
+    rows: list[dict[str, object]],
+    columns: list[str],
+    *,
+    instruction: Optional[str] = None,
+    sheet_name: str = "Себестоимость",
+) -> io.BytesIO:
+    from openpyxl.styles import Alignment
+
+    df = pd.DataFrame(rows, columns=columns)
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        startrow = 1 if instruction else 0
+        df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=startrow)
+        ws = writer.sheets[sheet_name]
+        autosize_start_row = 2 if instruction else 1
+        _autosize_excel_columns(ws, start_row=autosize_start_row, max_column=len(columns))
+        if instruction:
+            merge_end_col = _instruction_merge_end_column(instruction, len(columns))
+            cell = ws["A1"]
+            cell.value = instruction
+            cell.alignment = Alignment(wrap_text=False, vertical="center")
+            ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=merge_end_col)
+    buf.seek(0)
+    return buf
+
+
+def _read_cogs_template_dataframe(content: bytes) -> pd.DataFrame:
+    raw = io.BytesIO(content)
+    df = pd.read_excel(raw, engine="openpyxl")
+    if not _template_has_barcode_header(df):
+        raw.seek(0)
+        df = pd.read_excel(raw, engine="openpyxl", header=1)
+    return df
+
+
+@router.get("/product-cogs/template")
+async def download_product_cogs_template(
+    user_id: UUID = Depends(require_user),
+    shop: Optional[str] = Query(default=None, description="Shop name filter"),
+    kind: str = Query(default="products", description="products | empty"),
+    lang: Optional[str] = Query(default=None, description="Template language: ru | uz"),
+    db: Session = Depends(get_db),
+):
+    """Скачать XLSX-шаблон: products — список товаров; empty — только заголовки."""
+    template_kind = (kind or "products").strip().lower()
+    if template_kind not in ("products", "empty"):
+        raise HTTPException(status_code=400, detail="kind must be products or empty")
+
+    locale_cfg = _cogs_template_locale(lang)
+    sheet_name = str(locale_cfg["sheet_name"])
+
+    if template_kind == "empty":
+        rows: list[dict[str, object]] = []
+        columns = list(locale_cfg["empty_columns"])
+        filename = str(locale_cfg["empty_filename"])
+        instruction = str(locale_cfg["empty_instruction"])
+    else:
+        resp = await list_product_cogs(user_id=user_id, shop=shop, db=db)
+        columns = list(locale_cfg["products_columns"])
+        rows = [
+            {
+                columns[0]: item.barcode or item.barcode_norm,
+                columns[1]: item.product_name or "",
+                columns[2]: item.sku or "",
+                columns[3]: "",
+            }
+            for item in resp.items
+        ]
+        filename = str(locale_cfg["products_filename"])
+        instruction = str(locale_cfg["products_instruction"])
+
+    buf = _write_cogs_template_xlsx(
+        rows,
+        columns,
+        instruction=instruction,
+        sheet_name=sheet_name,
+    )
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/product-cogs/template", response_model=ProductCogsTemplateUploadResponse)
+async def upload_product_cogs_template(
+    user_id: UUID = Depends(require_user),
+    shop: Optional[str] = Query(default=None, description="Shop name filter"),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Загрузить XLSX-шаблон с актуальной себестоимостью."""
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Файл пустой")
+    try:
+        df = _read_cogs_template_dataframe(content)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Некорректный XLSX: {exc}") from exc
+
+    parsed_rows = _parse_cogs_template_rows(df)
+    catalog_resp = await list_product_cogs(user_id=user_id, shop=shop, db=db)
+    catalog_by_barcode = {item.barcode_norm: item for item in catalog_resp.items}
+
+    pending: list[tuple[str, float, str, Optional[str], Optional[str], Optional[str], int]] = []
+    skipped = 0
+    errors: list[str] = []
+
+    for excel_row_idx, row in enumerate(parsed_rows, start=2):
+        barcode_raw = row.get("barcode")
+        bn = _normalize_barcode_norm(str(barcode_raw or ""))
+        cogs = _parse_num(row.get("actual_cogs"))
+        eff = _parse_date_cell(row.get("effective_from"))
+        product_name = _str_val(row.get("product_name"))
+        sku = _str_val(row.get("sku"))
+
+        if not bn:
+            if cogs is None and not eff:
+                skipped += 1
+                continue
+            errors.append(f"Строка {excel_row_idx}: не указан штрихкод")
+            continue
+        if cogs is None:
+            skipped += 1
+            continue
+        if not eff:
+            eff = date(date.today().year, 1, 1).isoformat()
+        if cogs < 0:
+            errors.append(f"Строка {excel_row_idx}: некорректная себестоимость")
+            continue
+
+        catalog_item = catalog_by_barcode.get(bn)
+        pending.append(
+            (
+                bn,
+                cogs,
+                eff,
+                (catalog_item.barcode if catalog_item else bn) or bn,
+                sku or (catalog_item.sku if catalog_item else None),
+                product_name or (catalog_item.product_name if catalog_item else None),
+                excel_row_idx,
+            )
+        )
+
+    pending.sort(key=lambda item: (item[0], item[2]))
+
+    imported = 0
+    for bn, cogs, eff, barcode, sku_val, product_name, excel_row_idx in pending:
+        try:
+            _save_product_cogs(
+                db,
+                user_id,
+                bn,
+                cogs,
+                eff,
+                barcode=barcode,
+                sku=sku_val,
+                product_name=product_name,
+                shop=shop,
+            )
+            imported += 1
+        except Exception as exc:
+            logger.warning("cogs template row %s failed: %s", excel_row_idx, exc)
+            errors.append(f"Строка {excel_row_idx}: не удалось сохранить")
+
+    if imported > 0:
+        db.commit()
+    else:
+        db.rollback()
+
+    return ProductCogsTemplateUploadResponse(
+        imported=imported,
+        skipped=skipped,
+        errors=errors[:30],
     )

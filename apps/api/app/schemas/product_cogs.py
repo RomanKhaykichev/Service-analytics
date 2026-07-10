@@ -56,3 +56,9 @@ class ProductCogsHistoryResponse(BaseModel):
     sku: Optional[str] = None
     first_sale_date: Optional[str] = None
     items: list[ProductCogsHistoryEntry] = []
+
+
+class ProductCogsTemplateUploadResponse(BaseModel):
+    imported: int = 0
+    skipped: int = 0
+    errors: list[str] = []
