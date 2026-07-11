@@ -61,7 +61,7 @@ COGS_TEMPLATE_LOCALES: dict[str, dict[str, object]] = {
         "sheet_name": "Себестоимость",
         "empty_columns": ["Штрихкод", "Себестоимость (актуальная)"],
         "products_columns": ["Штрихкод", "Наименование", "SKU", "Себестоимость (актуальная)"],
-        "products_instruction": "Заполните только колонку Себестоимость (актуальная).",
+        "products_instruction": "Заполните только колонку Себестоимость (актуальная). Данные в других колонках не меняйте.",
         "empty_instruction": "Заполните колонки по товару Штрихкод и Себестоимость (актуальная).",
         "empty_filename": "sebestoimost_pustoy_shablon.xlsx",
         "products_filename": "sebestoimost_tovary_shablon.xlsx",
@@ -70,7 +70,7 @@ COGS_TEMPLATE_LOCALES: dict[str, dict[str, object]] = {
         "sheet_name": "Tannarx",
         "empty_columns": ["Shtrixkod", "Tannarx (aktual)"],
         "products_columns": ["Shtrixkod", "Tovar nomi", "SKU", "Tannarx (aktual)"],
-        "products_instruction": "Faqat Tannarx (aktual) ustunini to'ldiring.",
+        "products_instruction": "Faqat Tannarx (aktual) ustunini to'ldiring. Boshqa ustunlardagi ma'lumotlarni o'zgartirmang.",
         "empty_instruction": "Har bir tovar uchun Shtrixkod va Tannarx (aktual) ustunlarini to'ldiring.",
         "empty_filename": "tannarx_bosh_shablon.xlsx",
         "products_filename": "tannarx_tovarlar_shabloni.xlsx",
@@ -119,6 +119,37 @@ def _parse_num(v) -> Optional[float]:
     if s.lower() in ("nan", "inf", "-inf", "infinity", "-infinity"):
         return None
     return _safe_float(s)
+
+
+def _is_blank_cell(v) -> bool:
+    if v is None:
+        return True
+    try:
+        if pd.isna(v):
+            return True
+    except (TypeError, ValueError):
+        pass
+    if isinstance(v, str):
+        s = v.strip().lower()
+        return not s or s in ("-", "—", "nan", "none", "null")
+    return False
+
+
+def _is_filled_template_cogs_cell(v) -> bool:
+    """Пустые ячейки шаблона не импортируем; явный 0 (строка «0») — можно."""
+    if _is_blank_cell(v):
+        return False
+    if isinstance(v, str):
+        return bool(v.strip())
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        try:
+            if pd.isna(v):
+                return False
+        except (TypeError, ValueError):
+            pass
+        # Пустые числовые ячейки Excel иногда читаются как 0.0.
+        return float(v) != 0.0
+    return True
 
 
 def _normalize_barcode_norm(raw: str) -> str:
@@ -173,6 +204,9 @@ def _save_product_cogs(
     product_name: Optional[str] = None,
     shop: Optional[str] = None,
 ) -> None:
+    safe_cogs = _safe_float(actual_cogs)
+    if safe_cogs is None:
+        raise HTTPException(status_code=400, detail="Invalid actual_cogs value")
     _ensure_manual_product_cogs_schema(db)
     db.execute(
         text(f"""
@@ -198,11 +232,11 @@ def _save_product_cogs(
             "sku": sku,
             "product_name": product_name,
             "shop": shop,
-            "cogs_sum": actual_cogs,
+            "cogs_sum": safe_cogs,
             "effective_from": effective_from,
         },
     )
-    _append_cogs_history(db, user_id, barcode_norm, actual_cogs, effective_from)
+    _append_cogs_history(db, user_id, barcode_norm, safe_cogs, effective_from)
 
 
 def _extract_product_image_url_from_data(data: dict) -> Optional[str]:
@@ -547,19 +581,24 @@ def _load_latest_profiboard_by_barcode(db: Session, user_id: UUID) -> dict[str, 
     return latest
 
 
+def _current_year_start_iso() -> str:
+    today = date.today()
+    return date(today.year, 1, 1).isoformat()
+
+
 def _build_cogs_timeline(
-    first_sale_date: Optional[str],
-    last_sale_date: Optional[str],
     lk_cogs: Optional[float],
     profiboard_periods: list[tuple[str, float]],
 ) -> list[ProductCogsHistoryEntry]:
-    """Хронология себестоимости за период продаж: Uzum с первой продажи, затем Profiboard."""
+    """Хронология себестоимости: Uzum с начала года, Profiboard с даты изменения; конец — сегодня."""
+    year_start = _current_year_start_iso()
+    today = date.today().isoformat()
     segments: list[tuple[str, float, str]] = []
     first_pb_date = profiboard_periods[0][0] if profiboard_periods else None
 
-    if first_sale_date and lk_cogs is not None:
-        if not first_pb_date or first_pb_date > first_sale_date:
-            segments.append((first_sale_date, lk_cogs, "uzum"))
+    if lk_cogs is not None:
+        if not first_pb_date or first_pb_date > year_start:
+            segments.append((year_start, lk_cogs, "uzum"))
 
     for eff_date, cogs in profiboard_periods:
         segments.append((eff_date, cogs, "profiboard"))
@@ -567,13 +606,12 @@ def _build_cogs_timeline(
     if not segments:
         return []
 
-    end_bound = last_sale_date or first_sale_date or date.today().isoformat()
     items: list[ProductCogsHistoryEntry] = []
     for i, (start, cogs, source) in enumerate(segments):
         if i + 1 < len(segments):
             period_to = _iso_day_before(segments[i + 1][0])
         else:
-            period_to = end_bound
+            period_to = today
         if period_to < start:
             period_to = start
         items.append(
@@ -618,6 +656,35 @@ def _load_manual_cogs_by_barcode(db: Session, user_id: UUID) -> dict[str, dict]:
                 "shop": row[6],
             }
     return manual_by_barcode
+
+
+def _load_storage_shop_by_barcode(db: Session, user_id: UUID) -> dict[str, str]:
+    """Магазин по штрихкоду из seller-storage; пустой shop = товар в архиве (как в таблице товаров)."""
+    storage_query = text(f"""
+        SELECT
+            COALESCE(
+                fss.barcode_norm,
+                NULLIF(trim(regexp_replace(COALESCE(fss.barcode, ''), '\\s+', '', 'g')), '')
+            ) AS barcode_norm,
+            MAX(NULLIF(trim(fss.shop_raw), '')) AS shop
+        FROM {qname("fact_storage_snapshot")} fss
+        WHERE fss.user_id = CAST(:user_id AS uuid)
+          AND (fss.barcode_norm IS NOT NULL OR fss.barcode IS NOT NULL)
+        GROUP BY
+            fss.user_id,
+            COALESCE(
+                fss.barcode_norm,
+                NULLIF(trim(regexp_replace(COALESCE(fss.barcode, ''), '\\s+', '', 'g')), '')
+            )
+        HAVING COALESCE(MAX(NULLIF(trim(fss.shop_raw), '')), '') <> ''
+    """)
+    storage_by_barcode: dict[str, str] = {}
+    for row in db.execute(storage_query, {"user_id": str(user_id)}).fetchall():
+        bn = (row[0] or "").strip() if row[0] else ""
+        shop_val = _str_val(row[1])
+        if bn and shop_val:
+            storage_by_barcode[bn] = shop_val
+    return storage_by_barcode
 
 
 @router.get("/product-cogs", response_model=ProductCogsListResponse)
@@ -727,6 +794,7 @@ async def list_product_cogs(
                 )
 
         latest_profiboard_by_barcode = _load_latest_profiboard_by_barcode(db, user_id)
+        storage_shop_by_barcode = _load_storage_shop_by_barcode(db, user_id)
 
         items: list[ProductCogsItem] = []
         for row in stg_rows:
@@ -740,6 +808,12 @@ async def list_product_cogs(
             if not barcode_norm and barcode_raw:
                 barcode_norm = _normalize_barcode_norm(barcode_raw)
             if not barcode_norm:
+                continue
+
+            product_shop = storage_shop_by_barcode.get(barcode_norm)
+            if not product_shop:
+                continue
+            if shop_norm and normalize_shop(product_shop) != shop_norm:
                 continue
 
             product_name = _str_val(data.get("Наименование") or data.get("Название товара"))
@@ -884,16 +958,15 @@ async def get_product_cogs_history(
     lk_cogs: Optional[float] = Query(default=None, description="Себестоимость ЛК Uzum (fallback)"),
     db: Session = Depends(get_db),
 ):
-    """Себестоимость по периодам продаж: Uzum с первой продажи, Profiboard с даты изменения."""
+    """Себестоимость по периодам: Uzum с начала года, Profiboard с даты изменения, конец — сегодня."""
     bn = _normalize_barcode_norm(barcode_norm)
     if not bn:
         raise HTTPException(status_code=400, detail="barcode_norm is required")
 
     first_sale_date = _get_first_sale_date(db, user_id, bn)
-    last_sale_date = _get_last_sale_date(db, user_id, bn)
     lk_value = lk_cogs if lk_cogs is not None and lk_cogs > 0 else _get_lk_cogs_for_barcode(db, user_id, bn)
     profiboard_periods = _load_profiboard_periods(db, user_id, bn)
-    items = _build_cogs_timeline(first_sale_date, last_sale_date, lk_value, profiboard_periods)
+    items = _build_cogs_timeline(lk_value, profiboard_periods)
 
     return ProductCogsHistoryResponse(
         product_name=product_name,
@@ -1051,11 +1124,12 @@ def _write_cogs_template_xlsx(
 
 
 def _read_cogs_template_dataframe(content: bytes) -> pd.DataFrame:
+    read_kwargs = {"engine": "openpyxl", "dtype": str, "keep_default_na": False}
     raw = io.BytesIO(content)
-    df = pd.read_excel(raw, engine="openpyxl")
+    df = pd.read_excel(raw, **read_kwargs)
     if not _template_has_barcode_header(df):
         raw.seek(0)
-        df = pd.read_excel(raw, engine="openpyxl", header=1)
+        df = pd.read_excel(raw, header=1, **read_kwargs)
     return df
 
 
@@ -1135,7 +1209,8 @@ async def upload_product_cogs_template(
     for excel_row_idx, row in enumerate(parsed_rows, start=2):
         barcode_raw = row.get("barcode")
         bn = _normalize_barcode_norm(str(barcode_raw or ""))
-        cogs = _parse_num(row.get("actual_cogs"))
+        actual_cogs_raw = row.get("actual_cogs")
+        cogs = _parse_num(actual_cogs_raw) if _is_filled_template_cogs_cell(actual_cogs_raw) else None
         eff = _parse_date_cell(row.get("effective_from"))
         product_name = _str_val(row.get("product_name"))
         sku = _str_val(row.get("sku"))

@@ -397,16 +397,26 @@ export async function apiGet<T>(
 export async function apiPostDownload(
   path: string,
   body: Record<string, unknown>,
-  filename: string
+  filename: string,
+  options?: { timeoutMs?: number },
 ): Promise<string[]> {
-  const response = await handleWithRefresh(path, {
-    method: "POST",
-    headers: {
-      ...getAuthHeaders(),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  let response: Response;
+  try {
+    response = await handleWithRefresh(
+      path,
+      {
+        method: "POST",
+        headers: {
+          ...getAuthHeaders(),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      },
+      { timeoutMs: options?.timeoutMs },
+    );
+  } catch (err) {
+    throw formatApiClientError(err);
+  }
 
   if (!response.ok) {
     const errorText = await response.text();

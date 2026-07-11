@@ -46,6 +46,18 @@ interface UzumReportsExportProps {
   disabled?: boolean;
 }
 
+/** Uzum API export can take minutes for large catalogs (measured ~130s for left-out). */
+const UZUM_REPORT_TIMEOUT_MS: Record<string, number> = {
+  inventory_old: 210_000,
+  sales: 120_000,
+  expenses: 120_000,
+  storage: 60_000,
+};
+
+function uzumReportTimeoutMs(reportId: string): number {
+  return UZUM_REPORT_TIMEOUT_MS[reportId] ?? 60_000;
+}
+
 function formatApiError(err: unknown, fallback: string, rateLimitFallback?: string): string {
   if (!(err instanceof Error)) return fallback;
   const raw = err.message;
@@ -117,7 +129,8 @@ export function UzumReportsExport({ apiKey, disabled }: UzumReportsExportProps) 
             date_from: report.needs_date_range ? dateFrom : undefined,
             date_to: report.needs_date_range ? dateTo : undefined,
           },
-          report.file_name
+          report.file_name,
+          { timeoutMs: uzumReportTimeoutMs(report.id) },
         );
         if (exportWarnings.length) {
           setWarnings(exportWarnings);
@@ -138,13 +151,17 @@ export function UzumReportsExport({ apiKey, disabled }: UzumReportsExportProps) 
       setError(null);
       setWarnings([]);
       try {
-        const result = await apiPost<PreviewResult>("/api/uzum-seller/reports/preview", {
-          api_key: apiKey.trim(),
-          report_type: report.id,
-          date_from: report.needs_date_range ? dateFrom : undefined,
-          date_to: report.needs_date_range ? dateTo : undefined,
-          preview_limit: 30,
-        });
+        const result = await apiPost<PreviewResult>(
+          "/api/uzum-seller/reports/preview",
+          {
+            api_key: apiKey.trim(),
+            report_type: report.id,
+            date_from: report.needs_date_range ? dateFrom : undefined,
+            date_to: report.needs_date_range ? dateTo : undefined,
+            preview_limit: 30,
+          },
+          { timeoutMs: uzumReportTimeoutMs(report.id) },
+        );
         setPreview(result);
         setWarnings(result.warnings ?? []);
       } catch (e) {
