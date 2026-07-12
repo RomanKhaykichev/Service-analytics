@@ -52,6 +52,8 @@ export interface ProductsTableItemType {
   fbs_stock: number | null;
   size_group: string | null;
   cogs: number;
+  stock_unit_cogs?: number | null;
+  stock_cogs_line?: number | null;
   cogs_total: number;
   commission: number;
   logistics: number;
@@ -382,6 +384,8 @@ export function ProductsView({
     fbsStock: p.fbs_stock ?? 0,
     endsIn: "—",
     costPrice: p.cogs ?? null,
+    stockUnitCogs: p.stock_unit_cogs ?? null,
+    stockCogsLine: p.stock_cogs_line ?? null,
     cogsTotal: p.cogs_total ?? 0,
     uzumCommission: p.commission ?? 0,
     uzumLogistics: p.logistics ?? 0,
@@ -474,6 +478,8 @@ export function ProductsView({
             ? sum((r) => r.fbs_stock ?? 0)
             : null,
           cogs: first.cogs,
+          stock_unit_cogs: first.stock_unit_cogs,
+          stock_cogs_line: sum((r) => r.stock_cogs_line ?? 0),
           product_image_url:
             productVariants.map((r) => r.product_image_url?.trim()).find((url) => url) ?? null,
         }

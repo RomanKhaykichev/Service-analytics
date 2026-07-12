@@ -25,8 +25,10 @@ from app.utils.metrics import (
     get_profit_sql,
     get_avg_check_sql,
     sql_cogs_line_amount,
+    sql_effective_unit_cogs,
     sql_unit_price_from_rows,
 )
+from app.utils.profiboard_cogs import load_latest_profiboard_by_barcode
 from app.utils.product_image import (
     is_allowed_product_image_host,
     normalize_product_image_url,
@@ -1090,6 +1092,30 @@ async def get_products_table(
         stg_result = db.execute(stg_query, params_stg)
         stg_rows = stg_result.fetchall()
 
+        # Себестоимость склада FBO: последняя Profiboard по штрихкоду (как на Сводке в блоке СКЛАД UZUM).
+        latest_profiboard_by_barcode = load_latest_profiboard_by_barcode(db, user_id)
+        stock_cogs_by_barcode: dict[str, dict[str, float | int]] = {}
+        leftout_fact_query = text(f"""
+            SELECT
+                lo.barcode_norm,
+                COALESCE(lo.cost_sum, 0)::double precision AS cost_sum,
+                COALESCE(lo.in_sale_qty, 0)::int AS in_sale_qty
+            FROM {qname("fact_leftout_old_snapshot")} lo
+            WHERE lo.user_id = CAST(:user_id AS uuid)
+              AND lo.upload_batch_id = CAST(:batch_id AS uuid)
+              AND lo.barcode_norm IS NOT NULL
+        """)
+        for row in db.execute(leftout_fact_query, params_stg).fetchall():
+            bn = (row[0] or "").strip() if row[0] else ""
+            if not bn:
+                continue
+            pb_row = latest_profiboard_by_barcode.get(bn)
+            stock_unit_cogs = float(pb_row["cogs"]) if pb_row else float(row[1] or 0)
+            stock_cogs_by_barcode[bn] = {
+                "stock_unit_cogs": stock_unit_cogs,
+                "in_sale_qty": int(row[2] or 0),
+            }
+
         # Связь по штрихкоду: left-out-report_old (строки выше) + seller-storage + sells_report по barcode_norm
 
         # Seller-storage: Габаритная группа и Магазин по barcode_norm (файл seller-storage = fact_storage_snapshot)
@@ -1222,7 +1248,7 @@ async def get_products_table(
                 SELECT
                     {fs_barcode_norm_expr} AS barcode_norm,
                     fs.revenue_sum,
-                    fs.cogs_sum,
+                    ({sql_effective_unit_cogs("fs")}) AS eff_unit_cogs,
                     fs.qty,
                     fs.returns_qty
                 FROM {qname("fact_sales")} fs
@@ -1235,7 +1261,7 @@ async def get_products_table(
             SELECT
                 barcode_norm,
                 {sql_unit_price_from_rows("revenue_sum", "qty", "returns_qty")} AS unit_price,
-                COALESCE(MAX(cogs_sum), 0) AS unit_cogs
+                COALESCE(MAX(eff_unit_cogs), 0) AS unit_cogs
             FROM last_rows
             GROUP BY barcode_norm
         """)
@@ -1452,6 +1478,28 @@ async def get_products_table(
             # Прибыль по тому же принципу, что и для ABC-прибыли:
             profit = revenue - cogs_total - commission - logistics - (revenue * 0.01)
 
+            stock_unit_cogs_val: float = 0.0
+            in_sale_qty_val = 0
+            if barcode_norm:
+                fact_stock = stock_cogs_by_barcode.get(barcode_norm)
+                if fact_stock:
+                    stock_unit_cogs_val = float(fact_stock["stock_unit_cogs"] or 0)
+                    in_sale_qty_val = int(fact_stock["in_sale_qty"] or 0)
+                else:
+                    leftout_unit = _parse_num(
+                        data.get("Себест. (сумы)")
+                        or _get_data_ru_uz(data, ["Себест. (сумы)"], [])
+                    )
+                    pb_row = latest_profiboard_by_barcode.get(barcode_norm)
+                    if pb_row:
+                        stock_unit_cogs_val = float(pb_row["cogs"] or 0)
+                    elif leftout_unit is not None:
+                        stock_unit_cogs_val = float(leftout_unit)
+                    in_sale_qty_val = _parse_int(
+                        data.get("В продаже") or in_sale_raw
+                    ) or 0
+            stock_cogs_line_val = stock_unit_cogs_val * max(in_sale_qty_val, 0)
+
             items.append(ProductsTableItem(
                 product_id=product_id,
                 product_name=product_name,
@@ -1473,6 +1521,8 @@ async def get_products_table(
                 fbs_stock=fbs_stock,
                 size_group=size_group or "-",
                 cogs=display_cogs,
+                stock_unit_cogs=stock_unit_cogs_val,
+                stock_cogs_line=stock_cogs_line_val,
                 cogs_total=cogs_total,
                 commission=commission,
                 logistics=logistics,

@@ -57,6 +57,10 @@ interface Product {
   fbsStock: number;
   endsIn: string;
   costPrice: number | null;
+  /** Себест. за ед. на складе FBO (Profiboard / left-out), как на Сводке */
+  stockUnitCogs?: number | null;
+  /** Сумма себестоимости склада FBO по вариантам (stock_unit_cogs × «В продаже») */
+  stockCogsLine?: number | null;
   /** Сумма себестоимости (cogs_sum × qty) по завершённым — для блока Расходы как на Сводке */
   cogsTotal: number;
   uzumCommission: number;
@@ -85,6 +89,8 @@ interface ProductDetailViewProps {
     barcode: string | null;
     storage_cost_per_day: number | null;
     cogs?: number | null;
+    stock_unit_cogs?: number | null;
+    stock_cogs_line?: number | null;
     price?: number | null;
   }>;
   onBack: () => void;
@@ -339,14 +345,18 @@ export function ProductDetailView({
   const salesProfitability = product.revenue > 0 ? (product.profit / product.revenue) * 100 : 0;
   const roi = totalExpenses > 0 ? (product.profit / totalExpenses) * 100 : 0;
   const revenueSharePercent = totalRevenueProp > 0 ? (product.revenue / totalRevenueProp) * 100 : 0;
-  // Себест. тов. = сумма по вариантам (себестоимость за ед. × остаток), иначе product.costPrice × product.stock
+  // Себест. тов. = сумма stock_cogs_line по вариантам (как СКЛАД UZUM на Сводке), иначе stockUnitCogs × stock
   const stockCost =
     variants.length > 0
       ? variants.reduce(
-          (sum, v) => sum + (v.cogs ?? 0) * (v.stock ?? 0),
+          (sum, v) =>
+            sum +
+            (v.stock_cogs_line ??
+              (v.stock_unit_cogs ?? 0) * (v.stock ?? 0)),
           0
         )
-      : (product.costPrice ?? 0) * product.stock;
+      : product.stockCogsLine ??
+        (product.stockUnitCogs ?? product.costPrice ?? 0) * product.stock;
   const stockRetail =
     variants.length > 0
       ? variants.reduce(

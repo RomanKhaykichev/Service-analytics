@@ -533,52 +533,9 @@ def _sync_manual_product_cogs_from_history(db: Session, user_id: UUID, barcode_n
 
 def _load_latest_profiboard_by_barcode(db: Session, user_id: UUID) -> dict[str, dict]:
     """Последняя запись Profiboard по каждому штрихкоду (max effective_from)."""
-    latest: dict[str, dict] = {}
+    from app.utils.profiboard_cogs import load_latest_profiboard_by_barcode
 
-    def _consider(bn: str, eff_raw, cogs_raw) -> None:
-        if not bn or eff_raw is None:
-            return
-        eff_str = eff_raw.isoformat() if hasattr(eff_raw, "isoformat") else str(eff_raw).strip()
-        if not eff_str:
-            return
-        cogs_val = _safe_float(cogs_raw)
-        if cogs_val is None:
-            return
-        prev = latest.get(bn)
-        if prev is None or eff_str > prev["effective_from"]:
-            latest[bn] = {"cogs": cogs_val, "effective_from": eff_str}
-
-    tbl = qname("manual_product_cogs_history")
-    if table_exists(db, tbl):
-        _ensure_manual_product_cogs_history_schema(db)
-        for row in db.execute(
-            text(f"""
-                SELECT DISTINCT ON (barcode_norm)
-                    barcode_norm, effective_from, cogs_sum
-                FROM {tbl}
-                WHERE user_id = CAST(:user_id AS uuid)
-                ORDER BY barcode_norm, effective_from DESC, created_at DESC
-            """),
-            {"user_id": str(user_id)},
-        ).fetchall():
-            bn = (row[0] or "").strip()
-            _consider(bn, row[1], row[2])
-
-    manual_tbl = qname("manual_product_cogs")
-    if table_exists(db, manual_tbl):
-        db.execute(text(f"ALTER TABLE {manual_tbl} ADD COLUMN IF NOT EXISTS effective_from date"))
-        for row in db.execute(
-            text(f"""
-                SELECT barcode_norm, effective_from, cogs_sum
-                FROM {manual_tbl}
-                WHERE user_id = CAST(:user_id AS uuid)
-            """),
-            {"user_id": str(user_id)},
-        ).fetchall():
-            bn = (row[0] or "").strip()
-            _consider(bn, row[1], row[2])
-
-    return latest
+    return load_latest_profiboard_by_barcode(db, user_id)
 
 
 def _current_year_start_iso() -> str:

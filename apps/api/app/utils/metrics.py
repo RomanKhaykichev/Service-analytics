@@ -4,17 +4,141 @@ Shared between KPI and Charts endpoints to ensure consistency.
 """
 from typing import Dict
 
+from app.db import qname
 
-def sql_net_qty(alias: str = "") -> str:
+
+def sql_net_qty(alias: str = "fs") -> str:
     """Чистое количество по строке: Количество − Возвраты (sells_report), не ниже 0."""
-    p = f"{alias}." if alias else ""
+    alias = (alias or "fs").strip()
+    p = f"{alias}."
     return f"GREATEST(COALESCE({p}qty, 0) - COALESCE({p}returns_qty, 0), 0)"
 
 
-def sql_cogs_line_amount(alias: str = "") -> str:
-    """Себестоимость по строке: Себестоимость (сумы) × (Количество − Возвраты)."""
-    p = f"{alias}." if alias else ""
-    return f"COALESCE({p}cogs_sum, 0) * {sql_net_qty(alias)}"
+def sql_sales_barcode_norm(alias: str = "fs") -> str:
+    """Нормализованный штрихкод из fact_sales (без хвоста .0)."""
+    alias = (alias or "fs").strip()
+    p = f"{alias}."
+    stored = f"COALESCE({p}barcode_norm, '')"
+    return (
+        f"CASE WHEN RIGHT({stored}, 2) = '.0' "
+        f"THEN LEFT({stored}, LENGTH({stored}) - 2) "
+        f"ELSE {stored} END"
+    )
+
+
+def sql_effective_unit_cogs(alias: str = "fs") -> str:
+    """
+    Единичная себестоимость по строке продажи:
+    ручная Profiboard (manual_product_cogs_history, effective_from <= дата продажи)
+    или cogs_sum из загруженного sells-report.
+
+    alias обязателен: без префикса таблицы PostgreSQL путает barcode_norm/user_id
+    во вложенном SELECT с колонками history.
+    """
+    alias = (alias or "fs").strip()
+    p = f"{alias}."
+    bn = sql_sales_barcode_norm(alias)
+    hist = qname("manual_product_cogs_history")
+    return f"""COALESCE(
+        (
+            SELECT h.cogs_sum
+            FROM {hist} h
+            WHERE h.user_id = {p}user_id
+              AND h.barcode_norm = {bn}
+              AND {bn} <> ''
+              AND h.effective_from <= ({p}date_created)::date
+            ORDER BY h.effective_from DESC, h.created_at DESC
+            LIMIT 1
+        ),
+        COALESCE({p}cogs_sum, 0)
+    )"""
+
+
+def sql_cogs_line_amount(alias: str = "fs") -> str:
+    """Себестоимость по строке: unit COGS × (Количество − Возвраты)."""
+    alias = (alias or "fs").strip()
+    return f"{sql_effective_unit_cogs(alias)} * {sql_net_qty(alias)}"
+
+
+def sql_leftout_barcode_norm(alias: str = "lo") -> str:
+    """Нормализованный штрихкод из left-out-report_old snapshot."""
+    alias = (alias or "lo").strip()
+    p = f"{alias}."
+    stored = (
+        f"COALESCE(NULLIF(trim({p}barcode_norm), ''), "
+        f"NULLIF(trim({p}barcode), ''))"
+    )
+    return (
+        f"CASE WHEN RIGHT({stored}, 2) = '.0' "
+        f"THEN LEFT({stored}, LENGTH({stored}) - 2) "
+        f"ELSE {stored} END"
+    )
+
+
+def sql_effective_unit_cogs_as_of(alias: str, as_of_date_expr: str) -> str:
+    """
+    Единичная себестоимость для оценки остатков на дату:
+    ручная Profiboard (effective_from <= as_of_date) или cost_sum из left-out-report_old.
+    """
+    alias = (alias or "lo").strip()
+    p = f"{alias}."
+    bn = sql_leftout_barcode_norm(alias)
+    hist = qname("manual_product_cogs_history")
+    return f"""COALESCE(
+        (
+            SELECT h.cogs_sum
+            FROM {hist} h
+            WHERE h.user_id = {p}user_id
+              AND h.barcode_norm = {bn}
+              AND {bn} <> ''
+              AND h.effective_from <= ({as_of_date_expr})::date
+            ORDER BY h.effective_from DESC, h.created_at DESC
+            LIMIT 1
+        ),
+        COALESCE({p}cost_sum, 0)
+    )"""
+
+
+def sql_latest_profiboard_unit_cogs(alias: str = "lo") -> str:
+    """
+    Последняя ручная себестоимость Profiboard по штрихкоду (max effective_from).
+    Для текущего склада FBO — как actual_cogs на вкладке «Себестоимость».
+    Fallback: cost_sum из left-out-report_old.
+    """
+    alias = (alias or "lo").strip()
+    p = f"{alias}."
+    bn = sql_leftout_barcode_norm(alias)
+    hist = qname("manual_product_cogs_history")
+    manual = qname("manual_product_cogs")
+    return f"""COALESCE(
+        (
+            SELECT cogs_sum FROM (
+                SELECT h.cogs_sum, h.effective_from, h.created_at
+                FROM {hist} h
+                WHERE h.user_id = {p}user_id
+                  AND h.barcode_norm = {bn}
+                  AND {bn} <> ''
+                UNION ALL
+                SELECT m.cogs_sum, m.effective_from, m.updated_at AS created_at
+                FROM {manual} m
+                WHERE m.user_id = {p}user_id
+                  AND m.barcode_norm = {bn}
+                  AND {bn} <> ''
+                  AND m.effective_from IS NOT NULL
+            ) pb
+            ORDER BY pb.effective_from DESC, pb.created_at DESC
+            LIMIT 1
+        ),
+        COALESCE({p}cost_sum, 0)
+    )"""
+
+
+def sql_stock_cogs_line_amount(alias: str = "lo") -> str:
+    """Себестоимость строки склада FBO: последняя Profiboard × «В продаже»."""
+    alias = (alias or "lo").strip()
+    p = f"{alias}."
+    qty = f"GREATEST(COALESCE({p}in_sale_qty, 0), 0)"
+    return f"{sql_latest_profiboard_unit_cogs(alias)} * {qty}"
 
 
 def sql_unit_price_from_rows(revenue_col: str, qty_col: str, returns_col: str) -> str:
@@ -76,7 +200,7 @@ def get_kpi_sales_breakdown_sql(table_alias: str = "fs") -> Dict[str, str]:
 
 
 def get_sales_metrics_sql(
-    table_alias: str = ""
+    table_alias: str = "fs",
 ) -> Dict[str, str]:
     """
     Generate SQL expressions for sales metrics using the same formulas as KPI.
