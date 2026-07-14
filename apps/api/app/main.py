@@ -10,6 +10,7 @@ from app.db import (
     ensure_dim_shop_uzum_columns,
     ensure_fact_expenses_shop_columns,
     ensure_fact_leftout_fbs_qty_column,
+    ensure_stg_leftout_old_columns,
     ensure_users_allowed_shops_column,
 )
 from urllib.parse import urlparse
@@ -122,6 +123,7 @@ ensure_fact_expenses_shop_columns()
 ensure_fact_leftout_fbs_qty_column()
 ensure_users_allowed_shops_column()
 ensure_dim_shop_uzum_columns()
+ensure_stg_leftout_old_columns()
 
 # Determine if documentation should be enabled
 is_prod = settings.APP_ENV == "prod"

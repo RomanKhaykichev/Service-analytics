@@ -116,6 +116,28 @@ def ensure_dim_shop_uzum_columns() -> None:
         logger.warning("Could not ensure dim_shop uzum columns: %s", e)
 
 
+def ensure_stg_leftout_old_columns() -> None:
+    """Idempotent DDL: imports.to_staging inserts row_num + data into stg_leftout_old."""
+    schema = settings.DB_SCHEMA
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    f"ALTER TABLE {schema}.stg_leftout_old "
+                    "ADD COLUMN IF NOT EXISTS row_num int4"
+                )
+            )
+            conn.execute(
+                text(
+                    f"ALTER TABLE {schema}.stg_leftout_old "
+                    "ADD COLUMN IF NOT EXISTS data jsonb"
+                )
+            )
+        logger.info("stg_leftout_old.row_num/data columns ensured")
+    except Exception as e:
+        logger.warning("Could not ensure stg_leftout_old columns: %s", e)
+
+
 def migrate_drop_trial_display_shop_column() -> None:
     """Перенос trial_display_shop → allowed_shops и удаление колонки (идемпотентно)."""
     import json
