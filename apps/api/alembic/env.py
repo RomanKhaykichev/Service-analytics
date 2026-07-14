@@ -123,6 +123,9 @@ def run_migrations_online() -> None:
         )
         # Set schema for operations
         connection.execute(sa_text(f"SET search_path TO {settings.DB_SCHEMA}, public"))
+        # SQLAlchemy 2 starts an implicit transaction for the setup statements
+        # above. Commit it so Alembic can own and commit its migration transaction.
+        connection.commit()
         context.configure(
             connection=connection,
             target_metadata=target_metadata,

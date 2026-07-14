@@ -4,6 +4,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 interface SummaryTabsProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
+  showCogsTab?: boolean;
 }
 
 const tabsData = [
@@ -16,8 +17,11 @@ const tabsData = [
   { id: "monthly", labelKey: "tabs.summary" },
 ];
 
-export function SummaryTabs({ activeTab, onTabChange }: SummaryTabsProps) {
+export function SummaryTabs({ activeTab, onTabChange, showCogsTab = false }: SummaryTabsProps) {
   const { t } = useLanguage();
+  const visibleTabs = showCogsTab
+    ? tabsData
+    : tabsData.filter((tab) => tab.id !== "cogs");
   
   const getTabLabel = (id: string) => {
     switch (id) {
@@ -34,7 +38,7 @@ export function SummaryTabs({ activeTab, onTabChange }: SummaryTabsProps) {
   
   return (
     <div className="flex items-center gap-1 border-b border-border">
-      {tabsData.map((tab) => (
+      {visibleTabs.map((tab) => (
         <button
           key={tab.id}
           onClick={() => onTabChange(tab.id)}

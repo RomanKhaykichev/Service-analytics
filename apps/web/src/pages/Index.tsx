@@ -53,7 +53,7 @@ const VALID_DASHBOARD_TABS = new Set([
 
 function Dashboard() {
   const { t, language } = useLanguage();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
   const cogsDirtyRef = useRef(false);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -64,6 +64,7 @@ function Dashboard() {
   const changeActiveTab = useCallback(
     (tab: string) => {
       if (!VALID_DASHBOARD_TABS.has(tab)) return;
+      if (tab === "cogs" && !user?.is_admin) return;
       setActiveTabState(tab);
       setSearchParams(
         (prev) => {
@@ -75,8 +76,21 @@ function Dashboard() {
         { replace: true },
       );
     },
-    [setSearchParams],
+    [setSearchParams, user?.is_admin],
   );
+
+  useEffect(() => {
+    if (authLoading || activeTab !== "cogs" || user?.is_admin) return;
+    setActiveTabState("summary");
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("tab");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [activeTab, authLoading, setSearchParams, user?.is_admin]);
   const [store, setStore] = useState(() => searchParams.get("shop") ?? "all");
   const [viewMode, setViewMode] = useState("day");
   // Состояние вкладки «Отгрузка»: кнопка «Рассчитать» пересчитывает всю таблицу (все товары без фильтра); данные общие для всех магазинов до следующего пересчёта
@@ -608,7 +622,11 @@ function Dashboard() {
             expanded={howItWorksExpanded}
             onExpandedChange={setHowItWorksExpanded}
           />
-          <SummaryTabs activeTab={activeTab} onTabChange={handleTabChange} />
+          <SummaryTabs
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+            showCogsTab={!!user?.is_admin}
+          />
         </div>
         {activeTab === "expenses" ? (
           <div className="min-h-10" aria-hidden />
@@ -724,7 +742,7 @@ function Dashboard() {
             onOpenProductHandled={handleOpenProductHandled}
           />
         </div>
-      ) : activeTab === "cogs" ? (
+      ) : activeTab === "cogs" && user?.is_admin ? (
         <div className="mt-6">
           <CogsView shop={selectedShop} onDataChanged={handleCogsDataChanged} />
         </div>
