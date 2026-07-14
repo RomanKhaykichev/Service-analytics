@@ -96,6 +96,8 @@ type SortDirection = "asc" | "desc" | null;
 
 interface CogsViewProps {
   shop?: string | null;
+  /** Вызывается после сохранения/удаления/импорта себестоимости */
+  onDataChanged?: () => void;
 }
 
 const HISTORY_VISIBLE_ROWS = 4;
@@ -110,7 +112,7 @@ const PRODUCT_NAME_COLUMN_CLASS = cn(
   "max-w-[min(400px,88vw)] md:max-w-[400px]"
 );
 
-export function CogsView({ shop }: CogsViewProps) {
+export function CogsView({ shop, onDataChanged }: CogsViewProps) {
   const { t, language } = useLanguage();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
@@ -212,6 +214,7 @@ export function CogsView({ shop }: CogsViewProps) {
     onSuccess: (data) => {
       queryClient.setQueryData(historyQueryKey, data);
       queryClient.invalidateQueries({ queryKey: ["product-cogs"] });
+      onDataChanged?.();
       toast.success(t("cogs.historyDeleted"));
     },
     onError: (error: Error) => {
@@ -244,6 +247,7 @@ export function CogsView({ shop }: CogsViewProps) {
     onSuccess: async () => {
       await queryClient.refetchQueries({ queryKey });
       await queryClient.invalidateQueries({ queryKey: ["product-cogs-history"] });
+      onDataChanged?.();
       toast.success(t("cogs.saved"));
       setEditItem(null);
       setEditValue("");
@@ -289,6 +293,7 @@ export function CogsView({ shop }: CogsViewProps) {
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey });
       if (result.imported > 0) {
+        onDataChanged?.();
         setTemplateAppliedCount(result.imported);
         setTemplateAppliedDialogOpen(true);
       } else {

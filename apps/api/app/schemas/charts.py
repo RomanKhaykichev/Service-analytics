@@ -193,7 +193,7 @@ class ProductsTableItem(BaseModel):
     stock: Optional[int] = None         # Остаток = Общий остаток (leftout_old)
     fbs_stock: Optional[int] = None     # Остаток FBS (leftout_old)
     size_group: Optional[str] = None   # Габаритная группа; «Неопределенная» → «-»
-    cogs: float = 0.0                   # Себестоимость (сумы) (sells_report) - удельная себестоимость для отображения
+    cogs: Optional[float] = None        # Удельная себестоимость: последняя продажа в периоде (как на Сводке)
     stock_unit_cogs: Optional[float] = None  # Себест. за ед. на складе FBO: последняя Profiboard, иначе left-out
     stock_cogs_line: Optional[float] = None  # Себест. строки склада FBO = stock_unit_cogs × «В продаже»
     cogs_total: float = 0.0             # Общая себестоимость = сумма (cogs_sum × (qty − returns_qty)) по завершённым продажам

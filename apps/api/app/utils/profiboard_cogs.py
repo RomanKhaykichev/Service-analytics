@@ -8,7 +8,16 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db import qname
-from app.routes.imports import table_exists
+
+
+def _table_exists(db: Session, full_name: str) -> bool:
+    try:
+        return db.execute(
+            text("SELECT to_regclass(:t) IS NOT NULL"),
+            {"t": full_name},
+        ).scalar() is True
+    except Exception:
+        return False
 
 
 def _safe_float(value) -> Optional[float]:
@@ -41,7 +50,7 @@ def load_latest_profiboard_by_barcode(db: Session, user_id: UUID) -> dict[str, d
             latest[bn] = {"cogs": cogs_val, "effective_from": eff_str}
 
     hist_tbl = qname("manual_product_cogs_history")
-    if table_exists(db, hist_tbl):
+    if _table_exists(db, hist_tbl):
         for row in db.execute(
             text(f"""
                 SELECT DISTINCT ON (barcode_norm)
@@ -56,7 +65,7 @@ def load_latest_profiboard_by_barcode(db: Session, user_id: UUID) -> dict[str, d
             _consider(bn, row[1], row[2])
 
     manual_tbl = qname("manual_product_cogs")
-    if table_exists(db, manual_tbl):
+    if _table_exists(db, manual_tbl):
         for row in db.execute(
             text(f"""
                 SELECT barcode_norm, effective_from, cogs_sum

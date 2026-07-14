@@ -1,20 +1,14 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   Search,
   Layers,
   ChevronUp,
   ChevronDown,
 } from "lucide-react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -29,6 +23,9 @@ import { ProductDetailView } from "./ProductDetailView";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, buildQueryParams } from "@/lib/api";
 import { ProductThumbnail } from "@/components/dashboard/ProductThumbnail";
+
+const PRODUCTS_TABLE_COL_COUNT = 19;
+const PRODUCTS_ROW_ESTIMATE_PX = 64;
 
 /** Элемент таблицы товаров: left-out-report_old + sells_report по штрихкоду */
 export interface ProductsTableItemType {
@@ -51,7 +48,7 @@ export interface ProductsTableItemType {
   stock: number | null;
   fbs_stock: number | null;
   size_group: string | null;
-  cogs: number;
+  cogs: number | null;
   stock_unit_cogs?: number | null;
   stock_cogs_line?: number | null;
   cogs_total: number;
@@ -134,7 +131,13 @@ export function ProductsView({
     }
   }, [selectedProduct]);
 
-  const { data: productsData, isLoading: productsLoading } = useQuery({
+  const {
+    data: productsData,
+    isPending: productsPending,
+    isFetching: productsFetching,
+    isError: productsError,
+    error: productsErrorDetail,
+  } = useQuery({
     queryKey: ["products-table", shop, dateFrom, dateTo],
     queryFn: async () => {
       const params = buildQueryParams({ 
@@ -142,12 +145,16 @@ export function ProductsView({
         date_from: dateFrom ?? undefined,
         date_to: dateTo ?? undefined,
       });
-      return apiGet<ProductsTableResponse>("/api/charts/products-table", params);
+      return apiGet<ProductsTableResponse>("/api/charts/products-table", params, {
+        timeoutMs: 120_000,
+      });
     },
     refetchOnWindowFocus: false,
   });
 
   const products: ProductsTableItemType[] = productsData?.items ?? [];
+  const productsInitialLoading = productsPending && !productsData;
+  const productsRefetching = productsFetching && !!productsData;
 
   // Прибыль и ABC-прибыль в таблице Товары привязываем к введённому проценту налога:
   // Прибыль = сумма revenue_sum по завершённым - сумма (cogs_sum * qty) по завершённым - сумма commission_sum по завершённым - сумма logistics_sum по завершённым - налог с учетом процента на вкладке сводка
@@ -256,6 +263,9 @@ export function ProductsView({
   /** Числа в колонках без суффикса «сум» */
   const formatValue = (price: number) => new Intl.NumberFormat("ru-RU").format(price);
 
+  const displayCellText = (value: string | null | undefined) =>
+    value != null && String(value).trim() !== "" ? value : "—";
+
   const getAbcBadge = (abc: string | null) => {
     if (abc == null || abc === "") return null;
     switch (abc) {
@@ -310,17 +320,17 @@ export function ProductsView({
     );
   };
 
-  const filteredProducts = displayProducts.filter((p) => {
-    if (!searchQuery.trim()) return true;
+  const filteredProducts = useMemo(() => {
+    if (!searchQuery.trim()) return displayProducts;
     const q = searchQuery.trim().toLowerCase();
-    return (
-      (p.product_name?.toLowerCase().includes(q)) ||
-      (p.sku?.toLowerCase().includes(q)) ||
-      (p.barcode?.toLowerCase().includes(q))
+    return displayProducts.filter(
+      (p) =>
+        (p.product_name?.toLowerCase().includes(q)) ||
+        (p.sku?.toLowerCase().includes(q)) ||
+        (p.barcode?.toLowerCase().includes(q))
     );
-  });
+  }, [displayProducts, searchQuery]);
 
-  const ABC_FIELDS: SortField[] = ["abc_orders", "abc_revenue", "abc_profit"];
   const abcRank = (v: string | null | undefined): number => {
     const s = (v ?? "").toString().trim().toUpperCase();
     if (s === "A") return 1;
@@ -329,39 +339,55 @@ export function ProductsView({
     return 0; // пусто или неизвестное — в конец
   };
 
-  const sortedProducts = [...filteredProducts].sort((a, b) => {
-    if (!sortField || !sortDirection) return 0;
-
-    let aValue: unknown = a[sortField as keyof ProductsTableItemType];
-    let bValue: unknown = b[sortField as keyof ProductsTableItemType];
+  const sortedProducts = useMemo(() => {
+    if (!sortField || !sortDirection) return filteredProducts;
 
     const pushEmptyToEnd = sortDirection === "asc" ? Infinity : -Infinity;
+    const abcFields: SortField[] = ["abc_orders", "abc_revenue", "abc_profit"];
 
-    if (ABC_FIELDS.includes(sortField)) {
-      const aR = abcRank(aValue as string);
-      const bR = abcRank(bValue as string);
-      if (aR === 0 && bR === 0) return 0;
-      if (aR === 0) return 1;
-      if (bR === 0) return -1;
-      if (sortDirection === "asc") return aR - bR;
-      return bR - aR;
-    }
+    return [...filteredProducts].sort((a, b) => {
+      let aValue: unknown = a[sortField as keyof ProductsTableItemType];
+      let bValue: unknown = b[sortField as keyof ProductsTableItemType];
 
-    if (aValue === null || aValue === undefined) aValue = pushEmptyToEnd;
-    if (bValue === null || bValue === undefined) bValue = pushEmptyToEnd;
+      if (abcFields.includes(sortField)) {
+        const aR = abcRank(aValue as string);
+        const bR = abcRank(bValue as string);
+        if (aR === 0 && bR === 0) return 0;
+        if (aR === 0) return 1;
+        if (bR === 0) return -1;
+        if (sortDirection === "asc") return aR - bR;
+        return bR - aR;
+      }
 
-    if (typeof aValue === "string" && typeof bValue === "string") {
-      return sortDirection === "asc"
-        ? aValue.localeCompare(bValue, "ru")
-        : bValue.localeCompare(aValue, "ru");
-    }
+      if (aValue === null || aValue === undefined) aValue = pushEmptyToEnd;
+      if (bValue === null || bValue === undefined) bValue = pushEmptyToEnd;
 
-    if (sortDirection === "asc") {
-      return (aValue as number) > (bValue as number) ? 1 : -1;
-    } else {
+      if (typeof aValue === "string" && typeof bValue === "string") {
+        return sortDirection === "asc"
+          ? aValue.localeCompare(bValue, "ru")
+          : bValue.localeCompare(aValue, "ru");
+      }
+
+      if (sortDirection === "asc") {
+        return (aValue as number) > (bValue as number) ? 1 : -1;
+      }
       return (aValue as number) < (bValue as number) ? 1 : -1;
-    }
+    });
+  }, [filteredProducts, sortField, sortDirection]);
+
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: sortedProducts.length,
+    getScrollElement: () => tableScrollRef.current,
+    estimateSize: () => PRODUCTS_ROW_ESTIMATE_PX,
+    overscan: 12,
   });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const paddingTop = virtualRows.length > 0 ? virtualRows[0].start : 0;
+  const paddingBottom =
+    virtualRows.length > 0
+      ? rowVirtualizer.getTotalSize() - virtualRows[virtualRows.length - 1].end
+      : 0;
 
   // Map API item to Product shape for ProductDetailView (как на Сводке: те же формулы по ID карточки)
   const productToDetailShape = (p: ProductsTableItemType) => ({
@@ -411,7 +437,9 @@ export function ProductsView({
         date_to: dateTo ?? undefined,
         // Не передаем shop, чтобы получить все данные без фильтрации по магазину
       });
-      return apiGet<ProductsTableResponse>("/api/charts/products-table", params);
+      return apiGet<ProductsTableResponse>("/api/charts/products-table", params, {
+        timeoutMs: 120_000,
+      });
     },
     enabled: !!selectedProduct, // Запрос выполняется только когда товар выбран
     refetchOnWindowFocus: false,
@@ -552,13 +580,25 @@ export function ProductsView({
       </div>
 
       {/* Products Table */}
-      {productsLoading ? (
+      {productsInitialLoading ? (
         <div className="rounded-lg border border-border p-8 text-center text-muted-foreground">
-          Загрузка товаров…
+          {t('products.loading')}
+        </div>
+      ) : productsError ? (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-8 text-center text-destructive">
+          {productsErrorDetail instanceof Error
+            ? productsErrorDetail.message
+            : t('products.loadError')}
         </div>
       ) : (
-      <div className="data-table animate-fade-in w-full min-w-0 max-w-full rounded-lg border border-border">
+      <div className="relative data-table animate-fade-in w-full min-w-0 max-w-full rounded-lg border border-border">
+        {productsRefetching ? (
+          <div className="absolute inset-0 z-50 flex items-center justify-center rounded-lg bg-background/60 backdrop-blur-[1px]">
+            <span className="text-sm text-muted-foreground">{t('products.updating')}</span>
+          </div>
+        ) : null}
         <div
+          ref={tableScrollRef}
           className={cn(
             "max-h-[min(70vh,42rem)] sm:max-h-[min(75vh,48rem)] lg:max-h-[min(78vh,52rem)]",
             "overflow-auto overscroll-contain",
@@ -639,22 +679,34 @@ export function ProductsView({
             <TableBody>
               {sortedProducts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={19} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={PRODUCTS_TABLE_COL_COUNT} className="text-center text-muted-foreground py-8">
                     {t('table.noDataProducts')}
                   </TableCell>
                 </TableRow>
               ) : (
-              sortedProducts.map((product, idx) => {
-                const id = productId(product, idx);
-                return (
+                <>
+                  {paddingTop > 0 ? (
+                    <tr aria-hidden="true">
+                      <td
+                        colSpan={PRODUCTS_TABLE_COL_COUNT}
+                        style={{ height: paddingTop, padding: 0, border: 0 }}
+                      />
+                    </tr>
+                  ) : null}
+                  {virtualRows.map((virtualRow) => {
+                    const product = sortedProducts[virtualRow.index];
+                    const id = productId(product, virtualRow.index);
+                    return (
                 <TableRow
                   key={id}
+                  data-index={virtualRow.index}
+                  ref={rowVirtualizer.measureElement}
                   className="cursor-pointer hover:bg-muted/50"
                   onClick={() => setSelectedProduct(product)}
                 >
                   <TableCell
                     className={cn(
-                      "sticky left-0 z-10 border-r border-border bg-gray-50/95 pl-4 backdrop-blur-sm dark:bg-gray-800/90",
+                      "sticky left-0 z-10 border-r border-border bg-gray-50/95 pl-4 dark:bg-gray-800/90",
                       "min-w-[min(260px,72vw)] sm:min-w-[300px] md:min-w-[360px] max-w-[min(400px,88vw)] md:max-w-[400px]"
                     )}
                   >
@@ -664,7 +716,7 @@ export function ProductsView({
                         alt={product.product_name ?? t("product.name")}
                       />
                       <div className="min-w-0 break-words whitespace-normal text-sm">
-                        <p className="font-medium text-foreground">{product.product_name ?? "—"}</p>
+                        <p className="font-medium text-foreground">{displayCellText(product.product_name)}</p>
                         <p className="text-xs text-muted-foreground">
                           {groupByCards ? `ID: ${product.product_id ?? "—"}` : `SKU: ${product.sku ?? ""}`}
                         </p>
@@ -701,7 +753,7 @@ export function ProductsView({
                     </span>
                   </TableCell>
                   <TableCell className="text-center">
-                    {product.cogs ? (
+                    {product.cogs != null ? (
                       <span className="font-medium">{formatValue(product.cogs)}</span>
                     ) : (
                       <span className="text-muted-foreground">—</span>
@@ -732,8 +784,18 @@ export function ProductsView({
                     {product.shop ?? "—"}
                   </TableCell>
                 </TableRow>
-              );
-              }) )}
+                    );
+                  })}
+                  {paddingBottom > 0 ? (
+                    <tr aria-hidden="true">
+                      <td
+                        colSpan={PRODUCTS_TABLE_COL_COUNT}
+                        style={{ height: paddingBottom, padding: 0, border: 0 }}
+                      />
+                    </tr>
+                  ) : null}
+                </>
+              )}
             </TableBody>
           </Table>
         </div>

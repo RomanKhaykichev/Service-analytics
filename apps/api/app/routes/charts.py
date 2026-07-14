@@ -1459,21 +1459,27 @@ async def get_products_table(
                 orders_value = processing_value = completed_value = returns_value = 0.0
                 revenue = cogs_total = commission = logistics = 0.0
 
-            # Цена и Себестоимость для таблицы: используем значения от последней даты продаж, если есть.
+            # Цена и себестоимость для таблицы: как на Сводке — от последней продажи в периоде
+            # (ручная Profiboard с effective_from <= дата продажи, иначе cogs_sum из sells-report).
             display_price = None
             display_cogs = None
             if barcode_norm:
                 last_unit = last_price_cogs_by_barcode.get(barcode_norm)
                 if last_unit:
                     display_price = last_unit["price"]
-                    display_cogs = last_unit["cogs"]
+                    if last_unit.get("cogs") is not None:
+                        display_cogs = last_unit["cogs"]
 
             if display_price is None:
                 # Fallback: старая логика (из left-out-report или по данным leftout_old)
                 display_price = price
             if display_cogs is None:
-                # Fallback: агрегированная себестоимость
-                display_cogs = cogs_total
+                leftout_unit = _parse_num(
+                    data.get("Себест. (сумы)")
+                    or _get_data_ru_uz(data, ["Себест. (сумы)"], [])
+                )
+                if leftout_unit is not None:
+                    display_cogs = leftout_unit
 
             # Прибыль по тому же принципу, что и для ABC-прибыли:
             profit = revenue - cogs_total - commission - logistics - (revenue * 0.01)
