@@ -90,6 +90,7 @@ type SortField =
   | "lk_cogs"
   | "actual_cogs"
   | "unit_margin"
+  | "calculation_source"
   | "date";
 
 type SortDirection = "asc" | "desc" | null;
@@ -702,14 +703,17 @@ export function CogsView({ shop, onDataChanged }: CogsViewProps) {
                   <SortableHeader field="unit_margin" className="min-w-[90px]">
                     {t("cogs.unitMargin")}
                   </SortableHeader>
-                  <StaticHeader className="min-w-[100px]">
+                  <SortableHeader field="calculation_source" className="min-w-[100px]">
                     <SplitHeaderLabel
                       line1={t("cogs.calculationLine1")}
                       line2={t("cogs.calculationLine2")}
                     />
-                  </StaticHeader>
+                  </SortableHeader>
                   <SortableHeader field="date" className="min-w-[90px]">
-                    {t("cogs.date")}
+                    <SplitHeaderLabel
+                      line1={t("cogs.dateLine1")}
+                      line2={t("cogs.dateLine2")}
+                    />
                   </SortableHeader>
                   <StaticHeader className="min-w-[88px]">
                     {t("cogs.actions")}

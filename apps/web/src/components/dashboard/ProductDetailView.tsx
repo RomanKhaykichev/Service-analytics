@@ -342,8 +342,10 @@ export function ProductDetailView({
 
   const taxAmount = product.revenue * (taxPercent / 100);
   const totalExpenses = product.uzumCommission + product.uzumLogistics + product.cogsTotal + taxAmount + productExtraExpenses;
-  const salesProfitability = product.revenue > 0 ? (product.profit / product.revenue) * 100 : 0;
-  const roi = totalExpenses > 0 ? (product.profit / totalExpenses) * 100 : 0;
+  // Прибыль = Выручка − Расходы (включая доп. расходы), как на Сводке
+  const profit = product.revenue - totalExpenses;
+  const salesProfitability = product.revenue > 0 ? (profit / product.revenue) * 100 : 0;
+  const roi = totalExpenses > 0 ? (profit / totalExpenses) * 100 : 0;
   const revenueSharePercent = totalRevenueProp > 0 ? (product.revenue / totalRevenueProp) * 100 : 0;
   // Себест. тов. = сумма stock_cogs_line по вариантам (как СКЛАД UZUM на Сводке), иначе stockUnitCogs × stock
   const stockCost =
@@ -383,7 +385,7 @@ export function ProductDetailView({
   const financeMetrics = [
     { icon: <DollarSign className="w-4 h-4" />, label: t('summary.finance.revenue'), value: formatCurrency(product.revenue), tooltip: t('summary.finance.revenueTooltip') },
     { icon: <TrendingDown className="w-4 h-4" />, label: t('summary.finance.expenses'), value: formatCurrency(totalExpenses), tooltip: t('summary.finance.expensesTooltip') },
-    { icon: <Wallet className="w-4 h-4" />, label: t('summary.finance.profit'), value: formatCurrency(product.profit), tooltip: t('summary.finance.profitTooltip') },
+    { icon: <Wallet className="w-4 h-4" />, label: t('summary.finance.profit'), value: formatCurrency(profit), tooltip: t('summary.finance.profitTooltip') },
     { icon: <Target className="w-4 h-4" />, label: t('summary.finance.salesProfitability'), value: formatPercent(salesProfitability), tooltip: t('summary.finance.salesProfitabilityTooltip') },
     { icon: <BarChart3 className="w-4 h-4" />, label: t('summary.finance.roi'), value: formatPercent(roi), tooltip: t('summary.finance.roiTooltip') },
     { icon: <TrendingUp className="w-4 h-4" />, label: t('summary.finance.revenueTrend'), value: formatTrend(revenueTrend), trend: (revenueTrend >= 0 ? "up" : "down") as const, trendValue: "", tooltip: t('summary.finance.revenueTrendTooltip') },
