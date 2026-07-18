@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { CircleHelp, ChevronDown, PlayCircle, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -108,9 +109,33 @@ function HowItWorksListItemText({
   item,
   t,
 }: {
-  item: { textKey: string; textKeyAfter?: string; italic?: boolean; metricHelpIcon?: boolean };
+  item: {
+    textKey: string;
+    textKeyAfter?: string;
+    italic?: boolean;
+    metricHelpIcon?: boolean;
+    linkTo?: string;
+    linkTextKey?: string;
+  };
   t: (key: string) => string;
 }) {
+  if (item.linkTo && item.linkTextKey) {
+    const before = item.textKey ? t(item.textKey) : "";
+    const after = item.textKeyAfter ? t(item.textKeyAfter) : "";
+    return (
+      <span className={cn(item.italic && "text-muted-foreground/80 italic")}>
+        {before}
+        <Link
+          to={item.linkTo}
+          className="text-primary underline underline-offset-2 hover:text-primary/80"
+        >
+          {t(item.linkTextKey)}
+        </Link>
+        {after}
+      </span>
+    );
+  }
+
   if (item.metricHelpIcon && item.textKeyAfter) {
     const before = item.textKey ? t(item.textKey) : "";
     const after = t(item.textKeyAfter);
@@ -151,7 +176,7 @@ export function TabHowItWorksPanel({ tab, expanded, className }: TabHowItWorksPa
   const [videoOpen, setVideoOpen] = useState(false);
 
   const config = TAB_HOW_IT_WORKS_CONFIG[tab];
-  const video = getTrainingVideoById(config.videoId);
+  const video = config.videoId ? getTrainingVideoById(config.videoId) : undefined;
 
   if (!expanded) return null;
 
@@ -175,7 +200,10 @@ export function TabHowItWorksPanel({ tab, expanded, className }: TabHowItWorksPa
               <h3 className="font-semibold text-foreground">{panelTitle}</h3>
               <ul className="mt-2 text-sm text-muted-foreground space-y-1.5">
                 {config.items.map((item) => (
-                  <li key={item.textKey} className="flex items-start gap-2">
+                  <li
+                    key={`${item.textKey}-${item.linkTextKey ?? ""}-${item.textKeyAfter ?? ""}`}
+                    className="flex items-start gap-2"
+                  >
                     <span className="text-blue-600 dark:text-blue-400">•</span>
                     <HowItWorksListItemText item={item} t={t} />
                   </li>

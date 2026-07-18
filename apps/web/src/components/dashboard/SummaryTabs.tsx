@@ -4,31 +4,25 @@ import { useLanguage } from "@/contexts/LanguageContext";
 interface SummaryTabsProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
-  showCogsTab?: boolean;
 }
 
 const tabsData = [
   { id: "summary", labelKey: "tabs.summary" },
   { id: "daily", labelKey: "tabs.daily" },
   { id: "products", labelKey: "tabs.products" },
-  { id: "cogs", labelKey: "tabs.cogs" },
   { id: "expenses", labelKey: "tabs.expenses" },
   { id: "shipment", labelKey: "tabs.shipment" },
   { id: "monthly", labelKey: "tabs.summary" },
 ];
 
-export function SummaryTabs({ activeTab, onTabChange, showCogsTab = false }: SummaryTabsProps) {
+export function SummaryTabs({ activeTab, onTabChange }: SummaryTabsProps) {
   const { t } = useLanguage();
-  const visibleTabs = showCogsTab
-    ? tabsData
-    : tabsData.filter((tab) => tab.id !== "cogs");
   
   const getTabLabel = (id: string) => {
     switch (id) {
       case "summary": return t('tabs.summary');
       case "daily": return t('tabs.daily');
       case "products": return t('tabs.products');
-      case "cogs": return t('tabs.cogs');
       case "expenses": return t('tabs.expensesExtra');
       case "shipment": return t('tabs.shipmentLabel');
       case "monthly": return t('tabs.monthly');
@@ -38,7 +32,7 @@ export function SummaryTabs({ activeTab, onTabChange, showCogsTab = false }: Sum
   
   return (
     <div className="flex items-center gap-1 border-b border-border">
-      {visibleTabs.map((tab) => (
+      {tabsData.map((tab) => (
         <button
           key={tab.id}
           onClick={() => onTabChange(tab.id)}

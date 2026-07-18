@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Bell, HelpCircle, User, ChevronDown, LogOut, CreditCard, Globe, PlayCircle, MessageCircle, ShieldCheck, KeyRound, Trash2 } from "lucide-react";
+import { Bell, HelpCircle, User, ChevronDown, LogOut, CreditCard, Globe, PlayCircle, MessageCircle, ShieldCheck, KeyRound, Trash2, CircleDollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -578,6 +578,12 @@ export function HeaderActions({
             <Link to="/support?tab=contact">
               <MessageCircle className="w-4 h-4 mr-2" />
               {t("header.support")}
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem className="cursor-pointer" asChild>
+            <Link to="/cogs">
+              <CircleDollarSign className="w-4 h-4 mr-2" />
+              {t("header.enterCogs")}
             </Link>
           </DropdownMenuItem>
         </DropdownMenuContent>

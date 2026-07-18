@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
-import { ShoppingCart, Truck, Package, RotateCcw, Percent, CreditCard, DollarSign, TrendingDown, Wallet, Target, BarChart3, TrendingUp, ArrowDown, AlertTriangle, Boxes, Warehouse, Tag, ShoppingBag, Receipt, Info } from "lucide-react";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { ShoppingCart, Truck, Package, RotateCcw, Percent, CreditCard, DollarSign, TrendingDown, Wallet, Target, BarChart3, TrendingUp, ArrowDown, AlertTriangle, Boxes, Warehouse, Tag, ShoppingBag, Receipt, Info, Pencil } from "lucide-react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { SummaryTabs } from "@/components/dashboard/SummaryTabs";
 import { SummaryFilters } from "@/components/dashboard/SummaryFilters";
@@ -17,7 +16,6 @@ import { ShipmentView } from "@/components/dashboard/ShipmentView";
 import { HeaderActions, type RatingNotificationProduct } from "@/components/dashboard/HeaderActions";
 import type { UzumApiConnectDialogHandle } from "@/components/dashboard/UzumApiConnectDialog";
 import { ProductsView, type ProductsTableItemType } from "@/components/dashboard/ProductsView";
-import { CogsView } from "@/components/dashboard/CogsView";
 import { TabHowItWorksTrigger, TabHowItWorksPanel } from "@/components/dashboard/TabHowItWorksBlock";
 import type { DashboardTabId } from "@/data/trainingVideos";
 import type { WeeklyInsightProduct } from "@/hooks/useSummaryWeeklyInsights";
@@ -39,13 +37,11 @@ import { DateRangeProvider, useDateRange } from "@/contexts/DateRangeContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getWeeklyInsightRanges } from "@/lib/weekRanges";
 import { getNextUzumSyncSchedule } from "@/lib/uzumSyncSchedule";
-import { invalidateCogsDependentQueries } from "@/lib/invalidateCogsDependentQueries";
 
 const VALID_DASHBOARD_TABS = new Set([
   "summary",
   "daily",
   "products",
-  "cogs",
   "expenses",
   "shipment",
   "monthly",
@@ -53,18 +49,17 @@ const VALID_DASHBOARD_TABS = new Set([
 
 function Dashboard() {
   const { t, language } = useLanguage();
-  const { user, loading: authLoading } = useAuth();
-  const queryClient = useQueryClient();
-  const cogsDirtyRef = useRef(false);
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTabState] = useState(() => {
     const tab = searchParams.get("tab");
+    if (tab === "cogs") return "summary";
     return tab && VALID_DASHBOARD_TABS.has(tab) ? tab : "summary";
   });
   const changeActiveTab = useCallback(
     (tab: string) => {
       if (!VALID_DASHBOARD_TABS.has(tab)) return;
-      if (tab === "cogs" && !user?.is_admin) return;
       setActiveTabState(tab);
       setSearchParams(
         (prev) => {
@@ -76,21 +71,20 @@ function Dashboard() {
         { replace: true },
       );
     },
-    [setSearchParams, user?.is_admin],
+    [setSearchParams],
   );
 
+  // Старые ссылки ?tab=cogs → отдельная страница
   useEffect(() => {
-    if (authLoading || activeTab !== "cogs" || user?.is_admin) return;
-    setActiveTabState("summary");
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.delete("tab");
-        return next;
-      },
-      { replace: true },
-    );
-  }, [activeTab, authLoading, setSearchParams, user?.is_admin]);
+    if (searchParams.get("tab") !== "cogs") return;
+    const shop = searchParams.get("shop");
+    const target =
+      shop && shop !== "all"
+        ? `/cogs?shop=${encodeURIComponent(shop)}`
+        : "/cogs";
+    navigate(target, { replace: true });
+  }, [navigate, searchParams]);
+
   const [store, setStore] = useState(() => searchParams.get("shop") ?? "all");
   const [viewMode, setViewMode] = useState("day");
   // Состояние вкладки «Отгрузка»: кнопка «Рассчитать» пересчитывает всю таблицу (все товары без фильтра); данные общие для всех магазинов до следующего пересчёта
@@ -175,22 +169,14 @@ function Dashboard() {
     changeActiveTab("daily");
   }, [changeActiveTab]);
 
-  const handleCogsDataChanged = useCallback(() => {
-    cogsDirtyRef.current = true;
-  }, []);
-
   const handleTabChange = useCallback(
     (tab: string) => {
-      if (activeTab === "cogs" && tab !== "cogs" && cogsDirtyRef.current) {
-        void invalidateCogsDependentQueries(queryClient);
-        cogsDirtyRef.current = false;
-      }
       if (tab !== "daily") {
         setDailySeriesPreset("default");
       }
       changeActiveTab(tab);
     },
-    [activeTab, changeActiveTab, queryClient],
+    [changeActiveTab],
   );
 
   // Пользовательский процент для налога (по умолчанию 1%)
@@ -431,7 +417,27 @@ function Dashboard() {
       icon: <Boxes className="w-4 h-4" />,
       label: t('summary.expense.productCost'),
       value: formatCurrency(metrics.productCost),
-      tooltip: ""
+      tooltip: "",
+      action: (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link
+              to={
+                selectedShop
+                  ? `/cogs?shop=${encodeURIComponent(selectedShop)}`
+                  : "/cogs"
+              }
+              className="inline-flex text-primary/45 hover:text-primary/65 transition-colors"
+              aria-label={t("summary.expense.productCostEditTooltip")}
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="text-xs max-w-64">{t("summary.expense.productCostEditTooltip")}</p>
+          </TooltipContent>
+        </Tooltip>
+      ),
     },
     {
       icon: <Receipt className="w-4 h-4" />,
@@ -625,7 +631,6 @@ function Dashboard() {
           <SummaryTabs
             activeTab={activeTab}
             onTabChange={handleTabChange}
-            showCogsTab={!!user?.is_admin}
           />
         </div>
         {activeTab === "expenses" ? (
@@ -641,7 +646,7 @@ function Dashboard() {
             onViewModeChange={setViewMode}
             showStoreFilter
             showViewMode={activeTab === "daily"}
-            showPeriodFilter={activeTab !== "shipment" && activeTab !== "monthly" && activeTab !== "cogs"}
+            showPeriodFilter={activeTab !== "shipment" && activeTab !== "monthly"}
             shops={shops}
             minDate={minDate ?? undefined}
             maxDate={maxDate ?? undefined}
@@ -741,10 +746,6 @@ function Dashboard() {
             openProduct={productToOpen}
             onOpenProductHandled={handleOpenProductHandled}
           />
-        </div>
-      ) : activeTab === "cogs" && user?.is_admin ? (
-        <div className="mt-6">
-          <CogsView shop={selectedShop} onDataChanged={handleCogsDataChanged} />
         </div>
       ) : activeTab === "expenses" ? (
         <div className="mt-6">

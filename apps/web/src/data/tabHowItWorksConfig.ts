@@ -6,11 +6,14 @@ export interface TabHowItWorksItem {
   textKeyAfter?: string;
   italic?: boolean;
   metricHelpIcon?: boolean;
+  /** Внутренняя ссылка: textKey + linkTextKey (+ textKeyAfter) */
+  linkTo?: string;
+  linkTextKey?: string;
 }
 
 export interface TabHowItWorksTabConfig {
   items: TabHowItWorksItem[];
-  videoId: string;
+  videoId?: string;
 }
 
 export const TAB_HOW_IT_WORKS_CONFIG: Record<DashboardTabId, TabHowItWorksTabConfig> = {
@@ -18,6 +21,12 @@ export const TAB_HOW_IT_WORKS_CONFIG: Record<DashboardTabId, TabHowItWorksTabCon
     videoId: "1",
     items: [
       { textKey: "howItWorks.summary.item1" },
+      {
+        textKey: "howItWorks.summary.itemCogsBefore",
+        linkTextKey: "howItWorks.summary.itemCogsLink",
+        textKeyAfter: "howItWorks.summary.itemCogsAfter",
+        linkTo: "/cogs",
+      },
       {
         textKey: "howItWorks.summary.item2Before",
         textKeyAfter: "howItWorks.summary.item2After",
@@ -45,11 +54,11 @@ export const TAB_HOW_IT_WORKS_CONFIG: Record<DashboardTabId, TabHowItWorksTabCon
     ],
   },
   cogs: {
-    videoId: "3",
     items: [
       { textKey: "howItWorks.cogs.item1" },
       { textKey: "howItWorks.cogs.item2" },
       { textKey: "howItWorks.cogs.item3" },
+      { textKey: "howItWorks.cogs.item4" },
     ],
   },
   expenses: {

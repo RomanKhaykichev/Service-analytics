@@ -11,6 +11,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Analytics from "./pages/Analytics";
 import Products from "./pages/Products";
+import Cogs from "./pages/Cogs";
 import Trends from "./pages/Trends";
 import Competitors from "./pages/Competitors";
 import Reports from "./pages/Reports";
@@ -54,6 +55,7 @@ const App = () => (
               <Route path="/" element={<Index />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/products" element={<Products />} />
+              <Route path="/cogs" element={<Cogs />} />
               <Route path="/trends" element={<Trends />} />
               <Route path="/competitors" element={<Competitors />} />
               <Route path="/reports" element={<Reports />} />

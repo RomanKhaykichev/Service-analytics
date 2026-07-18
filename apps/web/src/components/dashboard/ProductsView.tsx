@@ -1,9 +1,11 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Search,
   Layers,
   ChevronUp,
   ChevronDown,
+  CircleDollarSign,
 } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@/components/ui/button";
@@ -113,6 +115,7 @@ export function ProductsView({
   onOpenProductHandled,
 }: ProductsViewProps) {
   const { t } = useLanguage();
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [groupByCards, setGroupByCards] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductsTableItemType | null>(null);
@@ -561,15 +564,31 @@ export function ProductsView({
 
           <div className="flex-1" />
 
-          <Button
-            variant={groupByCards ? "default" : "outline"}
-            size="sm"
-            className={groupByCards ? "bg-primary hover:bg-primary/90 text-primary-foreground" : ""}
-            onClick={() => setGroupByCards((prev) => !prev)}
-          >
-            <Layers className="w-4 h-4 mr-2" />
-            {t('products.groupByCards')}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                navigate(
+                  shop
+                    ? `/cogs?shop=${encodeURIComponent(shop)}`
+                    : "/cogs",
+                )
+              }
+            >
+              <CircleDollarSign className="w-4 h-4 mr-2" />
+              {t('products.enterCogs')}
+            </Button>
+            <Button
+              variant={groupByCards ? "default" : "outline"}
+              size="sm"
+              className={groupByCards ? "bg-primary hover:bg-primary/90 text-primary-foreground" : ""}
+              onClick={() => setGroupByCards((prev) => !prev)}
+            >
+              <Layers className="w-4 h-4 mr-2" />
+              {t('products.groupByCards')}
+            </Button>
+          </div>
         </div>
 
         {groupByCards && (

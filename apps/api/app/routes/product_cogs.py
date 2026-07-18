@@ -16,7 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db import get_db, qname
-from app.deps import require_admin
+from app.deps import require_user
 from app.routes.imports import table_exists
 from app.schemas.product_cogs import (
     ProductCogsHistoryEntry,
@@ -723,7 +723,7 @@ def _load_storage_shop_by_barcode(db: Session, user_id: UUID) -> dict[str, str]:
 
 @router.get("/product-cogs", response_model=ProductCogsListResponse)
 async def list_product_cogs(
-    user_id: UUID = Depends(require_admin),
+    user_id: UUID = Depends(require_user),
     shop: Optional[str] = Query(default=None, description="Shop name filter"),
     db: Session = Depends(get_db),
 ):
@@ -916,7 +916,7 @@ async def list_product_cogs(
 async def upsert_product_cogs(
     barcode_norm: str,
     body: ProductCogsUpsertRequest,
-    user_id: UUID = Depends(require_admin),
+    user_id: UUID = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     """Сохранить актуальную себестоимость (ЛК Profiboard)."""
@@ -962,7 +962,7 @@ async def upsert_product_cogs(
 @router.delete("/product-cogs/{barcode_norm}")
 async def delete_product_cogs(
     barcode_norm: str,
-    user_id: UUID = Depends(require_admin),
+    user_id: UUID = Depends(require_user),
     db: Session = Depends(get_db),
 ):
     """Удалить актуальную себестоимость — вернуться к ЛК Uzum."""
@@ -986,7 +986,7 @@ async def delete_product_cogs(
 @router.get("/product-cogs/{barcode_norm}/history", response_model=ProductCogsHistoryResponse)
 async def get_product_cogs_history(
     barcode_norm: str,
-    user_id: UUID = Depends(require_admin),
+    user_id: UUID = Depends(require_user),
     product_name: Optional[str] = Query(default=None),
     sku: Optional[str] = Query(default=None),
     lk_cogs: Optional[float] = Query(default=None, description="Себестоимость ЛК Uzum (fallback)"),
@@ -1014,7 +1014,7 @@ async def get_product_cogs_history(
 async def delete_product_cogs_history_period(
     barcode_norm: str,
     effective_from: str = Query(..., description="Дата начала периода Profiboard (YYYY-MM-DD)"),
-    user_id: UUID = Depends(require_admin),
+    user_id: UUID = Depends(require_user),
     product_name: Optional[str] = Query(default=None),
     sku: Optional[str] = Query(default=None),
     lk_cogs: Optional[float] = Query(default=None),
@@ -1169,7 +1169,7 @@ def _read_cogs_template_dataframe(content: bytes) -> pd.DataFrame:
 
 @router.get("/product-cogs/template")
 async def download_product_cogs_template(
-    user_id: UUID = Depends(require_admin),
+    user_id: UUID = Depends(require_user),
     shop: Optional[str] = Query(default=None, description="Shop name filter"),
     kind: str = Query(default="products", description="products | empty"),
     lang: Optional[str] = Query(default=None, description="Template language: ru | uz"),
@@ -1218,7 +1218,7 @@ async def download_product_cogs_template(
 
 @router.post("/product-cogs/template", response_model=ProductCogsTemplateUploadResponse)
 async def upload_product_cogs_template(
-    user_id: UUID = Depends(require_admin),
+    user_id: UUID = Depends(require_user),
     shop: Optional[str] = Query(default=None, description="Shop name filter"),
     effective_from: Optional[str] = Query(
         default=None,

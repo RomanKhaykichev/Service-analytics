@@ -17,6 +17,8 @@ interface MetricItem {
   trend?: "up" | "down" | "neutral";
   trendValue?: string;
   tooltip?: string;
+  /** Дополнительный контрол рядом с подписью (например, ссылка-редактирование). */
+  action?: ReactNode;
 }
 
 interface SummaryBlockProps {
@@ -139,6 +141,7 @@ export function SummaryBlock({
                     </Tooltip>
                   </TooltipProvider>
                 )}
+                {metric.action}
               </div>
               <div className="flex items-center gap-2">
                 {(metric.trend === "up" || metric.trend === "down") && (
@@ -209,6 +212,7 @@ export function SummaryBlock({
                               </Tooltip>
                             </TooltipProvider>
                           )}
+                          {metric.action}
                         </div>
                         <div className="flex items-center gap-2">
                           {(metric.trend === "up" || metric.trend === "down") && (
