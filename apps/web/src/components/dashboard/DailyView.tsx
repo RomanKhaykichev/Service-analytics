@@ -262,6 +262,8 @@ export function DailyView({
 
   const formatNumber = (num: number) => num.toLocaleString("ru-RU");
 
+  const metricColumns = columns.filter((col) => col.key !== "dateFormatted");
+
   const handleExportXLSX = () => {
     try {
       if (!tableRows.length) {
@@ -298,10 +300,48 @@ export function DailyView({
     }
   };
 
+  const renderSortButton = (col: { key: string; label: string }, align: "left" | "center" = "center") => (
+    <button
+      type="button"
+      onClick={() => handleSort(col.key as SortColumn)}
+      className={cn(
+        "flex items-center gap-0.5 hover:text-foreground transition-colors w-full min-w-0",
+        align === "left" ? "justify-start" : "justify-center"
+      )}
+    >
+      <span
+        className={cn(
+          "leading-tight whitespace-normal break-words",
+          align === "left" ? "text-left" : "text-center"
+        )}
+      >
+        {col.label}
+      </span>
+      <span className="flex flex-col shrink-0">
+        <ChevronUp
+          className={cn(
+            "h-3 w-3 -mb-1",
+            sortColumn === col.key && sortDirection === "asc"
+              ? "text-primary"
+              : "text-muted-foreground/50"
+          )}
+        />
+        <ChevronDown
+          className={cn(
+            "h-3 w-3",
+            sortColumn === col.key && sortDirection === "desc"
+              ? "text-primary"
+              : "text-muted-foreground/50"
+          )}
+        />
+      </span>
+    </button>
+  );
+
   return (
-    <div className="space-y-6">
+    <div className="w-full min-w-0 space-y-6">
       {/* График заказов и продаж: 8 метрик (все Line), кнопки выбора метрик, переключатель гранулярности — overlay слева снизу */}
-      <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
+      <div className="bg-card rounded-xl p-3 sm:p-5 border border-border shadow-sm min-w-0">
         <div className="flex items-center gap-3 flex-wrap mb-4">
           <h3 className="font-semibold text-foreground">{t('daily.chartTitle')}</h3>
           <div className="flex items-center gap-2 ml-auto flex-wrap justify-end">
@@ -324,7 +364,7 @@ export function DailyView({
           </div>
         </div>
 
-        <div className="relative h-80">
+        <div className="relative h-64 sm:h-80 min-w-0">
           {loadingChart ? (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               {t('daily.loading')}
@@ -408,115 +448,134 @@ export function DailyView({
       </div>
 
       {/* Table Section — Данные по дням from GET /api/charts/daily-summary */}
-      <div className="bg-card rounded-xl p-5 border border-border shadow-sm">
-        <div className="flex items-center justify-between mb-4 gap-3">
+      <div className="bg-card rounded-xl p-3 sm:p-5 border border-border shadow-sm w-full min-w-0">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
           <h3 className="font-semibold text-foreground">{t('daily.dataByDay')}</h3>
           <Button
             variant="outline"
             size="sm"
             onClick={handleExportXLSX}
             disabled={tableRows.length === 0}
+            className="w-full sm:w-auto shrink-0"
           >
             <Download className="w-4 h-4 mr-2" />
             {t('daily.exportXLSX')}
           </Button>
         </div>
-        <div
-          className={cn(
-            // Скролл справа и снизу — как в таблице Товары
-            "w-full min-w-0 max-w-full",
-            (filteredAndSortedData?.length ?? 0) > 15
-              ? "max-h-[min(70vh,32rem)] sm:max-h-[min(75vh,36rem)] lg:max-h-[min(78vh,40rem)] overflow-auto"
-              : "overflow-auto",
-            "overscroll-contain touch-pan-x touch-pan-y [scrollbar-gutter:stable]"
-          )}
-        >
-          {loadingTable ? (
-            <div className="py-8 text-center text-muted-foreground">{t('daily.loading')}</div>
-          ) : errorTable ? (
-            <div className="py-8 text-center text-destructive">{t('daily.loadError')}</div>
-          ) : (
-            <Table
-              wrapperClassName="overflow-visible min-w-0"
-              className="table-auto w-max min-w-[1100px] md:min-w-[1300px] lg:min-w-[1500px] caption-bottom"
+
+        {loadingTable ? (
+          <div className="py-8 text-center text-muted-foreground">{t('daily.loading')}</div>
+        ) : errorTable ? (
+          <div className="py-8 text-center text-destructive">{t('daily.loadError')}</div>
+        ) : filteredAndSortedData.length === 0 ? (
+          <div className="py-8 text-center text-muted-foreground">{t('daily.noDataPeriod')}</div>
+        ) : (
+          <>
+            {/* Mobile: карточки по дням */}
+            <div className="md:hidden space-y-3">
+              {filteredAndSortedData.map((row, idx) => (
+                <div
+                  key={row.date ?? idx}
+                  className="rounded-lg border border-border bg-background/60 p-3 space-y-3"
+                >
+                  <div className="font-semibold text-foreground">{row.dateFormatted}</div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs sm:text-sm">
+                    {metricColumns.map((col) => {
+                      const value = row[col.key as keyof typeof row];
+                      const isProfit = col.key === "profit";
+                      return (
+                        <div
+                          key={col.key}
+                          className={cn(
+                            "flex flex-col gap-0.5 min-w-0",
+                            isProfit && "col-span-2 border-t border-border pt-2 mt-0.5"
+                          )}
+                        >
+                          <span className="text-muted-foreground leading-tight">{col.label}</span>
+                          <span
+                            className={cn(
+                              "tabular-nums text-foreground",
+                              isProfit && "font-bold text-base"
+                            )}
+                          >
+                            {typeof value === "number" ? formatNumber(value) : value}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop / tablet: таблица с горизонтальным скроллом */}
+            <div
+              className={cn(
+                "hidden md:block relative data-table w-full min-w-0 max-w-full rounded-lg border border-border",
+                (filteredAndSortedData?.length ?? 0) > 15
+                  ? "max-h-[min(70vh,32rem)] lg:max-h-[min(78vh,40rem)]"
+                  : ""
+              )}
             >
-              <TableHeader>
-                <TableRow className="bg-violet-50/80 dark:bg-violet-950/30 border-border">
-                  {columns.map((col, index) => (
-                    <TableHead
-                      key={col.key}
-                      className={cn(
-                        "sticky top-0 z-20 text-muted-foreground px-2 py-1 border-b border-border",
-                        "bg-violet-50/95 dark:bg-violet-950/95 backdrop-blur-sm",
-                        isUz ? "whitespace-normal break-words min-w-0" : "whitespace-nowrap",
-                        col.key === "dateFormatted" ? "text-left" : "text-center",
-                        index === 0 && "sticky left-0 z-40 border-r border-border min-w-[120px] max-w-[160px]"
-                      )}
-                    >
-                      <button
-                        onClick={() => handleSort(col.key as SortColumn)}
-                        className={cn(
-                          "flex items-center gap-0.5 hover:text-foreground transition-colors w-full",
-                          isUz && "flex-wrap justify-center min-h-[2.5rem]",
-                          col.key === "dateFormatted" ? "justify-start" : "justify-center"
-                        )}
-                      >
-                        <span className={cn(isUz && "whitespace-normal break-words", col.key === "dateFormatted" ? "text-left" : "text-center")}>{col.label}</span>
-                        <span className="flex flex-col">
-                          <ChevronUp
-                            className={cn(
-                              "h-3 w-3 -mb-1",
-                              sortColumn === col.key && sortDirection === "asc"
-                                ? "text-primary"
-                                : "text-muted-foreground/50"
-                            )}
-                          />
-                          <ChevronDown
-                            className={cn(
-                              "h-3 w-3",
-                              sortColumn === col.key && sortDirection === "desc"
-                                ? "text-primary"
-                                : "text-muted-foreground/50"
-                            )}
-                          />
-                        </span>
-                      </button>
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredAndSortedData.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={columns.length} className="text-center text-muted-foreground py-8">
-                      {t('daily.noDataPeriod')}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredAndSortedData.map((row, idx) => (
-                    <TableRow key={row.date ?? idx} className="border-border hover:bg-muted/50">
-                      <TableCell className="font-medium text-foreground px-2 py-1 whitespace-nowrap text-left min-w-0 sticky left-0 z-10 bg-card border-r border-border min-w-[120px] max-w-[160px]">
-                        {row.dateFormatted}
-                      </TableCell>
-                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.orders)}</TableCell>
-                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.buys)}</TableCell>
-                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.returns)}</TableCell>
-                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.revenue)}</TableCell>
-                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.commission)}</TableCell>
-                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.logistics)}</TableCell>
-                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.storage)}</TableCell>
-                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.ads)}</TableCell>
-                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.penalties)}</TableCell>
-                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.cogs)}</TableCell>
-                      <TableCell className="text-foreground px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.taxes)}</TableCell>
-                      <TableCell className="text-foreground font-bold px-2 py-1 whitespace-nowrap text-center">{formatNumber(row.profit)}</TableCell>
-                    </TableRow>
-                  ))
+              <div
+                className={cn(
+                  "overflow-auto overscroll-contain touch-pan-x touch-pan-y [scrollbar-gutter:stable]",
+                  (filteredAndSortedData?.length ?? 0) > 15 && "max-h-[min(70vh,32rem)] lg:max-h-[min(78vh,40rem)]"
                 )}
-              </TableBody>
-            </Table>
-          )}
-        </div>
+              >
+                <Table
+                  wrapperClassName="overflow-visible min-w-0"
+                  className="w-max min-w-full caption-bottom text-xs lg:text-sm"
+                >
+                  <TableHeader>
+                    <TableRow className="bg-violet-50/80 dark:bg-violet-950/30 border-border">
+                      {columns.map((col, index) => (
+                        <TableHead
+                          key={col.key}
+                          className={cn(
+                            "sticky top-0 z-20 text-muted-foreground px-1.5 lg:px-2 py-1.5 border-b border-border",
+                            "bg-violet-50/95 dark:bg-violet-950/95 backdrop-blur-sm",
+                            "whitespace-normal leading-tight align-bottom",
+                            col.key === "dateFormatted" ? "text-left" : "text-center",
+                            index === 0 &&
+                              "sticky left-0 z-40 border-r border-border min-w-[6.5rem] lg:min-w-[7.5rem]",
+                            index > 0 && "min-w-[4.5rem] lg:min-w-[5.5rem]"
+                          )}
+                        >
+                          {renderSortButton(col, col.key === "dateFormatted" ? "left" : "center")}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredAndSortedData.map((row, idx) => (
+                      <TableRow key={row.date ?? idx} className="border-border hover:bg-muted/50">
+                        <TableCell className="font-medium text-foreground px-1.5 lg:px-2 py-1.5 whitespace-nowrap text-left sticky left-0 z-10 bg-card border-r border-border min-w-[6.5rem] lg:min-w-[7.5rem]">
+                          {row.dateFormatted}
+                        </TableCell>
+                        {metricColumns.map((col) => {
+                          const value = row[col.key as keyof typeof row];
+                          const isProfit = col.key === "profit";
+                          return (
+                            <TableCell
+                              key={col.key}
+                              className={cn(
+                                "text-foreground px-1.5 lg:px-2 py-1.5 whitespace-nowrap text-center tabular-nums",
+                                isProfit && "font-bold"
+                              )}
+                            >
+                              {typeof value === "number" ? formatNumber(value) : value}
+                            </TableCell>
+                          );
+                        })}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

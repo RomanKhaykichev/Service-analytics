@@ -24,6 +24,7 @@ from app.utils.metrics import (
     get_sales_metrics_sql,
     get_profit_sql,
     get_avg_check_sql,
+    sql_sales_barcode_norm,
     sql_cogs_line_amount,
     sql_effective_unit_cogs,
     sql_unit_price_from_rows,
@@ -810,8 +811,10 @@ async def get_shipment_recommendations(
     shop: Optional[str] = Query(default=None, description="Shop name (seller-storage) — фильтр по магазину через fact_storage_snapshot по баркодам"),
     db: Session = Depends(get_db)
 ):
-    """Рекомендации по отгрузке: данные из left-out-report_old (Оборачиваемость < 60).
-    Товар=Наименование, Артикул=SKU, Штрихкод, На складе=Общий остаток, Продаж в день=Среднесуточные продажи,
+    """Рекомендации по отгрузке: данные из left-out-report_old.
+    В таблицу: оборачиваемость < 60 ИЛИ «К отправке» > 0.
+    Товар=Наименование, Артикул=SKU, Штрихкод, На складе=Общий остаток.
+    Продаж в день = сумма количества заказанных товаров за последние 15 дней / 15.
     Рекомендуемое кол-во='-', Запланировано к отгрузке=К отправке.
     При shop: только строки, чей баркод есть в fact_storage_snapshot для выбранного магазина.
     """
@@ -863,13 +866,49 @@ async def get_shipment_recommendations(
         stg_result = db.execute(stg_query, params_stg)
         rows = stg_result.fetchall()
 
+        # Среднесуточные продажи для рекомендаций считаем по фактическим заказам:
+        # количество товаров в заказах за последние 15 дней / 15.
+        # Период заканчивается последней датой доступных продаж, чтобы расчёт был
+        # стабильным между синхронизациями и не смещался по календарю без новых данных.
+        sales_end_date = get_data_end_date(db, user_id)
+        sales_start_date = sales_end_date - timedelta(days=14)
+        sales_barcode_expr = sql_sales_barcode_norm("fs")
+        avg_sales_query = text(f"""
+            SELECT
+                {sales_barcode_expr} AS barcode_norm,
+                COALESCE(SUM(COALESCE(fs.qty, 0)), 0)::double precision / 15.0 AS sales_per_day
+            FROM {qname("fact_sales")} fs
+            WHERE fs.user_id = CAST(:user_id AS uuid)
+              AND fs.date_created >= CAST(:sales_start AS date)
+              AND fs.date_created < CAST(:sales_end AS date) + INTERVAL '1 day'
+              AND NULLIF({sales_barcode_expr}, '') IS NOT NULL
+            GROUP BY {sales_barcode_expr}
+        """)
+        avg_sales_rows = db.execute(
+            avg_sales_query,
+            {
+                "user_id": str(user_id),
+                "sales_start": sales_start_date.isoformat(),
+                "sales_end": sales_end_date.isoformat(),
+            },
+        ).fetchall()
+        avg_sales_by_barcode = {
+            str(row[0]).strip(): float(row[1] or 0)
+            for row in avg_sales_rows
+            if row[0] and str(row[0]).strip()
+        }
+
         items: list[ShipmentRecommendationItem] = []
         for row in rows:
             data = row[0]  # jsonb -> dict
             if not isinstance(data, dict):
                 continue
             turnover = _parse_turnover(data)
-            if turnover is None or turnover >= 60:
+            to_ship = _str_val(_get_data_ru_uz(data, ["К отправке"], ["Yuborishga", "Yuborishga mavjud"]))
+            to_ship_qty = _parse_num(to_ship) or 0.0
+            need_by_turnover = turnover is not None and turnover < 60
+            need_by_to_ship = to_ship_qty > 0
+            if not need_by_turnover and not need_by_to_ship:
                 continue
             barcode_raw = _str_val(row[1]) if len(row) > 1 else None
             in_sale_raw = _str_val(row[2]) if len(row) > 2 else None
@@ -877,12 +916,11 @@ async def get_shipment_recommendations(
             sku = _str_val(data.get("SKU"))
             barcode = _str_val(data.get("Штрихкод")) or barcode_raw
             stock = _str_val(_get_data_ru_uz(data, ["Общий остаток", "В продаже"], ["Umumiy qoldiq", "Sotuvda"])) or in_sale_raw
-            sales_per_day = _str_val(_get_data_ru_uz(
-                data,
-                ["Среднесуточные продажи", "Среднесуточные продажи FBO за 15 дней, шт"],
-                ["15 kun ichida FBO o'rtacha kunlik sotuvlari, dona", "15 kun ichida FBO oʻrtacha kunlik sotuvlari, dona", "Sutkalik o'rtacha sotuvlar", "Sutkalik oʻrtacha sotuvlar"],
-            ))
-            to_ship = _str_val(_get_data_ru_uz(data, ["К отправке"], ["Yuborishga", "Yuborishga mavjud"]))
+            barcode_norm = re.sub(r"\s+", "", barcode or "")
+            if barcode_norm.endswith(".0"):
+                barcode_norm = barcode_norm[:-2]
+            sales_rate = avg_sales_by_barcode.get(barcode_norm, 0.0)
+            sales_per_day = f"{sales_rate:.2f}".rstrip("0").rstrip(".")
             items.append(ShipmentRecommendationItem(
                 product_name=product_name,
                 sku=sku,

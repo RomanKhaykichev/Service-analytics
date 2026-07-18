@@ -19,6 +19,7 @@ import { useShipmentRecommendations } from "@/hooks/useShipmentRecommendations";
 import type { ShipmentRecommendationItem } from "@/hooks/useShipmentRecommendations";
 import { apiGet } from "@/lib/api";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { cn } from "@/lib/utils";
 
 /** Ключ строки для хранения рассчитанного значения (штрихкод или артикул) */
 function rowKey(row: { barcode?: string | null; sku?: string | null }): string {
@@ -73,15 +74,14 @@ export function ShipmentView({
         const key = rowKey(row);
         if (!key) continue;
         const salesPerDay = parseNum(row.sales_per_day);
-        const turnover = row.turnover != null ? Number(row.turnover) : NaN;
         if (!Number.isFinite(salesPerDay) || salesPerDay < 0) {
           map[key] = 0;
           continue;
         }
         if (considerStock === "yes") {
-          const t = Number.isFinite(turnover) ? turnover : 0;
-          const factor = Math.max(0, 60 - t + days);
-          map[key] = Math.ceil(factor * salesPerDay);
+          const stock = parseNum(row.stock);
+          const stockQty = Number.isFinite(stock) && stock > 0 ? stock : 0;
+          map[key] = Math.max(0, Math.ceil(salesPerDay * (60 + days) - stockQty));
         } else {
           map[key] = Math.ceil(salesPerDay * 60);
         }
@@ -208,21 +208,35 @@ export function ShipmentView({
           </Button>
         </CardHeader>
         <CardContent>
-          <div className="rounded-md border">
-            <Table>
+          <div
+            className={cn(
+              "rounded-md border w-full min-w-0",
+              items.length > 10 &&
+                "max-h-[min(70vh,36rem)] overflow-auto overscroll-contain [scrollbar-gutter:stable]"
+            )}
+          >
+            <Table wrapperClassName="overflow-visible min-w-0">
               <TableHeader>
                 <TableRow className="bg-violet-50/80 dark:bg-violet-950/30 border-border">
-                  <TableHead className="bg-violet-50/80 dark:bg-violet-950/30">{t('shipment.product')}</TableHead>
-                  <TableHead className="bg-violet-50/80 dark:bg-violet-950/30">{t('shipment.article')}</TableHead>
-                  <TableHead className="bg-violet-50/80 dark:bg-violet-950/30">{t('product.barcode')}</TableHead>
-                  <TableHead className="text-center whitespace-nowrap bg-violet-50/80 dark:bg-violet-950/30">{t('shipment.inStock')}</TableHead>
-                  <TableHead className="text-center bg-violet-50/80 dark:bg-violet-950/30">
+                  <TableHead className="sticky top-0 z-20 bg-violet-50/95 dark:bg-violet-950/95 backdrop-blur-sm">
+                    {t('shipment.product')}
+                  </TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-violet-50/95 dark:bg-violet-950/95 backdrop-blur-sm">
+                    {t('shipment.article')}
+                  </TableHead>
+                  <TableHead className="sticky top-0 z-20 bg-violet-50/95 dark:bg-violet-950/95 backdrop-blur-sm">
+                    {t('product.barcode')}
+                  </TableHead>
+                  <TableHead className="text-center whitespace-nowrap sticky top-0 z-20 bg-violet-50/95 dark:bg-violet-950/95 backdrop-blur-sm">
+                    {t('shipment.inStock')}
+                  </TableHead>
+                  <TableHead className="text-center sticky top-0 z-20 bg-violet-50/95 dark:bg-violet-950/95 backdrop-blur-sm">
                     {t('shipment.salesPerDay')}
                   </TableHead>
-                  <TableHead className="text-center bg-violet-50/80 dark:bg-violet-950/30">
+                  <TableHead className="text-center sticky top-0 z-20 bg-violet-50/95 dark:bg-violet-950/95 backdrop-blur-sm">
                     {t('shipment.recommendedQty')}
                   </TableHead>
-                  <TableHead className="text-center bg-violet-50/80 dark:bg-violet-950/30">
+                  <TableHead className="text-center sticky top-0 z-20 bg-violet-50/95 dark:bg-violet-950/95 backdrop-blur-sm">
                     {t('shipment.plannedToShip')}
                   </TableHead>
                 </TableRow>
