@@ -108,16 +108,61 @@ def _safe_float(v) -> Optional[float]:
     return n
 
 
+_CURRENCY_TOKEN_RE = re.compile(
+    r"(?i)\b(сум|sum|uzs|rub|rur|usd|eur|so[ʻʼ''`]?m)\b"
+)
+_CURRENCY_SYMBOL_RE = re.compile(r"[₽$€£¥]")
+_SPACE_CHARS_RE = re.compile(r"[\s\u00a0\u202f\u2007\u2009\u200a\u200b]+")
+_SCIENTIFIC_RE = re.compile(r"^[+-]?\d+(?:\.\d+)?[eE][+-]?\d+$")
+
+
+def _strip_excel_noise(s: str) -> str:
+    """Убрать пробелы/неразрывные пробелы и типичный мусор вставки из Excel."""
+    return _SPACE_CHARS_RE.sub("", (s or "").strip())
+
+
 def _parse_num(v) -> Optional[float]:
+    """Число из ячейки: 12500 / 12 500 / 12 500,50 / 12,500.50 / 12500 сум / 12'500."""
     if v is None:
+        return None
+    if isinstance(v, bool):
         return None
     if isinstance(v, (int, float)):
         return _safe_float(v)
-    s = str(v).strip().replace(" ", "").replace(",", ".")
-    if not s or s in ("-", "—"):
+    s = str(v).strip()
+    if not s or s in ("-", "—", "–"):
+        return None
+    s = (
+        s.replace("\u00a0", " ")
+        .replace("\u202f", " ")
+        .replace("\u2007", " ")
+        .replace("\u2009", " ")
+        .replace("\u200a", " ")
+        .replace("\u200b", "")
+        .replace("'", "")
+        .replace("’", "")
+        .replace("`", "")
+    )
+    s = _CURRENCY_TOKEN_RE.sub("", s)
+    s = _CURRENCY_SYMBOL_RE.sub("", s)
+    s = _SPACE_CHARS_RE.sub("", s.strip())
+    if not s or s in ("-", "—", "–"):
         return None
     if s.lower() in ("nan", "inf", "-inf", "infinity", "-infinity"):
         return None
+    if "," in s and "." in s:
+        if s.rfind(",") > s.rfind("."):
+            # 12.500,50 (EU)
+            s = s.replace(".", "").replace(",", ".")
+        else:
+            # 12,500.50 (US)
+            s = s.replace(",", "")
+    elif "," in s:
+        parts = s.split(",")
+        if len(parts) == 2 and parts[1].isdigit() and len(parts[1]) <= 2:
+            s = s.replace(",", ".")
+        else:
+            s = s.replace(",", "")
     return _safe_float(s)
 
 
@@ -130,8 +175,8 @@ def _is_blank_cell(v) -> bool:
     except (TypeError, ValueError):
         pass
     if isinstance(v, str):
-        s = v.strip().lower()
-        return not s or s in ("-", "—", "nan", "none", "null")
+        s = _SPACE_CHARS_RE.sub("", v).strip().lower()
+        return not s or s in ("-", "—", "–", "nan", "none", "null")
     return False
 
 
@@ -140,7 +185,8 @@ def _is_filled_template_cogs_cell(v) -> bool:
     if _is_blank_cell(v):
         return False
     if isinstance(v, str):
-        return bool(v.strip())
+        # «12500 сум», «12 500» и т.п. — заполненные; после очистки мусора должна остаться цифра.
+        return _parse_num(v) is not None
     if isinstance(v, (int, float)) and not isinstance(v, bool):
         try:
             if pd.isna(v):
@@ -152,9 +198,40 @@ def _is_filled_template_cogs_cell(v) -> bool:
     return True
 
 
-def _normalize_barcode_norm(raw: str) -> str:
-    bn = re.sub(r"\s+", "", (raw or "").strip())
-    if bn.endswith(".0"):
+def _normalize_barcode_norm(raw) -> str:
+    """Штрихкод как текст: убрать пробелы, .0, научную запись Excel (1.0001E+12)."""
+    if raw is None:
+        return ""
+    try:
+        if pd.isna(raw):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    if isinstance(raw, bool):
+        return ""
+    if isinstance(raw, int):
+        return str(raw)
+    if isinstance(raw, float):
+        if not math.isfinite(raw):
+            return ""
+        # Excel часто отдаёт штрихкод float'ом; целые — без дробной части.
+        if raw == int(raw) and abs(raw) < 1e20:
+            return str(int(raw))
+        return _strip_excel_noise(f"{raw:.0f}" if abs(raw) >= 1e11 else str(raw))
+
+    bn = _strip_excel_noise(str(raw))
+    if not bn:
+        return ""
+    # 1.000102783428E+12 / 1,000102783428E+12
+    sci = bn.replace(",", ".")
+    if _SCIENTIFIC_RE.match(sci):
+        try:
+            n = float(sci)
+            if math.isfinite(n) and n == int(n) and abs(n) < 1e20:
+                return str(int(n))
+        except (TypeError, ValueError, OverflowError):
+            pass
+    if bn.endswith(".0") and bn[:-2].replace("-", "", 1).isdigit():
         bn = bn[:-2]
     return bn
 
@@ -1165,7 +1242,7 @@ async def upload_product_cogs_template(
 
     for excel_row_idx, row in enumerate(parsed_rows, start=2):
         barcode_raw = row.get("barcode")
-        bn = _normalize_barcode_norm(str(barcode_raw or ""))
+        bn = _normalize_barcode_norm(barcode_raw)
         actual_cogs_raw = row.get("actual_cogs")
         cogs = _parse_num(actual_cogs_raw) if _is_filled_template_cogs_cell(actual_cogs_raw) else None
         eff = _parse_date_cell(row.get("effective_from"))
