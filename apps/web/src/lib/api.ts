@@ -259,7 +259,8 @@ async function handleWithRefresh(
   options?: { timeoutMs?: number },
 ): Promise<Response> {
   const baseUrl = getApiBaseUrl();
-  const url = buildUrl(baseUrl, path, init.method === 'GET' ? (init as any).params : undefined);
+  // Query params for GET and POST (e.g. file upload with effective_from).
+  const url = buildUrl(baseUrl, path, (init as { params?: Record<string, unknown> }).params);
 
   const timeoutMs = options?.timeoutMs ?? 30_000;
   const timeoutController = new AbortController();

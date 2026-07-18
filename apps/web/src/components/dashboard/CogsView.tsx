@@ -124,9 +124,14 @@ export function CogsView({ shop, onDataChanged }: CogsViewProps) {
   const [historyItem, setHistoryItem] = useState<ProductCogsItem | null>(null);
   const [templateAppliedDialogOpen, setTemplateAppliedDialogOpen] = useState(false);
   const [templateAppliedCount, setTemplateAppliedCount] = useState(0);
+  const [templateAppliedDate, setTemplateAppliedDate] = useState("");
+  const [pendingUploadFile, setPendingUploadFile] = useState<File | null>(null);
+  const [uploadDateDialogOpen, setUploadDateDialogOpen] = useState(false);
+  const [uploadEffectiveFrom, setUploadEffectiveFrom] = useState("");
   const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const todayIso = () => new Date().toISOString().slice(0, 10);
+  const yearStartIso = () => `${new Date().getFullYear()}-01-01`;
 
   const queryKey = ["product-cogs", shop ?? "all"];
 
@@ -276,25 +281,26 @@ export function CogsView({ shop, onDataChanged }: CogsViewProps) {
     },
   });
 
-  const yearStartLabel = useMemo(() => {
-    const year = new Date().getFullYear();
-    return `01.01.${year}`;
-  }, []);
-
   const uploadTemplateMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const params = buildQueryParams({ shop: shop ?? undefined });
+    mutationFn: async ({ file, effectiveFrom }: { file: File; effectiveFrom: string }) => {
+      const params = buildQueryParams({
+        shop: shop ?? undefined,
+        effective_from: effectiveFrom,
+      });
       return apiUploadFile<ProductCogsTemplateUploadResponse>(
         "/api/product-cogs/template",
         file,
         params
       );
     },
-    onSuccess: async (result) => {
+    onSuccess: async (result, variables) => {
       await queryClient.invalidateQueries({ queryKey });
+      setPendingUploadFile(null);
+      setUploadDateDialogOpen(false);
       if (result.imported > 0) {
         onDataChanged?.();
         setTemplateAppliedCount(result.imported);
+        setTemplateAppliedDate(variables.effectiveFrom);
         setTemplateAppliedDialogOpen(true);
       } else {
         toast.message(t("cogs.templateUploadedNone"));
@@ -518,7 +524,28 @@ export function CogsView({ shop, onDataChanged }: CogsViewProps) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    uploadTemplateMutation.mutate(file);
+    setPendingUploadFile(file);
+    setUploadEffectiveFrom(yearStartIso());
+    setUploadDateDialogOpen(true);
+  };
+
+  const handleConfirmUploadTemplate = () => {
+    if (!pendingUploadFile) return;
+    if (!uploadEffectiveFrom.trim()) {
+      toast.error(t("cogs.effectiveFromRequired"));
+      return;
+    }
+    uploadTemplateMutation.mutate({
+      file: pendingUploadFile,
+      effectiveFrom: uploadEffectiveFrom,
+    });
+  };
+
+  const handleCancelUploadTemplate = () => {
+    if (uploadTemplateMutation.isPending) return;
+    setUploadDateDialogOpen(false);
+    setPendingUploadFile(null);
+    setUploadEffectiveFrom("");
   };
 
   return (
@@ -924,6 +951,57 @@ export function CogsView({ shop, onDataChanged }: CogsViewProps) {
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={uploadDateDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) handleCancelUploadTemplate();
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("cogs.templateEffectiveFromTitle")}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="upload-effective-from">{t("cogs.effectiveFrom")}</Label>
+            <Input
+              id="upload-effective-from"
+              type="date"
+              value={uploadEffectiveFrom}
+              onChange={(e) => setUploadEffectiveFrom(e.target.value)}
+              className="h-9"
+              disabled={uploadTemplateMutation.isPending}
+            />
+            <p className="text-xs text-muted-foreground">
+              {t("cogs.templateEffectiveFromHint")}
+            </p>
+            {pendingUploadFile && (
+              <p className="text-xs text-muted-foreground truncate">
+                {pendingUploadFile.name}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCancelUploadTemplate}
+              disabled={uploadTemplateMutation.isPending}
+            >
+              {t("action.cancel")}
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirmUploadTemplate}
+              disabled={uploadTemplateMutation.isPending || !pendingUploadFile}
+            >
+              {uploadTemplateMutation.isPending
+                ? t("cogs.templateUploading")
+                : t("action.apply")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog open={templateAppliedDialogOpen} onOpenChange={setTemplateAppliedDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -931,7 +1009,7 @@ export function CogsView({ shop, onDataChanged }: CogsViewProps) {
             <AlertDialogDescription>
               {t("cogs.templateAppliedMessage")
                 .replace("{count}", String(templateAppliedCount))
-                .replace("{date}", yearStartLabel)}
+                .replace("{date}", formatDate(templateAppliedDate || null))}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

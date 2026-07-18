@@ -1220,6 +1220,10 @@ async def download_product_cogs_template(
 async def upload_product_cogs_template(
     user_id: UUID = Depends(require_admin),
     shop: Optional[str] = Query(default=None, description="Shop name filter"),
+    effective_from: Optional[str] = Query(
+        default=None,
+        description="Дата начала действия себестоимости YYYY-MM-DD (если в строке файла даты нет)",
+    ),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
@@ -1231,6 +1235,15 @@ async def upload_product_cogs_template(
         df = _read_cogs_template_dataframe(content)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Некорректный XLSX: {exc}") from exc
+
+    default_eff = _parse_date_cell(effective_from) if effective_from else None
+    if effective_from and not default_eff:
+        raise HTTPException(
+            status_code=400,
+            detail="effective_from must be YYYY-MM-DD",
+        )
+    if not default_eff:
+        default_eff = date(date.today().year, 1, 1).isoformat()
 
     parsed_rows = _parse_cogs_template_rows(df)
     catalog_resp = await list_product_cogs(user_id=user_id, shop=shop, db=db)
@@ -1259,7 +1272,7 @@ async def upload_product_cogs_template(
             skipped += 1
             continue
         if not eff:
-            eff = date(date.today().year, 1, 1).isoformat()
+            eff = default_eff
         if cogs < 0:
             errors.append(f"Строка {excel_row_idx}: некорректная себестоимость")
             continue
