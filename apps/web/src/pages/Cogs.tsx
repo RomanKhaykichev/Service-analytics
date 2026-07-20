@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useStorageShops } from "@/hooks/useStorageShops";
 import { invalidateCogsDependentQueries } from "@/lib/invalidateCogsDependentQueries";
+import { buildDashboardPath } from "@/lib/dashboardNav";
 
 export default function CogsPage() {
   const { t } = useLanguage();
@@ -20,6 +21,7 @@ export default function CogsPage() {
 
   const [store, setStore] = useState(() => searchParams.get("shop") ?? "all");
   const selectedShop = store === "all" ? undefined : store;
+  const backToDashboardPath = buildDashboardPath(searchParams);
 
   useEffect(() => {
     setSearchParams(
@@ -60,7 +62,7 @@ export default function CogsPage() {
                 size="sm"
                 className="bg-primary hover:bg-primary/90 text-primary-foreground lowercase"
               >
-                <Link to="/">{t("learning.back")}</Link>
+                <Link to={backToDashboardPath}>{t("learning.back")}</Link>
               </Button>
               <TabHowItWorksTrigger
                 expanded={howItWorksExpanded}

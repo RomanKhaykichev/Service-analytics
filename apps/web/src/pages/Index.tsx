@@ -37,6 +37,7 @@ import { DateRangeProvider, useDateRange } from "@/contexts/DateRangeContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getWeeklyInsightRanges } from "@/lib/weekRanges";
 import { getNextUzumSyncSchedule } from "@/lib/uzumSyncSchedule";
+import { buildCogsPath } from "@/lib/dashboardNav";
 
 const VALID_DASHBOARD_TABS = new Set([
   "summary",
@@ -74,15 +75,10 @@ function Dashboard() {
     [setSearchParams],
   );
 
-  // Старые ссылки ?tab=cogs → отдельная страница
+  // Старые ссылки ?tab=cogs → отдельная страница (сохраняем фильтры)
   useEffect(() => {
     if (searchParams.get("tab") !== "cogs") return;
-    const shop = searchParams.get("shop");
-    const target =
-      shop && shop !== "all"
-        ? `/cogs?shop=${encodeURIComponent(shop)}`
-        : "/cogs";
-    navigate(target, { replace: true });
+    navigate(buildCogsPath(searchParams, searchParams.get("shop")), { replace: true });
   }, [navigate, searchParams]);
 
   const [store, setStore] = useState(() => searchParams.get("shop") ?? "all");
@@ -422,11 +418,7 @@ function Dashboard() {
         <Tooltip>
           <TooltipTrigger asChild>
             <Link
-              to={
-                selectedShop
-                  ? `/cogs?shop=${encodeURIComponent(selectedShop)}`
-                  : "/cogs"
-              }
+              to={buildCogsPath(searchParams, selectedShop)}
               className="inline-flex text-primary/45 hover:text-primary/65 transition-colors"
               aria-label={t("summary.expense.productCostEditTooltip")}
             >

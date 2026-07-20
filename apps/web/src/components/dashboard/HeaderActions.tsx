@@ -15,12 +15,13 @@ import { UzumApiConnectDialog, type UzumApiConnectDialogHandle } from "./UzumApi
 import { HelpConnectApiDialog, type HelpConnectApiDialogHandle } from "./HelpConnectApiDialog";
 import { PricingDialog } from "./PricingDialog";
 import { ProfileDialog } from "./ProfileDialog";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { useLanguage, type Language } from "@/contexts/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useStorageShops } from "@/hooks/useStorageShops";
 import { apiGet } from "@/lib/api";
 import { formatCurrency } from "@/lib/formatters";
+import { buildCogsPath } from "@/lib/dashboardNav";
 import { toast } from "sonner";
 
 const headerLanguages: { code: Language; label: string }[] = [
@@ -206,6 +207,7 @@ export function HeaderActions({
   const { user, signOut } = useAuth();
   const { shops, loading: shopsLoading } = useStorageShops();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [tariffOpen, setTariffOpen] = useState(false);
   const [extendTariffOpen, setExtendTariffOpen] = useState(false);
   const [extendVariant, setExtendVariant] = useState<"extend" | "expired">("extend");
@@ -581,7 +583,7 @@ export function HeaderActions({
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem className="cursor-pointer" asChild>
-            <Link to="/cogs">
+            <Link to={buildCogsPath(searchParams)}>
               <CircleDollarSign className="w-4 h-4 mr-2" />
               {t("header.enterCogs")}
             </Link>

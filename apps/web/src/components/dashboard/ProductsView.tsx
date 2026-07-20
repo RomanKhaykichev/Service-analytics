@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Search,
   Layers,
@@ -25,6 +25,7 @@ import { ProductDetailView } from "./ProductDetailView";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, buildQueryParams } from "@/lib/api";
 import { ProductThumbnail } from "@/components/dashboard/ProductThumbnail";
+import { buildCogsPath } from "@/lib/dashboardNav";
 
 const PRODUCTS_TABLE_COL_COUNT = 19;
 const PRODUCTS_ROW_ESTIMATE_PX = 64;
@@ -116,6 +117,7 @@ export function ProductsView({
 }: ProductsViewProps) {
   const { t } = useLanguage();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const [groupByCards, setGroupByCards] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductsTableItemType | null>(null);
@@ -568,13 +570,7 @@ export function ProductsView({
             <Button
               variant="outline"
               size="sm"
-              onClick={() =>
-                navigate(
-                  shop
-                    ? `/cogs?shop=${encodeURIComponent(shop)}`
-                    : "/cogs",
-                )
-              }
+              onClick={() => navigate(buildCogsPath(searchParams, shop))}
             >
               <CircleDollarSign className="w-4 h-4 mr-2" />
               {t('products.enterCogs')}
