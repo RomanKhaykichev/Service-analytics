@@ -53,6 +53,16 @@ def test_sql_stock_cogs_line_amount_uses_latest_profiboard():
     assert "effective_from <=" not in expr
 
 
+def test_sql_fbs_stock_cogs_line_amount_uses_fbs_qty():
+    from app.utils.metrics import sql_fbs_stock_cogs_line_amount
+
+    expr = sql_fbs_stock_cogs_line_amount("lo")
+    assert "manual_product_cogs_history" in expr
+    assert "lo.fbs_qty" in expr
+    assert "lo.in_sale_qty" not in expr
+    assert "effective_from DESC" in expr
+
+
 def test_sql_latest_profiboard_unit_cogs_uses_alias():
     expr = sql_latest_profiboard_unit_cogs("lo")
     assert "lo.user_id" in expr

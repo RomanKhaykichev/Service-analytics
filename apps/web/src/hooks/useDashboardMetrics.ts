@@ -51,6 +51,8 @@ interface DashboardMetrics {
 
   // Склад FBS
   fbsStockQuantity: number;
+  fbsStockCost: number;
+  fbsStockRetailPrice: number;
   fbsStockHasData: boolean;
 }
 

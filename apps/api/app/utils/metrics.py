@@ -141,6 +141,14 @@ def sql_stock_cogs_line_amount(alias: str = "lo") -> str:
     return f"{sql_latest_profiboard_unit_cogs(alias)} * {qty}"
 
 
+def sql_fbs_stock_cogs_line_amount(alias: str = "lo") -> str:
+    """Себестоимость строки склада FBS: последняя Profiboard × «Остаток FBS»."""
+    alias = (alias or "lo").strip()
+    p = f"{alias}."
+    qty = f"GREATEST(COALESCE({p}fbs_qty, 0), 0)"
+    return f"{sql_latest_profiboard_unit_cogs(alias)} * {qty}"
+
+
 def sql_unit_price_from_rows(revenue_col: str, qty_col: str, returns_col: str) -> str:
     """Цена: SUM(Выручка) / SUM(Количество − Возвраты)."""
     net = f"GREATEST(COALESCE({qty_col}, 0) - COALESCE({returns_col}, 0), 0)"

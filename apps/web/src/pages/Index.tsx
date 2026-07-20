@@ -494,6 +494,8 @@ function Dashboard() {
   ] : [];
 
   const fbsStockQty = metrics?.fbsStockQuantity ?? 0;
+  const fbsStockCost = metrics?.fbsStockCost ?? 0;
+  const fbsStockRetail = metrics?.fbsStockRetailPrice ?? 0;
   const fbsStockHasData = metrics?.fbsStockHasData ?? false;
   const fbsWarehouseMetrics = metrics ? [
     {
@@ -501,6 +503,18 @@ function Dashboard() {
       label: t('summary.warehouse.stock'),
       value: formatQuantity(fbsStockQty, qtyUnit),
       tooltip: t('summary.warehouse.fbsStockTooltip')
+    },
+    {
+      icon: <Tag className="w-4 h-4" />,
+      label: t('summary.warehouse.cost'),
+      value: formatCurrency(fbsStockCost),
+      tooltip: ""
+    },
+    {
+      icon: <ShoppingBag className="w-4 h-4" />,
+      label: t('summary.warehouse.retailPrice'),
+      value: formatCurrency(fbsStockRetail),
+      tooltip: t('summary.warehouse.fbsRetailPriceTooltip')
     }
   ] : [];
 

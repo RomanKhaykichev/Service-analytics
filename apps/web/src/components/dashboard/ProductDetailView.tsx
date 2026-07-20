@@ -347,7 +347,7 @@ export function ProductDetailView({
   const salesProfitability = product.revenue > 0 ? (profit / product.revenue) * 100 : 0;
   const roi = totalExpenses > 0 ? (profit / totalExpenses) * 100 : 0;
   const revenueSharePercent = totalRevenueProp > 0 ? (product.revenue / totalRevenueProp) * 100 : 0;
-  // Себест. тов. = сумма stock_cogs_line по вариантам (как СКЛАД UZUM на Сводке), иначе stockUnitCogs × stock
+  // Себест. тов. FBO = сумма stock_cogs_line по вариантам (как СКЛАД UZUM на Сводке), иначе stockUnitCogs × stock
   const stockCost =
     variants.length > 0
       ? variants.reduce(
@@ -359,6 +359,15 @@ export function ProductDetailView({
         )
       : product.stockCogsLine ??
         (product.stockUnitCogs ?? product.costPrice ?? 0) * product.stock;
+  // Себест. тов. FBS = unit cogs × остаток FBS (как Виртуальный склад на Сводке)
+  const fbsStockCost =
+    variants.length > 0
+      ? variants.reduce(
+          (sum, v) =>
+            sum + (v.stock_unit_cogs ?? product.stockUnitCogs ?? product.costPrice ?? 0) * (v.fbs_stock ?? 0),
+          0
+        )
+      : (product.stockUnitCogs ?? product.costPrice ?? 0) * product.fbsStock;
   const stockRetail =
     variants.length > 0
       ? variants.reduce(
@@ -366,6 +375,13 @@ export function ProductDetailView({
           0
         )
       : product.price * product.stock;
+  const fbsStockRetail =
+    variants.length > 0
+      ? variants.reduce(
+          (sum, v) => sum + (v.price ?? product.price ?? 0) * (v.fbs_stock ?? 0),
+          0
+        )
+      : product.price * product.fbsStock;
 
   const ratingLine = formatProductRatingLine(
     product.rating,
@@ -404,6 +420,8 @@ export function ProductDetailView({
   ];
   const fbsWarehouseMetrics = [
     { icon: <Warehouse className="w-4 h-4" />, label: t('summary.warehouse.stock'), value: formatQuantity(product.fbsStock, qtyUnit), tooltip: t('summary.warehouse.fbsStockTooltip') },
+    { icon: <Tag className="w-4 h-4" />, label: t('summary.warehouse.cost'), value: formatCurrency(fbsStockCost), tooltip: "" },
+    { icon: <ShoppingBag className="w-4 h-4" />, label: t('summary.warehouse.retailPrice'), value: formatCurrency(fbsStockRetail), tooltip: t('summary.warehouse.fbsRetailPriceTooltip') },
   ];
 
   return <div className="space-y-6">
