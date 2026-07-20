@@ -377,6 +377,23 @@ function Dashboard() {
     }
   ] : [];
 
+  const productCostEditAction = (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Link
+          to={buildCogsPath(searchParams, selectedShop)}
+          className="inline-flex text-primary/45 hover:text-primary/65 transition-colors"
+          aria-label={t("summary.expense.productCostEditTooltip")}
+        >
+          <Pencil className="w-3.5 h-3.5" />
+        </Link>
+      </TooltipTrigger>
+      <TooltipContent>
+        <p className="text-xs max-w-64">{t("summary.expense.productCostEditTooltip")}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+
   // Метрики расходов (зависят от выбранного магазина, где применимо)
   const expenseMetrics = metrics ? [
     {
@@ -414,22 +431,7 @@ function Dashboard() {
       label: t('summary.expense.productCost'),
       value: formatCurrency(metrics.productCost),
       tooltip: "",
-      action: (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Link
-              to={buildCogsPath(searchParams, selectedShop)}
-              className="inline-flex text-primary/45 hover:text-primary/65 transition-colors"
-              aria-label={t("summary.expense.productCostEditTooltip")}
-            >
-              <Pencil className="w-3.5 h-3.5" />
-            </Link>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p className="text-xs max-w-64">{t("summary.expense.productCostEditTooltip")}</p>
-          </TooltipContent>
-        </Tooltip>
-      ),
+      action: productCostEditAction,
     },
     {
       icon: <Receipt className="w-4 h-4" />,
@@ -483,7 +485,8 @@ function Dashboard() {
       icon: <Tag className="w-4 h-4" />,
       label: t('summary.warehouse.cost'),
       value: formatCurrency(stockCost),
-      tooltip: ""
+      tooltip: "",
+      action: productCostEditAction,
     },
     {
       icon: <ShoppingBag className="w-4 h-4" />,
@@ -508,7 +511,8 @@ function Dashboard() {
       icon: <Tag className="w-4 h-4" />,
       label: t('summary.warehouse.cost'),
       value: formatCurrency(fbsStockCost),
-      tooltip: ""
+      tooltip: "",
+      action: productCostEditAction,
     },
     {
       icon: <ShoppingBag className="w-4 h-4" />,

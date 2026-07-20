@@ -1,11 +1,12 @@
-import { ChevronRight, Package as PackageIcon, MessageSquare } from "lucide-react";
+import { ChevronRight, Package as PackageIcon, MessageSquare, Pencil, ShoppingCart, Truck, Package, RotateCcw, Percent, CreditCard, DollarSign, TrendingDown, Wallet, Target, BarChart3, TrendingUp, ArrowDown, Receipt, Boxes, Warehouse, Tag, ShoppingBag, Info } from "lucide-react";
 import { useState, useEffect } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, buildQueryParams } from "@/lib/api";
 import { toast } from "sonner";
-import { ShoppingCart, Truck, Package, RotateCcw, Percent, CreditCard, DollarSign, TrendingDown, Wallet, Target, BarChart3, TrendingUp, ArrowDown, Receipt, Boxes, Warehouse, Tag, ShoppingBag, Info } from "lucide-react";
 import { SummaryBlock } from "./SummaryBlock";
 import { RevenueDailyChart } from "./RevenueDailyChart";
 import { useRevenueDaily } from "@/hooks/useRevenueDaily";
@@ -14,6 +15,7 @@ import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getSizeGroupColorClass } from "@/lib/utils";
 import { ProductThumbnail } from "@/components/dashboard/ProductThumbnail";
+import { buildCogsPath } from "@/lib/dashboardNav";
 
 function formatProductRatingLine(
   rating: number | null | undefined,
@@ -117,8 +119,26 @@ export function ProductDetailView({
   totalRevenue: totalRevenueProp = 0,
 }: ProductDetailViewProps) {
   const { t } = useLanguage();
+  const [searchParams] = useSearchParams();
   const [comment, setComment] = useState("");
   const queryClient = useQueryClient();
+
+  const productCostEditAction = (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Link
+          to={buildCogsPath(searchParams)}
+          className="inline-flex text-primary/45 hover:text-primary/65 transition-colors"
+          aria-label={t("summary.expense.productCostEditTooltip")}
+        >
+          <Pencil className="w-3.5 h-3.5" />
+        </Link>
+      </TooltipTrigger>
+      <TooltipContent>
+        <p className="text-xs max-w-64">{t("summary.expense.productCostEditTooltip")}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
 
   // Предыдущий период (та же длина, сразу перед текущим) — как на Сводке для тренда выручки
   const prevPeriod = (() => {
@@ -409,18 +429,18 @@ export function ProductDetailView({
   const expenseMetrics = [
     { icon: <Percent className="w-4 h-4" />, label: t('summary.expense.commissionUzum'), value: formatCurrency(product.uzumCommission), tooltip: "" },
     { icon: <Truck className="w-4 h-4" />, label: t('summary.expense.logisticsUzum'), value: formatCurrency(product.uzumLogistics), tooltip: "" },
-    { icon: <Boxes className="w-4 h-4" />, label: t('summary.expense.productCost'), value: formatCurrency(product.cogsTotal), tooltip: "" },
+    { icon: <Boxes className="w-4 h-4" />, label: t('summary.expense.productCost'), value: formatCurrency(product.cogsTotal), tooltip: "", action: productCostEditAction },
     { icon: <Receipt className="w-4 h-4" />, label: t('summary.expense.taxes'), value: formatCurrency(taxAmount), tooltip: "" },
     { icon: <Info className="w-4 h-4" />, label: t('summary.expense.extraExpenses'), value: formatCurrency(productExtraExpenses), tooltip: t('summary.expense.extraExpensesTooltip') },
   ];
   const warehouseMetrics = [
     { icon: <Warehouse className="w-4 h-4" />, label: t('summary.warehouse.stock'), value: formatQuantity(product.stock, qtyUnit), tooltip: t('summary.warehouse.stockTooltip') },
-    { icon: <Tag className="w-4 h-4" />, label: t('summary.warehouse.cost'), value: formatCurrency(stockCost), tooltip: "" },
+    { icon: <Tag className="w-4 h-4" />, label: t('summary.warehouse.cost'), value: formatCurrency(stockCost), tooltip: "", action: productCostEditAction },
     { icon: <ShoppingBag className="w-4 h-4" />, label: t('summary.warehouse.retailPrice'), value: formatCurrency(stockRetail), tooltip: t('summary.warehouse.retailPriceTooltip') },
   ];
   const fbsWarehouseMetrics = [
     { icon: <Warehouse className="w-4 h-4" />, label: t('summary.warehouse.stock'), value: formatQuantity(product.fbsStock, qtyUnit), tooltip: t('summary.warehouse.fbsStockTooltip') },
-    { icon: <Tag className="w-4 h-4" />, label: t('summary.warehouse.cost'), value: formatCurrency(fbsStockCost), tooltip: "" },
+    { icon: <Tag className="w-4 h-4" />, label: t('summary.warehouse.cost'), value: formatCurrency(fbsStockCost), tooltip: "", action: productCostEditAction },
     { icon: <ShoppingBag className="w-4 h-4" />, label: t('summary.warehouse.retailPrice'), value: formatCurrency(fbsStockRetail), tooltip: t('summary.warehouse.fbsRetailPriceTooltip') },
   ];
 
