@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Bell, HelpCircle, User, ChevronDown, LogOut, CreditCard, Globe, PlayCircle, MessageCircle, ShieldCheck, KeyRound, Trash2, CircleDollarSign } from "lucide-react";
+import { Bell, HelpCircle, User, ChevronDown, LogOut, CreditCard, Globe, PlayCircle, MessageCircle, ShieldCheck, KeyRound, Trash2, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -15,13 +15,12 @@ import { UzumApiConnectDialog, type UzumApiConnectDialogHandle } from "./UzumApi
 import { HelpConnectApiDialog, type HelpConnectApiDialogHandle } from "./HelpConnectApiDialog";
 import { PricingDialog } from "./PricingDialog";
 import { ProfileDialog } from "./ProfileDialog";
-import { useNavigate, Link, useSearchParams } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useLanguage, type Language } from "@/contexts/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useStorageShops } from "@/hooks/useStorageShops";
 import { apiGet } from "@/lib/api";
 import { formatCurrency } from "@/lib/formatters";
-import { buildCogsPath } from "@/lib/dashboardNav";
 import { toast } from "sonner";
 
 const headerLanguages: { code: Language; label: string }[] = [
@@ -207,7 +206,6 @@ export function HeaderActions({
   const { user, signOut } = useAuth();
   const { shops, loading: shopsLoading } = useStorageShops();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const [tariffOpen, setTariffOpen] = useState(false);
   const [extendTariffOpen, setExtendTariffOpen] = useState(false);
   const [extendVariant, setExtendVariant] = useState<"extend" | "expired">("extend");
@@ -583,9 +581,9 @@ export function HeaderActions({
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem className="cursor-pointer" asChild>
-            <Link to={buildCogsPath(searchParams)}>
-              <CircleDollarSign className="w-4 h-4 mr-2" />
-              {t("header.enterCogs")}
+            <Link to="/feedback">
+              <ClipboardList className="w-4 h-4 mr-2" />
+              {t("header.feedbackSurvey")}
             </Link>
           </DropdownMenuItem>
         </DropdownMenuContent>

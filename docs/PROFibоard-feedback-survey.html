@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Обратная связь — PROFibоard</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --card: #ffffff;
+      --text: #1a1d21;
+      --muted: #5c6570;
+      --line: #e2e6eb;
+      --accent: #1f6feb;
+      --accent-hover: #1558c0;
+      --ok: #0f7b4a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .wrap {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 24px 16px 64px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.55rem;
+    }
+    h2 {
+      margin: 0 0 14px;
+      font-size: 1.1rem;
+    }
+    .lead, .hint {
+      color: var(--muted);
+      margin: 0;
+      font-size: 0.95rem;
+    }
+    .hint { margin-top: 8px; }
+    label.block {
+      display: block;
+      margin: 12px 0 6px;
+      font-weight: 600;
+    }
+    .q { margin-top: 18px; }
+    .q:first-child { margin-top: 0; }
+    .options {
+      display: grid;
+      gap: 8px;
+    }
+    .options label {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      font-weight: 400;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fafbfc;
+    }
+    input[type="text"],
+    input[type="email"],
+    textarea,
+    select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font: inherit;
+      background: #fff;
+    }
+    textarea { min-height: 88px; resize: vertical; }
+    .inline-other {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .inline-other input[type="text"] {
+      flex: 1;
+      min-width: 180px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 8px;
+      text-align: center;
+    }
+    th:first-child, td:first-child {
+      text-align: left;
+    }
+    th { background: #f7f9fb; }
+    .scale {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .scale label {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 36px;
+      height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      cursor: pointer;
+      background: #fff;
+      font-weight: 600;
+    }
+    .scale input { display: none; }
+    .scale input:checked + span,
+    .scale label:has(input:checked) {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 12px 18px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary {
+      background: #eef2f6;
+      color: var(--text);
+    }
+    .status {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      display: none;
+      white-space: pre-wrap;
+    }
+    .status.show { display: block; }
+    .status.ok {
+      background: #e8f7ef;
+      color: var(--ok);
+      border: 1px solid #b7e4c7;
+    }
+    .status.err {
+      background: #fff1f0;
+      color: #a32020;
+      border: 1px solid #f0c2c0;
+    }
+    .howto {
+      background: #eef6ff;
+      border-color: #c9ddf7;
+    }
+    .howto ol {
+      margin: 10px 0 0;
+      padding-left: 20px;
+      color: var(--text);
+    }
+    .howto li { margin: 6px 0; }
+    .result-box {
+      display: none;
+      margin-top: 14px;
+    }
+    .result-box.show { display: block; }
+    #resultText {
+      min-height: 220px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.85rem;
+      background: #f7f9fb;
+    }
+    .btn-telegram {
+      background: #2aabee;
+      color: #fff;
+    }
+    .btn-telegram:hover { background: #229ed9; }
+    .sticky-finish {
+      position: sticky;
+      bottom: 0;
+      z-index: 5;
+      background: rgba(244, 246, 248, 0.96);
+      border-top: 1px solid var(--line);
+      padding: 12px 0 4px;
+      margin-top: 8px;
+    }
+    @media (max-width: 640px) {
+      table { font-size: 0.8rem; }
+      th, td { padding: 6px 4px; }
+      .actions { flex-direction: column; }
+      .actions button { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Обратная связь — PROFibоard</h1>
+      <p class="lead">Спасибо, что уже пользовались сервисом. Заполните опросник — около 8–10 минут.</p>
+    </div>
+
+    <div class="card howto">
+      <h2>Как отправить ответы в Telegram</h2>
+      <ol>
+        <li>Ответьте на вопросы ниже.</li>
+        <li>Нажмите <b>Завершить</b>.</li>
+        <li>Нажмите <b>Скопировать ответ</b> (или <b>Отправить в Telegram</b>, если кнопка есть).</li>
+        <li>Вернитесь в чат Telegram и <b>вставьте сообщение</b> (долгое нажатие → Вставить) и отправьте.</li>
+      </ol>
+    </div>
+
+    <form id="surveyForm">
+      <div class="card">
+        <h2>1. Общий опыт</h2>
+
+        <div class="q">
+          <label class="block">1. Как давно пользуетесь сервисом?</label>
+          <div class="options">
+            <label><input type="radio" name="q1" value="меньше месяца" /> меньше месяца</label>
+            <label><input type="radio" name="q1" value="1–3 месяца" /> 1–3 месяца</label>
+            <label><input type="radio" name="q1" value="3–6 месяцев" /> 3–6 месяцев</label>
+            <label><input type="radio" name="q1" value="более 6 месяцев" /> более 6 месяцев</label>
+          </div>
+        </div>
+
+        <div class="q">
+          <label class="block">2. Как часто заходите в сервис?</label>
+          <div class="options">
+            <label><input type="radio" name="q2" value="каждый день" /> каждый день</label>
+            <label><input type="radio" name="q2" value="несколько раз в неделю" /> несколько раз в неделю</label>
+            <label><input type="radio" name="q2" value="раз в неделю" /> раз в неделю</label>
+            <label><input type="radio" name="q2" value="реже" /> реже</label>
+          </div>
+        </div>
+
+        <div class="q">
+          <label class="block">3. Насколько сервис помогает в работе? (1 — почти не помогает, 10 — очень помогает)</label>
+          <div class="scale" data-name="q3" data-max="10"></div>
+        </div>
+
+        <div class="q">
+          <label class="block">4. Насколько готовы рекомендовать PROFibоard коллегам? (0–10)</label>
+          <div class="scale" data-name="q4" data-max="10" data-min="0"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>2. Чем ещё пользуетесь для аналитики</h2>
+        <div class="q">
+          <label class="block">5. Чем пользуетесь сейчас для аналитики? (можно несколько)</label>
+          <div class="options">
+            <label><input type="checkbox" name="q5" value="Excel / Google Sheets" /> Excel / Google Sheets</label>
+            <label><input type="checkbox" name="q5" value="отчёты кабинета маркетплейса" /> отчёты кабинета маркетплейса</label>
+            <label class="inline-other">
+              <input type="checkbox" name="q5" value="другой сервис" id="q5otherCheck" />
+              другой сервис:
+              <input type="text" id="q5otherText" placeholder="название" />
+            </label>
+            <label><input type="checkbox" name="q5" value="ничего системного" /> ничего системного</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>3. Что важнее всего контролировать</h2>
+        <p class="hint">Оцените важность от 1 (не важно) до 5 (критично)</p>
+        <div style="overflow-x:auto; margin-top:12px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Показатель / задача</th>
+                <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th>
+              </tr>
+            </thead>
+            <tbody id="importanceTable"></tbody>
+          </table>
+        </div>
+        <div class="q">
+          <label class="block" for="q16">16. Какие ещё метрики для вас обязательны?</label>
+          <input type="text" id="q16" name="q16" />
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>4. Что используете в сервисе</h2>
+
+        <div class="q">
+          <label class="block">17. Какими разделами пользуетесь чаще всего? (можно несколько)</label>
+          <div class="options">
+            <label><input type="checkbox" name="q17" value="Сводка" /> Сводка</label>
+            <label><input type="checkbox" name="q17" value="Дневная динамика" /> Дневная динамика</label>
+            <label><input type="checkbox" name="q17" value="Товары" /> Товары</label>
+            <label><input type="checkbox" name="q17" value="Расходы" /> Расходы</label>
+            <label><input type="checkbox" name="q17" value="Поставки / отгрузки" /> Поставки / отгрузки</label>
+            <label><input type="checkbox" name="q17" value="Месячная сводка" /> Месячная сводка</label>
+            <label class="inline-other">
+              <input type="checkbox" name="q17" value="другое" id="q17otherCheck" />
+              другое:
+              <input type="text" id="q17otherText" />
+            </label>
+          </div>
+        </div>
+
+        <div class="q">
+          <label class="block" for="q18">18. Какой раздел для вас самый полезный?</label>
+          <input type="text" id="q18" name="q18" />
+        </div>
+
+        <div class="q">
+          <label class="block" for="q19">19. Какой раздел почти не используете и почему?</label>
+          <textarea id="q19" name="q19"></textarea>
+        </div>
+
+        <div class="q">
+          <label class="block">20. Какие разделы нужны в первую очередь?</label>
+          <div class="options">
+            <label><input type="checkbox" name="q20" value="Сводка / дашборд" /> Сводка / дашборд</label>
+            <label><input type="checkbox" name="q20" value="Дневная динамика" /> Дневная динамика</label>
+            <label><input type="checkbox" name="q20" value="Аналитика по товарам" /> Аналитика по товарам</label>
+            <label><input type="checkbox" name="q20" value="Расходы" /> Расходы</label>
+            <label><input type="checkbox" name="q20" value="Поставки / отгрузки" /> Поставки / отгрузки</label>
+            <label><input type="checkbox" name="q20" value="Месячная сводка" /> Месячная сводка</label>
+            <label><input type="checkbox" name="q20" value="Обучение / помощь" /> Обучение / помощь</label>
+            <label class="inline-other">
+              <input type="checkbox" name="q20" value="другое" id="q20otherCheck" />
+              другое:
+              <input type="text" id="q20otherText" />
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>5. Оценка по блокам</h2>
+        <p class="hint">Оцените от 1 (плохо) до 5 (отлично)</p>
+        <div style="overflow-x:auto; margin-top:12px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Критерий</th>
+                <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th>
+              </tr>
+            </thead>
+            <tbody id="ratingTable"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>6. Онбординг и помощь</h2>
+        <div class="q">
+          <label class="block">28. Нужна ли помощь с онбордингом (настройка, первая загрузка, разбор метрик)?</label>
+          <div class="options">
+            <label><input type="radio" name="q28" value="да, нужна" /> да, нужна</label>
+            <label><input type="radio" name="q28" value="частично" /> частично</label>
+            <label><input type="radio" name="q28" value="нет, разберёмся сами" /> нет, разберёмся сами</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>7. Результат для бизнеса</h2>
+        <div class="q">
+          <label class="block">29. Что изменилось после начала работы с сервисом? (можно несколько)</label>
+          <div class="options">
+            <label><input type="checkbox" name="q29" value="быстрее вижу ключевые цифры" /> быстрее вижу ключевые цифры</label>
+            <label><input type="checkbox" name="q29" value="лучше понимаю прибыль" /> лучше понимаю прибыль</label>
+            <label><input type="checkbox" name="q29" value="проще находить убыточные товары" /> проще находить убыточные товары</label>
+            <label><input type="checkbox" name="q29" value="меньше времени на Excel / ручные отчёты" /> меньше времени на Excel / ручные отчёты</label>
+            <label><input type="checkbox" name="q29" value="удобнее контролировать расходы" /> удобнее контролировать расходы</label>
+            <label><input type="checkbox" name="q29" value="проще принимать решения по поставкам" /> проще принимать решения по поставкам</label>
+            <label><input type="checkbox" name="q29" value="пока заметных изменений нет" /> пока заметных изменений нет</label>
+            <label class="inline-other">
+              <input type="checkbox" name="q29" value="другое" id="q29otherCheck" />
+              другое:
+              <input type="text" id="q29otherText" />
+            </label>
+          </div>
+        </div>
+
+        <div class="q">
+          <label class="block">30. Сколько времени в неделю экономите за счёт сервиса (примерно)?</label>
+          <div class="options">
+            <label><input type="radio" name="q30" value="почти ничего" /> почти ничего</label>
+            <label><input type="radio" name="q30" value="до 1 часа" /> до 1 часа</label>
+            <label><input type="radio" name="q30" value="1–3 часа" /> 1–3 часа</label>
+            <label><input type="radio" name="q30" value="3–5 часов" /> 3–5 часов</label>
+            <label><input type="radio" name="q30" value="более 5 часов" /> более 5 часов</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>8. Проблемы и улучшения</h2>
+        <div class="q">
+          <label class="block">31. С какими сложностями сталкивались? (можно несколько)</label>
+          <div class="options">
+            <label><input type="checkbox" name="q31" value="непонятно, как считать / читать метрики" /> непонятно, как считать / читать метрики</label>
+            <label><input type="checkbox" name="q31" value="неудобная загрузка отчётов" /> неудобная загрузка отчётов</label>
+            <label><input type="checkbox" name="q31" value="данные расходятся с кабинетом маркетплейса" /> данные расходятся с кабинетом маркетплейса</label>
+            <label><input type="checkbox" name="q31" value="медленно работает" /> медленно работает</label>
+            <label><input type="checkbox" name="q31" value="не хватает нужных отчётов / фильтров" /> не хватает нужных отчётов / фильтров</label>
+            <label><input type="checkbox" name="q31" value="сложно разобраться без помощи" /> сложно разобраться без помощи</label>
+            <label class="inline-other">
+              <input type="checkbox" name="q31" value="другое" id="q31otherCheck" />
+              другое:
+              <input type="text" id="q31otherText" />
+            </label>
+            <label><input type="checkbox" name="q31" value="особых проблем не было" /> особых проблем не было</label>
+          </div>
+        </div>
+
+        <div class="q">
+          <label class="block" for="q32">32. Что больше всего раздражает или мешает в сервисе?</label>
+          <textarea id="q32" name="q32"></textarea>
+        </div>
+        <div class="q">
+          <label class="block" for="q33">33. Чего не хватает в первую очередь? (топ-1–2 пожелания)</label>
+          <textarea id="q33" name="q33"></textarea>
+        </div>
+        <div class="q">
+          <label class="block" for="q34">34. Если бы могли изменить одну вещь — что бы это было?</label>
+          <textarea id="q34" name="q34"></textarea>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>9. Поддержка и дальше</h2>
+        <div class="q">
+          <label class="block">35. Насколько довольны скоростью и качеством поддержки? (1–5)</label>
+          <div class="scale" data-name="q35" data-max="5"></div>
+        </div>
+
+        <div class="q">
+          <label class="block">36. Планируете ли продолжать пользоваться сервисом?</label>
+          <div class="options">
+            <label><input type="radio" name="q36" value="да, точно" /> да, точно</label>
+            <label><input type="radio" name="q36" value="скорее да" /> скорее да</label>
+            <label><input type="radio" name="q36" value="пока не уверен(а)" /> пока не уверен(а)</label>
+            <label><input type="radio" name="q36" value="скорее нет" /> скорее нет</label>
+            <label><input type="radio" name="q36" value="нет" /> нет</label>
+          </div>
+        </div>
+
+        <div class="q">
+          <label class="block" for="q37">37. Что должно улучшиться, чтобы вы остались / рекомендовали сервис?</label>
+          <textarea id="q37" name="q37"></textarea>
+        </div>
+        <div class="q">
+          <label class="block" for="q38">38. Комментарий своими словами (что понравилось / что улучшить)</label>
+          <textarea id="q38" name="q38"></textarea>
+        </div>
+
+        <div class="q">
+          <label class="block" for="clientName">Имя / компания (по желанию)</label>
+          <input type="text" id="clientName" />
+        </div>
+        <div class="q">
+          <label class="block" for="clientContact">Контакт для уточнений</label>
+          <input type="text" id="clientContact" placeholder="Telegram / телефон / email" />
+        </div>
+      </div>
+
+      <div class="sticky-finish">
+        <div class="card" style="margin-bottom: 0;">
+          <div class="actions">
+            <button type="submit" class="btn-primary" id="finishBtn">Завершить</button>
+          </div>
+          <p class="hint">После завершения появится готовый текст ответа для отправки в Telegram.</p>
+
+          <div id="resultBox" class="result-box">
+            <label class="block" for="resultText">Ваш ответ для Telegram</label>
+            <textarea id="resultText" readonly></textarea>
+            <div class="actions" style="margin-top: 12px;">
+              <button type="button" class="btn-primary" id="copyBtn">Скопировать ответ</button>
+              <button type="button" class="btn-telegram" id="shareBtn" hidden>Отправить в Telegram</button>
+            </div>
+            <div id="status" class="status"></div>
+            <p class="hint">1) Скопируйте ответ → 2) откройте чат в Telegram → 3) вставьте и отправьте сообщение.</p>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    const importanceItems = [
+      ["q6", "6. Выручка и заказы"],
+      ["q7", "7. Прибыль / маржа после всех расходов"],
+      ["q8", "8. Реклама и её эффективность"],
+      ["q9", "9. Логистика и хранение"],
+      ["q10", "10. Возвраты"],
+      ["q11", "11. Остатки и поставки"],
+      ["q12", "12. Юнит-экономика по товарам"],
+      ["q13", "13. Сравнение периодов (неделя/месяц)"],
+      ["q14", "14. Несколько магазинов в одном окне"],
+      ["q15", "15. Ручные расходы (зарплата, аренда, упаковка и т.п.)"],
+    ];
+
+    const ratingItems = [
+      ["q21", "21. Удобство интерфейса"],
+      ["q22", "22. Понятность метрик и цифр"],
+      ["q23", "23. Скорость работы сервиса"],
+      ["q24", "24. Удобство загрузки отчётов"],
+      ["q25", "25. Точность / доверие к данным"],
+      ["q26", "26. Помощь и поддержка"],
+      ["q27", "27. Обучение / онбординг"],
+    ];
+
+    function buildScale(container) {
+      const name = container.dataset.name;
+      const max = Number(container.dataset.max || 5);
+      const min = Number(container.dataset.min || 1);
+      for (let i = min; i <= max; i++) {
+        const label = document.createElement("label");
+        label.innerHTML = `<input type="radio" name="${name}" value="${i}" /><span>${i}</span>`;
+        container.appendChild(label);
+      }
+    }
+
+    function buildMatrix(tbodyId, items, namePrefix) {
+      const tbody = document.getElementById(tbodyId);
+      items.forEach(([name, title]) => {
+        const tr = document.createElement("tr");
+        let cells = `<td>${title}</td>`;
+        for (let i = 1; i <= 5; i++) {
+          cells += `<td><input type="radio" name="${name}" value="${i}" /></td>`;
+        }
+        tr.innerHTML = cells;
+        tbody.appendChild(tr);
+      });
+    }
+
+    document.querySelectorAll(".scale").forEach(buildScale);
+    buildMatrix("importanceTable", importanceItems);
+    buildMatrix("ratingTable", ratingItems);
+
+    function checkedValues(name) {
+      return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map((el) => el.value);
+    }
+
+    function radioValue(name) {
+      const el = document.querySelector(`input[name="${name}"]:checked`);
+      return el ? el.value : "";
+    }
+
+    function withOther(name, checkId, textId) {
+      const values = checkedValues(name);
+      const otherOn = document.getElementById(checkId)?.checked;
+      const otherText = (document.getElementById(textId)?.value || "").trim();
+      return values.map((v) => {
+        if (v === "другое" || v === "другой сервис") {
+          return otherText ? `${v}: ${otherText}` : v;
+        }
+        return v;
+      }).filter((v, i, arr) => arr.indexOf(v) === i);
+    }
+
+    function collectAnswers() {
+      const lines = [];
+      const add = (title, value) => {
+        const v = Array.isArray(value) ? (value.length ? value.join("; ") : "—") : (value || "—");
+        lines.push(`${title}: ${v}`);
+      };
+
+      lines.push("ОПРОСНИК ОБРАТНОЙ СВЯЗИ — PROFibоard");
+      lines.push("=".repeat(42));
+      lines.push("");
+      lines.push("1. ОБЩИЙ ОПЫТ");
+      add("1. Как давно пользуетесь", radioValue("q1"));
+      add("2. Как часто заходите", radioValue("q2"));
+      add("3. Насколько помогает (1–10)", radioValue("q3"));
+      add("4. NPS / готовность рекомендовать (0–10)", radioValue("q4"));
+      lines.push("");
+      lines.push("2. ЧЕМ ЕЩЁ ПОЛЬЗУЕТЕСЬ");
+      add("5. Чем пользуетесь для аналитики", withOther("q5", "q5otherCheck", "q5otherText"));
+      lines.push("");
+      lines.push("3. ЧТО ВАЖНЕЕ КОНТРОЛИРОВАТЬ (1–5)");
+      importanceItems.forEach(([name, title]) => add(title, radioValue(name)));
+      add("16. Другие обязательные метрики", document.getElementById("q16").value.trim());
+      lines.push("");
+      lines.push("4. ЧТО ИСПОЛЬЗУЕТЕ В СЕРВИСЕ");
+      add("17. Разделы чаще всего", withOther("q17", "q17otherCheck", "q17otherText"));
+      add("18. Самый полезный раздел", document.getElementById("q18").value.trim());
+      add("19. Почти не используете и почему", document.getElementById("q19").value.trim());
+      add("20. Разделы в первую очередь", withOther("q20", "q20otherCheck", "q20otherText"));
+      lines.push("");
+      lines.push("5. ОЦЕНКА ПО БЛОКАМ (1–5)");
+      ratingItems.forEach(([name, title]) => add(title, radioValue(name)));
+      lines.push("");
+      lines.push("6. ОНБОРДИНГ");
+      add("28. Нужна ли помощь с онбордингом", radioValue("q28"));
+      lines.push("");
+      lines.push("7. РЕЗУЛЬТАТ ДЛЯ БИЗНЕСА");
+      add("29. Что изменилось", withOther("q29", "q29otherCheck", "q29otherText"));
+      add("30. Экономия времени в неделю", radioValue("q30"));
+      lines.push("");
+      lines.push("8. ПРОБЛЕМЫ И УЛУЧШЕНИЯ");
+      add("31. Сложности", withOther("q31", "q31otherCheck", "q31otherText"));
+      add("32. Что раздражает / мешает", document.getElementById("q32").value.trim());
+      add("33. Чего не хватает", document.getElementById("q33").value.trim());
+      add("34. Одна вещь, которую изменить", document.getElementById("q34").value.trim());
+      lines.push("");
+      lines.push("9. ПОДДЕРЖКА И ДАЛЬШЕ");
+      add("35. Оценка поддержки (1–5)", radioValue("q35"));
+      add("36. Планируете продолжать", radioValue("q36"));
+      add("37. Что должно улучшиться", document.getElementById("q37").value.trim());
+      add("38. Комментарий", document.getElementById("q38").value.trim());
+      lines.push("");
+      add("Имя / компания", document.getElementById("clientName").value.trim());
+      add("Контакт", document.getElementById("clientContact").value.trim());
+      lines.push("");
+      lines.push("Дата заполнения: " + new Date().toLocaleString("ru-RU"));
+
+      return lines.join("\n");
+    }
+
+    function showStatus(text, ok) {
+      const el = document.getElementById("status");
+      el.textContent = text;
+      el.className = "status show " + (ok ? "ok" : "err");
+    }
+
+    async function copyText(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (_) {
+        const area = document.getElementById("resultText");
+        area.focus();
+        area.select();
+        try {
+          return document.execCommand("copy");
+        } catch (_) {
+          return false;
+        }
+      }
+    }
+
+    document.getElementById("surveyForm").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const body = collectAnswers();
+      const resultBox = document.getElementById("resultBox");
+      const resultText = document.getElementById("resultText");
+      resultText.value = body;
+      resultBox.classList.add("show");
+      resultBox.scrollIntoView({ behavior: "smooth", block: "start" });
+
+      const copied = await copyText(body);
+      if (copied) {
+        showStatus("Готово. Ответ скопирован. Вернитесь в Telegram, вставьте сообщение в чат и отправьте.", true);
+      } else {
+        showStatus("Готово. Выделите текст в поле выше, скопируйте, вставьте в Telegram и отправьте.", false);
+      }
+
+      const shareBtn = document.getElementById("shareBtn");
+      if (navigator.share) {
+        shareBtn.hidden = false;
+      }
+    });
+
+    document.getElementById("copyBtn").addEventListener("click", async function () {
+      const body = document.getElementById("resultText").value || collectAnswers();
+      document.getElementById("resultText").value = body;
+      const copied = await copyText(body);
+      if (copied) {
+        showStatus("Скопировано. Откройте Telegram → вставьте в чат → отправьте.", true);
+      } else {
+        showStatus("Не удалось скопировать. Выделите текст вручную (долгое нажатие) и скопируйте.", false);
+      }
+    });
+
+    document.getElementById("shareBtn").addEventListener("click", async function () {
+      const body = document.getElementById("resultText").value || collectAnswers();
+      try {
+        await navigator.share({
+          title: "Ответы на опросник PROFibоard",
+          text: body,
+        });
+        showStatus("Выберите Telegram в списке приложений и отправьте сообщение.", true);
+      } catch (err) {
+        if (err && err.name === "AbortError") return;
+        const copied = await copyText(body);
+        showStatus(
+          copied
+            ? "Поделиться не удалось. Ответ скопирован — вставьте его в Telegram."
+            : "Поделиться не удалось. Скопируйте текст вручную и отправьте в Telegram.",
+          !!copied
+        );
+      }
+    });
+  </script>
+</body>
+</html>

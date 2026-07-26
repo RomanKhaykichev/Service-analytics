@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Shield, Users, UserPlus, AlertCircle, Pencil, Trash2, UserMinus, CalendarPlus, Banknote, Activity, BarChart3, ChevronUp, ChevronDown, Store, Inbox, Upload, RefreshCw } from "lucide-react";
+import { Shield, Users, UserPlus, AlertCircle, Pencil, Trash2, UserMinus, CalendarPlus, Banknote, Activity, BarChart3, ChevronUp, ChevronDown, Store, Inbox, Upload, RefreshCw, ClipboardList } from "lucide-react";
 import { Tooltip as UITooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -204,6 +204,7 @@ export default function Admin() {
   const [loadingMetrics, setLoadingMetrics] = useState(true);
   const [funnelMonth, setFunnelMonth] = useState<string>("all");
   const [supportTicketsTotal, setSupportTicketsTotal] = useState<number | null>(null);
+  const [feedbackSurveysTotal, setFeedbackSurveysTotal] = useState<number | null>(null);
   const [exportingUsers, setExportingUsers] = useState(false);
 
   const fetchSupportTicketsCount = useCallback(async () => {
@@ -216,6 +217,19 @@ export default function Admin() {
       setSupportTicketsTotal(res.total_count ?? 0);
     } catch {
       setSupportTicketsTotal(null);
+    }
+  }, []);
+
+  const fetchFeedbackSurveysCount = useCallback(async () => {
+    try {
+      const res = await apiGet<{ total_count: number }>("/api/admin/feedback-surveys", {
+        page: 1,
+        page_size: 1,
+        status: "open",
+      });
+      setFeedbackSurveysTotal(res.total_count ?? 0);
+    } catch {
+      setFeedbackSurveysTotal(null);
     }
   }, []);
 
@@ -289,6 +303,7 @@ export default function Admin() {
           total_count: totalCount,
         });
         void fetchSupportTicketsCount();
+        void fetchFeedbackSurveysCount();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       if (msg.includes("403") || msg.includes("Admin")) {
@@ -299,7 +314,7 @@ export default function Admin() {
     } finally {
       setLoadingTenants(false);
     }
-  }, [sort, search, planFilter, fetchSupportTicketsCount]);
+  }, [sort, search, planFilter, fetchSupportTicketsCount, fetchFeedbackSurveysCount]);
 
   const loadTenantShops = useCallback(async (tenantId: string) => {
     setTenantShops((prev) => {
@@ -1196,6 +1211,15 @@ export default function Admin() {
                 Обращения
                 {supportTicketsTotal != null ? (
                   <span className="tabular-nums text-muted-foreground">({supportTicketsTotal})</span>
+                ) : null}
+              </Link>
+            </Button>
+            <Button variant="outline" asChild className="shrink-0">
+              <Link to="/admin/feedback" className="inline-flex items-center gap-2">
+                <ClipboardList className="h-4 w-4" />
+                Опросы
+                {feedbackSurveysTotal != null ? (
+                  <span className="tabular-nums text-muted-foreground">({feedbackSurveysTotal})</span>
                 ) : null}
               </Link>
             </Button>

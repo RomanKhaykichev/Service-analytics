@@ -18,8 +18,10 @@ import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Support from "./pages/Support";
 import Training from "./pages/Training";
+import FeedbackSurvey from "./pages/FeedbackSurvey";
 import Admin from "./pages/Admin";
 import AdminAppeals from "./pages/AdminAppeals";
+import AdminFeedback from "./pages/AdminFeedback";
 import Landing from "./pages/Landing";
 import Privacy from "./pages/Privacy";
 import Offer from "./pages/Offer";
@@ -62,8 +64,10 @@ const App = () => (
               <Route path="/settings" element={<Settings />} />
               <Route path="/support" element={<Support />} />
               <Route path="/training" element={<Training />} />
+              <Route path="/feedback" element={<FeedbackSurvey />} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/admin/appeals" element={<AdminAppeals />} />
+              <Route path="/admin/feedback" element={<AdminFeedback />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
