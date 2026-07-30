@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { CalendarIcon } from "lucide-react";
 import { formatNumber, formatCurrency, formatMoneyNoDecimals } from "@/lib/formatters";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { getAlignedChartDomains } from "@/lib/alignedChartDomains";
 interface ChartComment {
   id: string;
   date: string;
@@ -68,6 +69,32 @@ export function RevenueDailyChart({
       };
     });
   }, [chartData]);
+
+  const hasProfitSeries = useMemo(
+    () => chartData.some((point) => point.profit !== undefined && point.profit !== null),
+    [chartData],
+  );
+
+  // Scale follows only the lines that are actually drawn right now.
+  const { yDomains, ordersKeys, revenueKeys } = useMemo(() => {
+    const activeKeys = (candidates: { key: string; rendered: boolean }[]) =>
+      candidates.filter(({ key, rendered }) => rendered && !hiddenLines.has(key)).map(({ key }) => key);
+
+    const orders = activeKeys([
+      { key: "ordersOriginal", rendered: true },
+      { key: "returnsOriginal", rendered: hasProductMetrics },
+    ]);
+    const revenue = activeKeys([
+      { key: "revenueValue", rendered: true },
+      { key: "profitValue", rendered: hasProfitSeries },
+    ]);
+
+    return {
+      yDomains: getAlignedChartDomains(data2, orders, revenue),
+      ordersKeys: orders,
+      revenueKeys: revenue,
+    };
+  }, [data2, hiddenLines, hasProductMetrics, hasProfitSeries]);
 
   const handleLegendClick = (dataKey: string) => {
     setHiddenLines(prev => {
@@ -196,7 +223,9 @@ export function RevenueDailyChart({
           }} />
             <YAxis 
               yAxisId="orders" 
-              domain={[0, "auto"]}
+              hide={ordersKeys.length === 0}
+              domain={yDomains.left.domain}
+              ticks={yDomains.left.ticks}
               allowDecimals={false}
               tick={{
                 fill: "hsl(var(--muted-foreground))",
@@ -218,6 +247,9 @@ export function RevenueDailyChart({
             <YAxis 
               yAxisId="revenue" 
               orientation="right" 
+              hide={revenueKeys.length === 0}
+              domain={yDomains.right.domain}
+              ticks={yDomains.right.ticks}
               tick={{
                 fill: "hsl(var(--muted-foreground))",
                 fontSize: 12
@@ -308,7 +340,7 @@ export function RevenueDailyChart({
               hide={hiddenLines.has("revenueValue")} 
             />
             {/* Прибыль показывается всегда, когда есть данные (для сводки и карточки товара) */}
-            {chartData.some(p => p.profit !== undefined && p.profit !== null) && (
+            {hasProfitSeries && (
             <Line 
               yAxisId="revenue" 
               type="monotone" 

@@ -5,7 +5,7 @@ const faqItemsRu = [
   {
     question: "Как это работает?",
     answer:
-      "Вы загружаете 4 ваших основных отчета с начала года и получаете данные по вашей прибыли и тратам в удобном виде, с возможностью фильтрации и анализа. Мы подготовили общий отчет чтобы вы следили за динамикой от месяца к месяцу. Если хотите обновить данные, просто загрузите новые отчеты с начала года и посмотрите как изменилась ситуация.",
+      "Вы подключаете API своего кабинета Uzum Seller, и PROFiboard автоматически загружает данные о продажах, расходах, товарах и остатках. Сервис рассчитывает прибыль, показывает ключевые показатели в удобном виде с фильтрами и сравнением периодов и автоматически обновляет данные — загружать отчёты вручную не нужно.",
   },
   {
     question: "У вас есть поддержка?",
@@ -28,7 +28,7 @@ const faqItemsUz = [
   {
     question: "Bu qanday ishlaydi?",
     answer:
-      "Yil boshidan boshlab 4 ta asosiy hisobotni yuklaysiz va foyda hamda xarajatlaringiz bo‘yicha qulay ko‘rinishda ma’lumot olasiz, filtrlash va tahlil qilish imkoniyati bilan. Biz umumiy hisobot tayyorlaganmiz, shunda oyma‑oy dinamikani kuzatishingiz mumkin. Agar ma’lumotlarni yangilamoqchi bo‘lsangiz, shunchaki yil boshidan yangi hisobotlarni yuklang va vaziyat qanday o‘zgarganini ko‘ring.",
+      "Uzum Seller kabinetingiz API’sini ulaysiz va PROFiboard savdolar, xarajatlar, tovarlar hamda qoldiqlar haqidagi ma’lumotlarni avtomatik yuklaydi. Xizmat foydani hisoblaydi, asosiy ko‘rsatkichlarni filtrlar va davrlarni taqqoslash imkoniyati bilan qulay ko‘rinishda ko‘rsatadi hamda ma’lumotlarni avtomatik yangilaydi — hisobotlarni qo‘lda yuklash shart emas.",
   },
   {
     question: "Sizlarda qo‘llab-quvvatlash xizmati bormi?",

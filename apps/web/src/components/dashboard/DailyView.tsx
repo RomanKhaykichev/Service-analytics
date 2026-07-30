@@ -25,6 +25,7 @@ import { useDailySummary, type DailySummaryGranularity } from "@/hooks/useDailyS
 import { format, addDays } from "date-fns";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
+import { getAlignedChartDomains } from "@/lib/alignedChartDomains";
 
 interface DailyViewProps {
   /** Группировка графика: day | week | month — только из селекта "По дням/По неделям/По месяцам" в шапке */
@@ -62,6 +63,20 @@ const CHART_SERIES_KEYS: { key: string; labelKey: string; color: string; axis: "
   { key: "taxes", labelKey: "daily.tax", color: SERIES_COLORS.taxes, axis: "money" },
   { key: "profit", labelKey: "daily.profitNet", color: SERIES_COLORS.profit, axis: "money" },
 ];
+
+function formatCountTick(value: number): string {
+  const abs = Math.abs(value);
+  const sign = value < 0 ? "-" : "";
+  return abs >= 1000 ? `${sign}${(abs / 1000).toFixed(0)}k` : String(value);
+}
+
+function formatMoneyTick(value: number): string {
+  const abs = Math.abs(value);
+  const sign = value < 0 ? "-" : "";
+  if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1000) return `${sign}${(abs / 1000).toFixed(0)}k`;
+  return String(value);
+}
 
 const DEFAULT_VISIBLE_SERIES: Record<string, boolean> = {
   orders: true,
@@ -190,6 +205,26 @@ export function DailyView({
   const toggleSeries = (key: string) => {
     setVisibleSeries((prev) => ({ ...prev, [key]: !prev[key] }));
   };
+
+  // Scale follows only the lines that are actually drawn right now.
+  const visibleCountKeys = useMemo(
+    () =>
+      CHART_SERIES_KEYS.filter((series) => series.axis === "count" && visibleSeries[series.key]).map(
+        (series) => series.key,
+      ),
+    [visibleSeries],
+  );
+  const visibleMoneyKeys = useMemo(
+    () =>
+      CHART_SERIES_KEYS.filter((series) => series.axis === "money" && visibleSeries[series.key]).map(
+        (series) => series.key,
+      ),
+    [visibleSeries],
+  );
+  const yDomains = useMemo(
+    () => getAlignedChartDomains(chartData, visibleCountKeys, visibleMoneyKeys),
+    [chartData, visibleCountKeys, visibleMoneyKeys],
+  );
 
   const [sortColumn, setSortColumn] = useState<SortColumn>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
@@ -392,16 +427,22 @@ export function DailyView({
                   />
                   <YAxis
                     yAxisId="count"
+                    hide={visibleCountKeys.length === 0}
+                    domain={yDomains.left.domain}
+                    ticks={yDomains.left.ticks}
                     tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
                     axisLine={{ stroke: "hsl(var(--border))" }}
-                    tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
+                    tickFormatter={formatCountTick}
                   />
                   <YAxis
                     yAxisId="money"
                     orientation="right"
+                    hide={visibleMoneyKeys.length === 0}
+                    domain={yDomains.right.domain}
+                    ticks={yDomains.right.ticks}
                     tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
                     axisLine={{ stroke: "hsl(var(--border))" }}
-                    tickFormatter={(v) => (v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
+                    tickFormatter={formatMoneyTick}
                   />
                   <Tooltip
                     contentStyle={{
