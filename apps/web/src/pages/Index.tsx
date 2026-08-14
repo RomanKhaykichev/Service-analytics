@@ -12,6 +12,7 @@ import { UzumServicesChart } from "@/components/dashboard/UzumServicesChart";
 import { MonthlyTable } from "@/components/dashboard/MonthlyTable";
 import { DailyView } from "@/components/dashboard/DailyView";
 import { ExpensesView } from "@/components/dashboard/ExpensesView";
+import { ExpensesAnalyticsView } from "@/components/dashboard/ExpensesAnalyticsView";
 import { ShipmentView } from "@/components/dashboard/ShipmentView";
 import { HeaderActions, type RatingNotificationProduct } from "@/components/dashboard/HeaderActions";
 import type { UzumApiConnectDialogHandle } from "@/components/dashboard/UzumApiConnectDialog";
@@ -43,6 +44,7 @@ const VALID_DASHBOARD_TABS = new Set([
   "summary",
   "daily",
   "products",
+  "expenses-analytics",
   "expenses",
   "shipment",
   "monthly",
@@ -757,6 +759,12 @@ function Dashboard() {
             onOpenProductHandled={handleOpenProductHandled}
           />
         </div>
+      ) : activeTab === "expenses-analytics" ? (
+        <ExpensesAnalyticsView
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          shop={selectedShop}
+        />
       ) : activeTab === "expenses" ? (
         <div className="mt-6">
           <ExpensesView />

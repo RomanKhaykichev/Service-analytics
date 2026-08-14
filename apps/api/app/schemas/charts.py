@@ -230,3 +230,51 @@ class ProductCommentResponse(BaseModel):
 class ProductCommentRequest(BaseModel):
     product_id: str
     comment: Optional[str] = None
+
+
+# Expenses analytics tab (Расходы)
+class ExpensesKpiMetric(BaseModel):
+    amount: float
+    change_pct: Optional[float] = None
+
+
+class ExpensesSummary(BaseModel):
+    total: ExpensesKpiMetric
+    logistics: ExpensesKpiMetric
+    promotion: ExpensesKpiMetric
+    storage: ExpensesKpiMetric
+    compare_month: Optional[int] = None  # 1-12 предыдущего месяца для подписи «к декабрю»
+    compare_year: Optional[int] = None
+
+
+class ExpensesServiceItem(BaseModel):
+    name: str
+    amount: float
+    share_pct: float
+    category: str  # logistics | promotion | storage | other
+
+
+class ExpensesWeekPart(BaseModel):
+    name: str
+    amount: float
+
+
+class ExpensesWeekPoint(BaseModel):
+    week_start: str  # YYYY-MM-DD
+    week_end: str
+    label: str
+    total: float
+    parts: list[ExpensesWeekPart]
+
+
+class ExpensesBreakdownFilters(BaseModel):
+    shop_id: Optional[str] = None
+    shop: Optional[str] = None
+
+
+class ExpensesBreakdownResponse(BaseModel):
+    summary: ExpensesSummary
+    services: list[ExpensesServiceItem]
+    weekly: list[ExpensesWeekPoint]
+    period: PeriodInfo
+    filters: ExpensesBreakdownFilters

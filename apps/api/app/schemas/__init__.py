@@ -29,6 +29,13 @@ from .charts import (
     ProductsTableItem,
     ProductsTableResponse,
     ProductCardAllTimeMetrics,
+    ExpensesKpiMetric,
+    ExpensesSummary,
+    ExpensesServiceItem,
+    ExpensesWeekPart,
+    ExpensesWeekPoint,
+    ExpensesBreakdownFilters,
+    ExpensesBreakdownResponse,
 )
 from .products import ProductItem, ProductsResponse
 from .kpi import KPISummaryResponse, CumulativeRevenueResponse
@@ -66,6 +73,13 @@ __all__ = [
     "ProductsTableItem",
     "ProductsTableResponse",
     "ProductCardAllTimeMetrics",
+    "ExpensesKpiMetric",
+    "ExpensesSummary",
+    "ExpensesServiceItem",
+    "ExpensesWeekPart",
+    "ExpensesWeekPoint",
+    "ExpensesBreakdownFilters",
+    "ExpensesBreakdownResponse",
     "ProductItem",
     "ProductsResponse",
     "KPISummaryResponse",

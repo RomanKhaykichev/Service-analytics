@@ -566,6 +566,24 @@ const translations: Record<Language, Record<string, string>> = {
     'tabs.monthly': 'Помесячно',
     'tabs.cogs': 'Себестоимость',
 
+    // Expenses analytics tab
+    'expensesAnalytics.total': 'Общая сумма услуг',
+    'expensesAnalytics.logistics': 'Логистика',
+    'expensesAnalytics.promotion': 'Продвижение',
+    'expensesAnalytics.storage': 'Хранение',
+    'expensesAnalytics.byServices': 'Расходы по услугам',
+    'expensesAnalytics.byServicesHint': 'Доли услуг от общей суммы расходов за выбранный период. Логистика — из отчёта продаж, остальные услуги — из отчёта по услугам Uzum.',
+    'expensesAnalytics.structure': 'Структура расходов',
+    'expensesAnalytics.structureHint': 'Доля каждой услуги в общей сумме расходов.',
+    'expensesAnalytics.weekly': 'Динамика расходов по неделям',
+    'expensesAnalytics.weeklyHint': 'Сумма расходов по календарным неделям внутри выбранного периода.',
+    'expensesAnalytics.totalShort': 'Общая сумма',
+    'expensesAnalytics.amount': 'Сумма',
+    'expensesAnalytics.empty': 'Нет данных о расходах за выбранный период',
+    'expensesAnalytics.howItWorks1': 'Вкладка показывает услуги Uzum: логистику из отчёта продаж и услуги из отчёта по услугам (буст, хранение и др.). Общая сумма услуг — сумма метрик на графиках.',
+    'expensesAnalytics.howItWorks2': 'Карточки сверху группируют услуги: логистика, продвижение (маркетинг) и хранение (склад).',
+    'expensesAnalytics.howItWorks3': 'Сравнение «к месяцу» — относительно предыдущего календарного месяца.',
+
     // COGS tab
     'cogs.lkUzum': 'Себестоимость (Uzum)',
     'cogs.lkUzumLine1': 'Себестоимость',
@@ -1537,6 +1555,24 @@ const translations: Record<Language, Record<string, string>> = {
     'tabs.shipmentLabel': 'Yuklab jo\'natish',
     'tabs.monthly': 'Oylik',
     'tabs.cogs': 'Tannarx',
+
+    // Expenses analytics tab
+    'expensesAnalytics.total': 'Xizmatlarning umumiy summasi',
+    'expensesAnalytics.logistics': 'Logistika',
+    'expensesAnalytics.promotion': 'Promo',
+    'expensesAnalytics.storage': 'Saqlash',
+    'expensesAnalytics.byServices': 'Xizmatlar bo\'yicha xarajatlar',
+    'expensesAnalytics.byServicesHint': 'Tanlangan davrdagi umumiy xarajatlardagi xizmatlar ulushi. Logistika — sotuvlar hisobotidan, qolgan xizmatlar — Uzum xizmatlar hisobotidan.',
+    'expensesAnalytics.structure': 'Xarajatlar tuzilishi',
+    'expensesAnalytics.structureHint': 'Har bir xizmatning umumiy xarajatlardagi ulushi.',
+    'expensesAnalytics.weekly': 'Haftalik xarajatlar dinamikasi',
+    'expensesAnalytics.weeklyHint': 'Tanlangan davrdagi kalendar haftalar bo\'yicha xarajatlar yig\'indisi.',
+    'expensesAnalytics.totalShort': 'Umumiy summa',
+    'expensesAnalytics.amount': 'Summa',
+    'expensesAnalytics.empty': 'Tanlangan davr uchun xarajatlar ma\'lumoti yo\'q',
+    'expensesAnalytics.howItWorks1': 'Yorliq Uzum xarajatlarini ko\'rsatadi: sotuvlar hisobotidan logistika va xizmatlar hisobotidan xizmatlar (reklama, saqlash va boshqalar).',
+    'expensesAnalytics.howItWorks2': 'Yuqoridagi kartochkalar xizmatlarni guruhlaydi: logistika, promo (marketing) va saqlash (ombor).',
+    'expensesAnalytics.howItWorks3': '«Oyga» solishtirish — oldingi kalendar oyi bilan.',
 
     // COGS tab
     'cogs.lkUzum': 'Tannarx (Uzum)',

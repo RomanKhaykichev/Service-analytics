@@ -27,6 +27,7 @@ const TAB_LABEL_KEYS: Record<DashboardTabId, string> = {
   daily: "tabs.daily",
   products: "tabs.products",
   cogs: "tabs.cogs",
+  "expenses-analytics": "tabs.services",
   expenses: "tabs.expensesExtra",
   shipment: "tabs.shipmentLabel",
   monthly: "tabs.monthly",

@@ -61,6 +61,13 @@ export const TAB_HOW_IT_WORKS_CONFIG: Record<DashboardTabId, TabHowItWorksTabCon
       { textKey: "howItWorks.cogs.item4" },
     ],
   },
+  "expenses-analytics": {
+    items: [
+      { textKey: "expensesAnalytics.howItWorks1" },
+      { textKey: "expensesAnalytics.howItWorks2" },
+      { textKey: "expensesAnalytics.howItWorks3" },
+    ],
+  },
   expenses: {
     videoId: "4",
     items: [

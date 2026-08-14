@@ -56,6 +56,13 @@ from app.schemas import (
     UzumServicesDailyResponse,
     UzumServicesPoint,
     UzumServicesFilters,
+    ExpensesBreakdownResponse,
+    ExpensesSummary,
+    ExpensesKpiMetric,
+    ExpensesServiceItem,
+    ExpensesWeekPart,
+    ExpensesWeekPoint,
+    ExpensesBreakdownFilters,
     OrdersSalesDailyResponse,
     OrdersSalesDailyPoint,
     OrdersSalesDailyFilters,
@@ -765,6 +772,448 @@ async def get_uzum_services_daily(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
         )
+
+
+_LOGISTICS_SERVICE_NAME = "Логистика"
+
+# Fixed chart metrics for tab «Расходы» (bars / donut / weekly).
+# Matching is case-insensitive substring on service + operation_type = Оплата; amount = cost_sum.
+# Order matters: more specific patterns first (return storage before storage).
+_EXPENSE_CHART_METRICS: list[tuple[str, str, str]] = [
+    # (display_name, category, sql LIKE pattern on upper(service))
+    ("Буст в топ", "promotion", "%УСЛУГИ ПО ПЛАТНОМУ ПРОДВИЖЕНИЮ ТОВАРОВ НА МАРКЕТПЛЕЙСЕ%"),
+    ("Буст заказов", "promotion", "%ОПЛАТА БУСТА ЗАКАЗОВ%"),
+    ("Хранение собранного возврата", "storage", "%ОПЛАТА ЗА УСЛУГИ ХРАНЕНИЯ СОБРАННОГО ВОЗВРАТА ПО%"),
+    ("Хранение", "storage", "%ОПЛАТА ЗА УСЛУГИ ХРАНЕНИЯ%"),
+    ("Закреплённый отзыв", "other", "%ЗАКРЕПЛЕНИЕ ОТЗЫВА%"),
+    ("Утилизация", "other", "%ОБРАБОТКА НАКЛАДНОЙ УТИЛИЗАЦИИ%"),
+]
+
+
+def _pct_change(current: float, previous: float) -> Optional[float]:
+    if previous is None or abs(previous) < 1e-9:
+        return None if abs(current) < 1e-9 else 100.0
+    return round(((current - previous) / abs(previous)) * 100.0, 1)
+
+
+def _week_label_ru(week_start, week_end) -> str:
+    months = [
+        "", "января", "февраля", "марта", "апреля", "мая", "июня",
+        "июля", "августа", "сентября", "октября", "ноября", "декабря",
+    ]
+    if week_start.month == week_end.month:
+        return f"{week_start.day}–{week_end.day} {months[week_start.month]}"
+    return (
+        f"{week_start.day} {months[week_start.month]} – "
+        f"{week_end.day} {months[week_end.month]}"
+    )
+
+
+def _expenses_net_amount_sql(alias: str = "fe") -> str:
+    """Net amount per expense row: payment positive, refund negative.
+    Fines use amount_sum; other services use cost_sum (same as KPI).
+    """
+    return f"""
+        CASE
+            WHEN upper(COALESCE({alias}.service, '')) LIKE '%ШТРАФ%' THEN
+                CASE
+                    WHEN upper(trim(COALESCE({alias}.operation_type, ''))) = 'ОПЛАТА'
+                        THEN COALESCE({alias}.amount_sum, 0)
+                    WHEN upper(trim(COALESCE({alias}.operation_type, ''))) = 'ВОЗВРАТ'
+                        THEN -COALESCE({alias}.amount_sum, 0)
+                    ELSE 0
+                END
+            ELSE
+                CASE
+                    WHEN upper(trim(COALESCE({alias}.operation_type, ''))) = 'ОПЛАТА'
+                        THEN COALESCE({alias}.cost_sum, 0)
+                    WHEN upper(trim(COALESCE({alias}.operation_type, ''))) = 'ВОЗВРАТ'
+                        THEN -COALESCE({alias}.cost_sum, 0)
+                    ELSE 0
+                END
+        END
+    """
+
+
+def _service_category_sql(alias: str = "fe") -> str:
+    return f"""
+        CASE
+            WHEN upper(trim(COALESCE({alias}.source, ''))) = 'МАРКЕТИНГ' THEN 'promotion'
+            WHEN upper(trim(COALESCE({alias}.source, ''))) = 'СКЛАД' THEN 'storage'
+            ELSE 'other'
+        END
+    """
+
+
+def _expense_chart_metric_sql(alias: str = "fe") -> str:
+    """Map expense row to one of the 6 chart metric names (NULL if unmatched)."""
+    cases = []
+    for display_name, _category, pattern in _EXPENSE_CHART_METRICS:
+        # Escape single quotes in display name for SQL literal
+        safe_name = display_name.replace("'", "''")
+        cases.append(
+            f"WHEN upper(COALESCE({alias}.service, '')) LIKE '{pattern}' THEN '{safe_name}'"
+        )
+    return "CASE\n" + "\n".join(cases) + "\nELSE NULL\nEND"
+
+
+def _expense_chart_amount_sql(alias: str = "fe") -> str:
+    """cost_sum only when Тип операции = Оплата (no refund netting for chart metrics)."""
+    return f"""
+        CASE
+            WHEN upper(trim(COALESCE({alias}.operation_type, ''))) = 'ОПЛАТА'
+                THEN COALESCE({alias}.cost_sum, 0)
+            ELSE 0
+        END
+    """
+
+
+@router.get("/charts/expenses-breakdown", response_model=ExpensesBreakdownResponse)
+async def get_expenses_breakdown(
+    user_id: UUID = Depends(require_user),
+    period: str = Query(default="30d", description="Period: 7d, 30d, 90d, or all"),
+    date_from: Optional[str] = Query(default=None, description="Start date YYYY-MM-DD"),
+    date_to: Optional[str] = Query(default=None, description="End date YYYY-MM-DD"),
+    shop_id: Optional[str] = Query(default=None, description="Shop UUID"),
+    shop: Optional[str] = Query(default=None, description="Shop name for filtering"),
+    db: Session = Depends(get_db),
+):
+    """Breakdown for tab «Расходы»: KPI cards, by-service bars/donut, weekly stacked bars.
+
+    KPI cards: logistics from fact_sales; promotion/storage from fact_expenses by source.
+    Charts (bars/donut/weekly): Логистика from fact_sales logistics_sum + 6 fixed
+    metrics from expenses-report cost_sum where operation_type = Оплата.
+    Comparison is vs the previous full calendar month relative to date_to.
+    """
+    date_from_iso, date_to_iso, date_from_dt, date_to_date, period_code, _ = resolve_date_range(
+        date_from, date_to, period, db, user_id
+    )
+    assert_trial_shop_filter_allowed(db, user_id, shop, shop_id)
+
+    if date_from_dt is None:
+        min_date = db.execute(
+            text(f"""
+                SELECT LEAST(
+                    (SELECT MIN(date_written_off)::date FROM {qname("fact_expenses")} WHERE user_id = CAST(:uid AS uuid)),
+                    (SELECT MIN(date_created)::date FROM {qname("fact_sales")} WHERE user_id = CAST(:uid AS uuid))
+                )
+            """),
+            {"uid": str(user_id)},
+        ).scalar()
+        date_from_dt = min_date or (date_to_date - timedelta(days=29))
+        date_from_iso = date_from_dt.isoformat()
+
+    # Trial cap for expenses (and keep sales in the same window for consistency)
+    plan_row = db.execute(
+        text(f"SELECT COALESCE(plan, 'trial') FROM {qname('users')} WHERE id = CAST(:uid AS uuid)"),
+        {"uid": str(user_id)},
+    ).fetchone()
+    plan_val = (plan_row[0] or "trial").strip().lower() if plan_row else "trial"
+    is_trial_plan = plan_val in ("trial", "", None) or not plan_val
+    if is_user_admin(user_id, db):
+        is_trial_plan = False
+
+    exp_from = date_from_dt
+    exp_to = date_to_date
+    if is_trial_plan:
+        trial_exp_to = db.execute(
+            text(f"SELECT MAX(date_written_off)::date FROM {qname('fact_expenses')} WHERE user_id = CAST(:uid AS uuid)"),
+            {"uid": str(user_id)},
+        ).scalar()
+        if trial_exp_to:
+            trial_exp_from = trial_exp_to - timedelta(days=59)
+            if exp_from is None or exp_from < trial_exp_from:
+                exp_from = trial_exp_from
+            if exp_to is None or exp_to > trial_exp_to:
+                exp_to = trial_exp_to
+
+    # Previous calendar month (for KPI deltas)
+    ref = exp_to or date_to_date
+    if ref.month == 1:
+        prev_month_start = ref.replace(year=ref.year - 1, month=12, day=1)
+    else:
+        prev_month_start = ref.replace(month=ref.month - 1, day=1)
+    if prev_month_start.month == 12:
+        prev_month_end = prev_month_start.replace(year=prev_month_start.year + 1, month=1, day=1) - timedelta(days=1)
+    else:
+        prev_month_end = prev_month_start.replace(month=prev_month_start.month + 1, day=1) - timedelta(days=1)
+
+    try:
+        net_sql = _expenses_net_amount_sql("fe")
+        category_sql = _service_category_sql("fe")
+
+        expenses_shop_frag, expenses_shop_params = expenses_shop_filter_condition(
+            shop, shop_id, outer_table_alias="fe", user_id=user_id, db=db
+        )
+        expenses_shop_condition = f"AND {expenses_shop_frag}" if expenses_shop_frag else ""
+
+        shop_sales_frag, shop_sales_params = shop_filter_condition(
+            shop, shop_id, outer_table_alias="fact_sales", user_id=user_id, db=db
+        )
+        shop_sales_condition = f"AND {shop_sales_frag}" if shop_sales_frag else ""
+
+        completed_condition = get_status_sql_condition("completed")
+        processing_condition = get_status_sql_condition("processing")
+        revenue_condition_sales = f"({completed_condition} OR {processing_condition})"
+
+        def _range_params(d_from, d_to):
+            p = {
+                "user_id": str(user_id),
+                "date_from": d_from.isoformat(),
+                "date_to": d_to.isoformat(),
+            }
+            p.update(expenses_shop_params)
+            p.update(shop_sales_params)
+            return p
+
+        def _fetch_logistics(d_from, d_to) -> float:
+            row = db.execute(
+                text(f"""
+                    SELECT COALESCE(SUM(fact_sales.logistics_sum), 0)
+                    FROM {qname("fact_sales")} fact_sales
+                    WHERE fact_sales.user_id = CAST(:user_id AS uuid)
+                      AND ({revenue_condition_sales})
+                      {shop_sales_condition}
+                      AND fact_sales.date_created >= CAST(:date_from AS date)
+                      AND fact_sales.date_created < CAST(:date_to AS date) + INTERVAL '1 day'
+                """),
+                _range_params(d_from, d_to),
+            ).fetchone()
+            return float(row[0] or 0) if row else 0.0
+
+        def _fetch_expense_groups(d_from, d_to):
+            """Return list of (service_name, category, amount)."""
+            rows = db.execute(
+                text(f"""
+                    SELECT
+                        COALESCE(NULLIF(trim(fe.service), ''), 'Прочее') AS service_name,
+                        {category_sql} AS category,
+                        COALESCE(SUM({net_sql}), 0) AS amount
+                    FROM {qname("fact_expenses")} fe
+                    WHERE fe.user_id = CAST(:user_id AS uuid)
+                      {expenses_shop_condition}
+                      AND fe.date_written_off >= CAST(:date_from AS date)
+                      AND fe.date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'
+                    GROUP BY 1, 2
+                    HAVING ABS(COALESCE(SUM({net_sql}), 0)) > 0.009
+                """),
+                _range_params(d_from, d_to),
+            ).fetchall()
+            return [(str(r[0]), str(r[1]), float(r[2] or 0)) for r in rows]
+
+        # Current period (KPI cards — logistics + source-based groups)
+        logistics_cur = _fetch_logistics(exp_from, exp_to)
+        groups_cur = _fetch_expense_groups(exp_from, exp_to)
+        promotion_cur = sum(a for _, c, a in groups_cur if c == "promotion")
+        storage_cur = sum(a for _, c, a in groups_cur if c == "storage")
+
+        # Previous month
+        logistics_prev = _fetch_logistics(prev_month_start, prev_month_end)
+        groups_prev = _fetch_expense_groups(prev_month_start, prev_month_end)
+        promotion_prev = sum(a for _, c, a in groups_prev if c == "promotion")
+        storage_prev = sum(a for _, c, a in groups_prev if c == "storage")
+
+        # --- Charts: 6 fixed expenses metrics + Логистика from sales ---
+        metric_sql = _expense_chart_metric_sql("fe")
+        chart_amount_sql = _expense_chart_amount_sql("fe")
+        metric_category = {name: cat for name, cat, _ in _EXPENSE_CHART_METRICS}
+        metric_category[_LOGISTICS_SERVICE_NAME] = "logistics"
+        # Display order: logistics first (usually largest), then the 6 expense metrics
+        chart_display_order = [
+            _LOGISTICS_SERVICE_NAME,
+            "Буст в топ",
+            "Буст заказов",
+            "Хранение",
+            "Хранение собранного возврата",
+            "Закреплённый отзыв",
+            "Утилизация",
+        ]
+
+        chart_rows = db.execute(
+            text(f"""
+                SELECT
+                    {metric_sql} AS metric_name,
+                    COALESCE(SUM({chart_amount_sql}), 0) AS amount
+                FROM {qname("fact_expenses")} fe
+                WHERE fe.user_id = CAST(:user_id AS uuid)
+                  {expenses_shop_condition}
+                  AND fe.date_written_off >= CAST(:date_from AS date)
+                  AND fe.date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'
+                  AND ({metric_sql}) IS NOT NULL
+                  AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ОПЛАТА'
+                GROUP BY 1
+            """),
+            _range_params(exp_from, exp_to),
+        ).fetchall()
+        chart_amounts = {str(r[0]): float(r[1] or 0) for r in chart_rows if r[0]}
+        chart_amounts[_LOGISTICS_SERVICE_NAME] = logistics_cur
+
+        chart_total = sum(chart_amounts.get(name, 0.0) for name in chart_display_order)
+
+        # Previous month chart total (same formulas as services in charts)
+        chart_rows_prev = db.execute(
+            text(f"""
+                SELECT
+                    {metric_sql} AS metric_name,
+                    COALESCE(SUM({chart_amount_sql}), 0) AS amount
+                FROM {qname("fact_expenses")} fe
+                WHERE fe.user_id = CAST(:user_id AS uuid)
+                  {expenses_shop_condition}
+                  AND fe.date_written_off >= CAST(:date_from AS date)
+                  AND fe.date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'
+                  AND ({metric_sql}) IS NOT NULL
+                  AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ОПЛАТА'
+                GROUP BY 1
+            """),
+            _range_params(prev_month_start, prev_month_end),
+        ).fetchall()
+        chart_amounts_prev = {str(r[0]): float(r[1] or 0) for r in chart_rows_prev if r[0]}
+        chart_amounts_prev[_LOGISTICS_SERVICE_NAME] = logistics_prev
+        chart_total_prev = sum(chart_amounts_prev.get(name, 0.0) for name in chart_display_order)
+
+        services: list[ExpensesServiceItem] = []
+        for name in chart_display_order:
+            amount = chart_amounts.get(name, 0.0)
+            share = (amount / chart_total * 100.0) if abs(chart_total) > 1e-9 else 0.0
+            services.append(
+                ExpensesServiceItem(
+                    name=name,
+                    amount=round(amount, 2),
+                    share_pct=round(share, 1),
+                    category=metric_category.get(name, "other"),
+                )
+            )
+        # Sort by amount desc for bar/donut readability (zeros at the bottom)
+        services = sorted(services, key=lambda s: abs(s.amount), reverse=True)
+
+        # Weekly dynamics for the same metrics (6 expenses + logistics)
+        daily_chart_rows = db.execute(
+            text(f"""
+                SELECT
+                    {sql_uz_calendar_date("fe.date_written_off")} AS day,
+                    {metric_sql} AS metric_name,
+                    COALESCE(SUM({chart_amount_sql}), 0) AS amount
+                FROM {qname("fact_expenses")} fe
+                WHERE fe.user_id = CAST(:user_id AS uuid)
+                  {expenses_shop_condition}
+                  AND fe.date_written_off >= CAST(:date_from AS date)
+                  AND fe.date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'
+                  AND ({metric_sql}) IS NOT NULL
+                  AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ОПЛАТА'
+                GROUP BY 1, 2
+            """),
+            _range_params(exp_from, exp_to),
+        ).fetchall()
+
+        daily_logistics_rows = db.execute(
+            text(f"""
+                SELECT
+                    fact_sales.date_created::date AS day,
+                    COALESCE(SUM(fact_sales.logistics_sum), 0) AS amount
+                FROM {qname("fact_sales")} fact_sales
+                WHERE fact_sales.user_id = CAST(:user_id AS uuid)
+                  AND ({revenue_condition_sales})
+                  {shop_sales_condition}
+                  AND fact_sales.date_created >= CAST(:date_from AS date)
+                  AND fact_sales.date_created < CAST(:date_to AS date) + INTERVAL '1 day'
+                GROUP BY 1
+            """),
+            _range_params(exp_from, exp_to),
+        ).fetchall()
+
+        week_buckets: dict[str, dict] = {}
+
+        def _ensure_week(d):
+            monday = d - timedelta(days=d.weekday())
+            sunday = monday + timedelta(days=6)
+            ws = max(monday, exp_from)
+            we = min(sunday, exp_to)
+            key = monday.isoformat()
+            if key not in week_buckets:
+                week_buckets[key] = {
+                    "week_start": ws,
+                    "week_end": we,
+                    "parts": {},
+                }
+            else:
+                week_buckets[key]["week_start"] = min(week_buckets[key]["week_start"], ws)
+                week_buckets[key]["week_end"] = max(week_buckets[key]["week_end"], we)
+            return key
+
+        cursor = exp_from
+        while cursor <= exp_to:
+            _ensure_week(cursor)
+            cursor += timedelta(days=1)
+
+        for row in daily_chart_rows:
+            day = row[0]
+            if hasattr(day, "date") and callable(getattr(day, "date", None)):
+                try:
+                    day = day.date()
+                except Exception:
+                    pass
+            name = str(row[1] or "")
+            amount = float(row[2] or 0)
+            if not name or abs(amount) < 1e-9:
+                continue
+            key = _ensure_week(day)
+            week_buckets[key]["parts"][name] = week_buckets[key]["parts"].get(name, 0.0) + amount
+
+        for row in daily_logistics_rows:
+            day = row[0]
+            amount = float(row[1] or 0)
+            if abs(amount) < 1e-9:
+                continue
+            key = _ensure_week(day)
+            week_buckets[key]["parts"][_LOGISTICS_SERVICE_NAME] = (
+                week_buckets[key]["parts"].get(_LOGISTICS_SERVICE_NAME, 0.0) + amount
+            )
+
+        # Stack order follows services list (amount desc)
+        service_order = [s.name for s in services]
+
+        weekly: list[ExpensesWeekPoint] = []
+        for key in sorted(week_buckets.keys()):
+            bucket = week_buckets[key]
+            parts_map = bucket["parts"]
+            parts_list: list[ExpensesWeekPart] = []
+            for name in service_order:
+                amt = parts_map.get(name, 0.0)
+                if abs(amt) > 1e-9:
+                    parts_list.append(ExpensesWeekPart(name=name, amount=round(amt, 2)))
+            total_week = sum(p.amount for p in parts_list)
+            weekly.append(
+                ExpensesWeekPoint(
+                    week_start=bucket["week_start"].isoformat(),
+                    week_end=bucket["week_end"].isoformat(),
+                    label=_week_label_ru(bucket["week_start"], bucket["week_end"]),
+                    total=round(total_week, 2),
+                    parts=parts_list,
+                )
+            )
+
+        summary = ExpensesSummary(
+            # Общая сумма услуг = сумма метрик на графиках (логистика + 6 услуг)
+            total=ExpensesKpiMetric(amount=round(chart_total, 2), change_pct=_pct_change(chart_total, chart_total_prev)),
+            logistics=ExpensesKpiMetric(amount=round(logistics_cur, 2), change_pct=_pct_change(logistics_cur, logistics_prev)),
+            promotion=ExpensesKpiMetric(amount=round(promotion_cur, 2), change_pct=_pct_change(promotion_cur, promotion_prev)),
+            storage=ExpensesKpiMetric(amount=round(storage_cur, 2), change_pct=_pct_change(storage_cur, storage_prev)),
+            compare_month=prev_month_start.month,
+            compare_year=prev_month_start.year,
+        )
+
+        return ExpensesBreakdownResponse(
+            summary=summary,
+            services=services,
+            weekly=weekly,
+            period=PeriodInfo(code=period_code, date_from=exp_from.isoformat(), date_to=exp_to.isoformat()),
+            filters=ExpensesBreakdownFilters(shop_id=shop_id, shop=shop),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_expenses_breakdown: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 def _parse_turnover(data: dict) -> Optional[float]:
