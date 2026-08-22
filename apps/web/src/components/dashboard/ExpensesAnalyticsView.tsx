@@ -141,6 +141,7 @@ function TrendBadge({
 
 function KpiCard({
   title,
+  titleHint,
   amount,
   changePct,
   compareLabel,
@@ -150,6 +151,7 @@ function KpiCard({
   cornerExtra,
 }: {
   title: string;
+  titleHint?: string;
   amount: number;
   changePct: number | null | undefined;
   compareLabel: string;
@@ -161,7 +163,23 @@ function KpiCard({
   return (
     <div className="relative bg-card rounded-xl border border-border shadow-sm p-5 animate-fade-in">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm text-muted-foreground">{title}</p>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <p className="text-sm text-muted-foreground">{title}</p>
+          {titleHint ? (
+            <UiTooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground shrink-0"
+                  aria-label={titleHint}
+                >
+                  <Info className="w-4 h-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">{titleHint}</TooltipContent>
+            </UiTooltip>
+          ) : null}
+        </div>
         <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center shrink-0", iconWrapClass)}>
           <Icon className={cn("w-5 h-5", iconClass)} />
         </div>
@@ -336,6 +354,7 @@ export function ExpensesAnalyticsView({
         />
         <KpiCard
           title={t("expensesAnalytics.promotion")}
+          titleHint={t("expensesAnalytics.promotionHint")}
           amount={summary?.promotion.amount ?? 0}
           changePct={summary?.promotion.change_pct}
           compareLabel={compareLabel}

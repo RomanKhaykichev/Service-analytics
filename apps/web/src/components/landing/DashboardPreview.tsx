@@ -69,7 +69,7 @@ export function DashboardPreview() {
                 />
               </div>
               <span className="text-xs text-muted-foreground whitespace-nowrap">
-                113 млн / 1 млрд
+                113 млн / 4,9 млрд
               </span>
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-2">

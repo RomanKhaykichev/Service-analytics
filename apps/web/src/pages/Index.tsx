@@ -524,101 +524,111 @@ function Dashboard() {
     }
   ] : [];
 
+  const formatHeaderShortDate = (dateStr: string) => {
+    const [, month, day] = dateStr.split("-");
+    return `${day}.${month}`;
+  };
+
+  const formatHeaderDateTime = (iso: string) => {
+    const date = new Date(iso);
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${day}.${month}, ${hours}:${minutes}`;
+  };
+
+  const nextSyncSchedule = getNextUzumSyncSchedule();
+
+  const headerDataStatus =
+    (salesMinDate && salesMaxDate) || lastUpdatedAt ? (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex flex-col gap-0.5 text-xs text-muted-foreground/80 cursor-default lg:whitespace-nowrap">
+            {salesMinDate && salesMaxDate && (
+              <div>
+                {t("common.dataPeriod")}{" "}
+                <span className="font-medium">
+                  {formatHeaderShortDate(salesMinDate)}–{formatHeaderShortDate(salesMaxDate)}
+                </span>
+              </div>
+            )}
+            {lastUpdatedAt && (
+              <div>
+                {t("common.lastUpdate")}{" "}
+                <span className="font-medium">{formatHeaderDateTime(lastUpdatedAt)}</span>
+              </div>
+            )}
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="start" className="text-sm">
+          {isSubscriptionActive ? (
+            <>
+              {t("common.nextUpdate")}{" "}
+              <span className="font-medium">
+                {nextSyncSchedule.dateLabel}, {nextSyncSchedule.timeLabel}
+              </span>
+            </>
+          ) : (
+            t("common.renewTariffForUpdate")
+          )}
+        </TooltipContent>
+      </Tooltip>
+    ) : null;
+
   return (
     <MainLayout>
       {/* Header with title and actions */}
-      <div className="flex flex-col gap-4 mb-6">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <img
-                  src="/favicon.png"
-                  alt=""
-                  className="h-6 w-6 flex-shrink-0 object-contain"
-                />
-                <h1 className="text-xl font-semibold text-foreground">
-                  <span className="font-bold">PROFi</span>
-                  <span className="font-normal">board</span>
-                </h1>
-              </div>
+      <div className="flex flex-col gap-3 lg:gap-4 pb-4 mb-6 border-b border-border">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 lg:gap-4">
+          <div className="flex items-center justify-between lg:justify-start gap-4 lg:flex-shrink-0 w-full lg:w-auto">
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <img
+                src="/favicon.png"
+                alt=""
+                className="h-6 w-6 flex-shrink-0 object-contain"
+              />
+              <h1 className="text-xl font-semibold text-foreground">
+                <span className="font-bold">PROFi</span>
+                <span className="font-normal">board</span>
+              </h1>
             </div>
-            {(salesMinDate && salesMaxDate) || lastUpdatedAt ? (() => {
-              const formatShortDate = (dateStr: string) => {
-                const [, month, day] = dateStr.split("-");
-                return `${day}.${month}`;
-              };
-              const formatDateTime = (iso: string) => {
-                const date = new Date(iso);
-                const day = String(date.getDate()).padStart(2, "0");
-                const month = String(date.getMonth() + 1).padStart(2, "0");
-                const hours = String(date.getHours()).padStart(2, "0");
-                const minutes = String(date.getMinutes()).padStart(2, "0");
-                return `${day}.${month}, ${hours}:${minutes}`;
-              };
-              const next = getNextUzumSyncSchedule();
-              return (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex flex-col gap-0.5 pl-1 text-xs text-muted-foreground/80 cursor-default">
-                      {salesMinDate && salesMaxDate && (
-                        <div>
-                          {t("common.dataPeriod")}{" "}
-                          <span className="font-medium">
-                            {formatShortDate(salesMinDate)}–{formatShortDate(salesMaxDate)}
-                          </span>
-                        </div>
-                      )}
-                      {lastUpdatedAt && (
-                        <div>
-                          {t("common.lastUpdate")}{" "}
-                          <span className="font-medium">{formatDateTime(lastUpdatedAt)}</span>
-                        </div>
-                      )}
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" align="start" className="text-sm">
-                    {isSubscriptionActive ? (
-                      <>
-                        {t("common.nextUpdate")}{" "}
-                        <span className="font-medium">
-                          {next.dateLabel}, {next.timeLabel}
-                        </span>
-                      </>
-                    ) : (
-                      t("common.renewTariffForUpdate")
-                    )}
-                  </TooltipContent>
-                </Tooltip>
-              );
-            })() : null}
+            <div className="hidden lg:block">{headerDataStatus}</div>
+            <div className="lg:hidden">
+              <HeaderActions
+                apiConnectRef={apiConnectRef}
+                onOpenRatingProduct={handleOpenRatingProduct}
+              />
+            </div>
           </div>
-          
-          {/* Center - Compact Revenue Progress Bar (all tabs) */}
-          <div className="hidden lg:flex flex-1 justify-center">
-            <RevenueProgressBar 
-              current={cumulativeRevenueGlobal} 
-              target={1000000000} 
+
+          <div className="lg:hidden">{headerDataStatus}</div>
+
+          {/* Center - Compact Revenue Progress Bar (desktop) */}
+          <div className="hidden lg:flex flex-1 justify-center min-w-0 px-2">
+            <RevenueProgressBar
+              current={cumulativeRevenueGlobal}
+              target={4_900_000_000}
               year={cumulativeRevenueYear}
-              compact 
+              compact
             />
           </div>
-          
-          <div className="flex items-center gap-2">
+
+          <div className="hidden lg:flex items-center gap-2 flex-shrink-0">
             <HeaderActions
               apiConnectRef={apiConnectRef}
               onOpenRatingProduct={handleOpenRatingProduct}
             />
           </div>
         </div>
-        
+
         {/* Mobile Revenue Progress Bar (all tabs) */}
         <div className="lg:hidden">
-          <RevenueProgressBar 
-            current={cumulativeRevenueGlobal} 
-            target={1000000000} 
+          <RevenueProgressBar
+            current={cumulativeRevenueGlobal}
+            target={4_900_000_000}
             year={cumulativeRevenueYear}
-            compact 
+            compact
           />
         </div>
       </div>
