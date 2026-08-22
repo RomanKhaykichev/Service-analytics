@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Any, Optional
 from uuid import UUID
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import logging
 import re
 from app.db import get_db, qname
@@ -796,17 +796,10 @@ def _pct_change(current: float, previous: float) -> Optional[float]:
     return round(((current - previous) / abs(previous)) * 100.0, 1)
 
 
-def _week_label_ru(week_start, week_end) -> str:
-    months = [
-        "", "января", "февраля", "марта", "апреля", "мая", "июня",
-        "июля", "августа", "сентября", "октября", "ноября", "декабря",
-    ]
-    if week_start.month == week_end.month:
-        return f"{week_start.day}–{week_end.day} {months[week_start.month]}"
-    return (
-        f"{week_start.day} {months[week_start.month]} – "
-        f"{week_end.day} {months[week_end.month]}"
-    )
+def _week_label_chart(week_monday) -> str:
+    """Подпись недели как на графике заказов и продаж: dd.MM–dd.MM (пн–вс)."""
+    week_sunday = week_monday + timedelta(days=6)
+    return f"{week_monday.strftime('%d.%m')}–{week_sunday.strftime('%d.%m')}"
 
 
 def _expenses_net_amount_sql(alias: str = "fe") -> str:
@@ -883,7 +876,7 @@ async def get_expenses_breakdown(
     KPI cards: logistics from fact_sales; promotion/storage from fact_expenses by source.
     Charts (bars/donut/weekly): Логистика from fact_sales logistics_sum + 6 fixed
     metrics from expenses-report cost_sum where operation_type = Оплата.
-    Comparison is vs the previous full calendar month relative to date_to.
+    Comparison is vs the previous equivalent period (same length, immediately before date_from).
     """
     date_from_iso, date_to_iso, date_from_dt, date_to_date, period_code, _ = resolve_date_range(
         date_from, date_to, period, db, user_id
@@ -927,21 +920,12 @@ async def get_expenses_breakdown(
             if exp_to is None or exp_to > trial_exp_to:
                 exp_to = trial_exp_to
 
-    # Previous calendar month (for KPI deltas)
-    ref = exp_to or date_to_date
-    if ref.month == 1:
-        prev_month_start = ref.replace(year=ref.year - 1, month=12, day=1)
-    else:
-        prev_month_start = ref.replace(month=ref.month - 1, day=1)
-    if prev_month_start.month == 12:
-        prev_month_end = prev_month_start.replace(year=prev_month_start.year + 1, month=1, day=1) - timedelta(days=1)
-    else:
-        prev_month_end = prev_month_start.replace(month=prev_month_start.month + 1, day=1) - timedelta(days=1)
+    # Previous equivalent period (same length, immediately before current)
+    period_days = (exp_to - exp_from).days + 1
+    prev_period_end = exp_from - timedelta(days=1)
+    prev_period_start = prev_period_end - timedelta(days=period_days - 1)
 
     try:
-        net_sql = _expenses_net_amount_sql("fe")
-        category_sql = _service_category_sql("fe")
-
         expenses_shop_frag, expenses_shop_params = expenses_shop_filter_condition(
             shop, shop_id, outer_table_alias="fe", user_id=user_id, db=db
         )
@@ -981,44 +965,25 @@ async def get_expenses_breakdown(
             ).fetchone()
             return float(row[0] or 0) if row else 0.0
 
-        def _fetch_expense_groups(d_from, d_to):
-            """Return list of (service_name, category, amount)."""
-            rows = db.execute(
+        def _fetch_revenue(d_from, d_to) -> float:
+            row = db.execute(
                 text(f"""
-                    SELECT
-                        COALESCE(NULLIF(trim(fe.service), ''), 'Прочее') AS service_name,
-                        {category_sql} AS category,
-                        COALESCE(SUM({net_sql}), 0) AS amount
-                    FROM {qname("fact_expenses")} fe
-                    WHERE fe.user_id = CAST(:user_id AS uuid)
-                      {expenses_shop_condition}
-                      AND fe.date_written_off >= CAST(:date_from AS date)
-                      AND fe.date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'
-                    GROUP BY 1, 2
-                    HAVING ABS(COALESCE(SUM({net_sql}), 0)) > 0.009
+                    SELECT COALESCE(SUM(fact_sales.revenue_sum), 0)
+                    FROM {qname("fact_sales")} fact_sales
+                    WHERE fact_sales.user_id = CAST(:user_id AS uuid)
+                      AND ({revenue_condition_sales})
+                      {shop_sales_condition}
+                      AND fact_sales.date_created >= CAST(:date_from AS date)
+                      AND fact_sales.date_created < CAST(:date_to AS date) + INTERVAL '1 day'
                 """),
                 _range_params(d_from, d_to),
-            ).fetchall()
-            return [(str(r[0]), str(r[1]), float(r[2] or 0)) for r in rows]
+            ).fetchone()
+            return float(row[0] or 0) if row else 0.0
 
-        # Current period (KPI cards — logistics + source-based groups)
-        logistics_cur = _fetch_logistics(exp_from, exp_to)
-        groups_cur = _fetch_expense_groups(exp_from, exp_to)
-        promotion_cur = sum(a for _, c, a in groups_cur if c == "promotion")
-        storage_cur = sum(a for _, c, a in groups_cur if c == "storage")
-
-        # Previous month
-        logistics_prev = _fetch_logistics(prev_month_start, prev_month_end)
-        groups_prev = _fetch_expense_groups(prev_month_start, prev_month_end)
-        promotion_prev = sum(a for _, c, a in groups_prev if c == "promotion")
-        storage_prev = sum(a for _, c, a in groups_prev if c == "storage")
-
-        # --- Charts: 6 fixed expenses metrics + Логистика from sales ---
         metric_sql = _expense_chart_metric_sql("fe")
         chart_amount_sql = _expense_chart_amount_sql("fe")
         metric_category = {name: cat for name, cat, _ in _EXPENSE_CHART_METRICS}
         metric_category[_LOGISTICS_SERVICE_NAME] = "logistics"
-        # Display order: logistics first (usually largest), then the 6 expense metrics
         chart_display_order = [
             _LOGISTICS_SERVICE_NAME,
             "Буст в топ",
@@ -1029,47 +994,56 @@ async def get_expenses_breakdown(
             "Утилизация",
         ]
 
-        chart_rows = db.execute(
-            text(f"""
-                SELECT
-                    {metric_sql} AS metric_name,
-                    COALESCE(SUM({chart_amount_sql}), 0) AS amount
-                FROM {qname("fact_expenses")} fe
-                WHERE fe.user_id = CAST(:user_id AS uuid)
-                  {expenses_shop_condition}
-                  AND fe.date_written_off >= CAST(:date_from AS date)
-                  AND fe.date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'
-                  AND ({metric_sql}) IS NOT NULL
-                  AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ОПЛАТА'
-                GROUP BY 1
-            """),
-            _range_params(exp_from, exp_to),
-        ).fetchall()
-        chart_amounts = {str(r[0]): float(r[1] or 0) for r in chart_rows if r[0]}
-        chart_amounts[_LOGISTICS_SERVICE_NAME] = logistics_cur
+        def _fetch_chart_metric_amounts(d_from, d_to) -> dict[str, float]:
+            """All 7 chart metrics for a date range."""
+            amounts = {name: 0.0 for name in chart_display_order}
+            rows = db.execute(
+                text(f"""
+                    SELECT
+                        {metric_sql} AS metric_name,
+                        COALESCE(SUM({chart_amount_sql}), 0) AS amount
+                    FROM {qname("fact_expenses")} fe
+                    WHERE fe.user_id = CAST(:user_id AS uuid)
+                      {expenses_shop_condition}
+                      AND fe.date_written_off >= CAST(:date_from AS date)
+                      AND fe.date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'
+                      AND ({metric_sql}) IS NOT NULL
+                      AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ОПЛАТА'
+                    GROUP BY 1
+                """),
+                _range_params(d_from, d_to),
+            ).fetchall()
+            for r in rows:
+                if r[0]:
+                    amounts[str(r[0])] = float(r[1] or 0)
+            amounts[_LOGISTICS_SERVICE_NAME] = _fetch_logistics(d_from, d_to)
+            return amounts
+
+        def _promotion_from_amounts(amounts: dict[str, float]) -> float:
+            return (
+                amounts.get("Буст в топ", 0.0)
+                + amounts.get("Буст заказов", 0.0)
+                + amounts.get("Закреплённый отзыв", 0.0)
+            )
+
+        def _storage_from_amounts(amounts: dict[str, float]) -> float:
+            return amounts.get("Хранение", 0.0) + amounts.get("Хранение собранного возврата", 0.0)
+
+        chart_amounts = _fetch_chart_metric_amounts(exp_from, exp_to)
+        chart_amounts_prev = _fetch_chart_metric_amounts(prev_period_start, prev_period_end)
 
         chart_total = sum(chart_amounts.get(name, 0.0) for name in chart_display_order)
-
-        # Previous month chart total (same formulas as services in charts)
-        chart_rows_prev = db.execute(
-            text(f"""
-                SELECT
-                    {metric_sql} AS metric_name,
-                    COALESCE(SUM({chart_amount_sql}), 0) AS amount
-                FROM {qname("fact_expenses")} fe
-                WHERE fe.user_id = CAST(:user_id AS uuid)
-                  {expenses_shop_condition}
-                  AND fe.date_written_off >= CAST(:date_from AS date)
-                  AND fe.date_written_off < CAST(:date_to AS date) + INTERVAL '1 day'
-                  AND ({metric_sql}) IS NOT NULL
-                  AND upper(trim(COALESCE(fe.operation_type, ''))) = 'ОПЛАТА'
-                GROUP BY 1
-            """),
-            _range_params(prev_month_start, prev_month_end),
-        ).fetchall()
-        chart_amounts_prev = {str(r[0]): float(r[1] or 0) for r in chart_rows_prev if r[0]}
-        chart_amounts_prev[_LOGISTICS_SERVICE_NAME] = logistics_prev
         chart_total_prev = sum(chart_amounts_prev.get(name, 0.0) for name in chart_display_order)
+        logistics_cur = chart_amounts.get(_LOGISTICS_SERVICE_NAME, 0.0)
+        logistics_prev = chart_amounts_prev.get(_LOGISTICS_SERVICE_NAME, 0.0)
+        promotion_cur = _promotion_from_amounts(chart_amounts)
+        promotion_prev = _promotion_from_amounts(chart_amounts_prev)
+        storage_cur = _storage_from_amounts(chart_amounts)
+        storage_prev = _storage_from_amounts(chart_amounts_prev)
+        revenue_cur = _fetch_revenue(exp_from, exp_to)
+        promotion_revenue_share_pct = (
+            round(promotion_cur / revenue_cur * 100.0, 1) if revenue_cur > 0 else None
+        )
 
         services: list[ExpensesServiceItem] = []
         for name in chart_display_order:
@@ -1083,7 +1057,6 @@ async def get_expenses_breakdown(
                     category=metric_category.get(name, "other"),
                 )
             )
-        # Sort by amount desc for bar/donut readability (zeros at the bottom)
         services = sorted(services, key=lambda s: abs(s.amount), reverse=True)
 
         # Weekly dynamics for the same metrics (6 expenses + logistics)
@@ -1182,11 +1155,12 @@ async def get_expenses_breakdown(
                 if abs(amt) > 1e-9:
                     parts_list.append(ExpensesWeekPart(name=name, amount=round(amt, 2)))
             total_week = sum(p.amount for p in parts_list)
+            week_monday = date.fromisoformat(key)
             weekly.append(
                 ExpensesWeekPoint(
                     week_start=bucket["week_start"].isoformat(),
                     week_end=bucket["week_end"].isoformat(),
-                    label=_week_label_ru(bucket["week_start"], bucket["week_end"]),
+                    label=_week_label_chart(week_monday),
                     total=round(total_week, 2),
                     parts=parts_list,
                 )
@@ -1198,8 +1172,10 @@ async def get_expenses_breakdown(
             logistics=ExpensesKpiMetric(amount=round(logistics_cur, 2), change_pct=_pct_change(logistics_cur, logistics_prev)),
             promotion=ExpensesKpiMetric(amount=round(promotion_cur, 2), change_pct=_pct_change(promotion_cur, promotion_prev)),
             storage=ExpensesKpiMetric(amount=round(storage_cur, 2), change_pct=_pct_change(storage_cur, storage_prev)),
-            compare_month=prev_month_start.month,
-            compare_year=prev_month_start.year,
+            revenue=round(revenue_cur, 2),
+            promotion_revenue_share_pct=promotion_revenue_share_pct,
+            compare_period_from=prev_period_start.isoformat(),
+            compare_period_to=prev_period_end.isoformat(),
         )
 
         return ExpensesBreakdownResponse(

@@ -243,8 +243,10 @@ class ExpensesSummary(BaseModel):
     logistics: ExpensesKpiMetric
     promotion: ExpensesKpiMetric
     storage: ExpensesKpiMetric
-    compare_month: Optional[int] = None  # 1-12 предыдущего месяца для подписи «к декабрю»
-    compare_year: Optional[int] = None
+    revenue: float = 0.0
+    promotion_revenue_share_pct: Optional[float] = None  # promotion / revenue * 100
+    compare_period_from: Optional[str] = None  # YYYY-MM-DD предыдущего такого же периода
+    compare_period_to: Optional[str] = None
 
 
 class ExpensesServiceItem(BaseModel):

@@ -764,6 +764,9 @@ function Dashboard() {
           dateFrom={dateFrom}
           dateTo={dateTo}
           shop={selectedShop}
+          boundsLoading={boundsLoading}
+          minDate={minDate}
+          maxDate={maxDate}
         />
       ) : activeTab === "expenses" ? (
         <div className="mt-6">

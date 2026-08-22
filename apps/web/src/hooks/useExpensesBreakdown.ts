@@ -11,8 +11,10 @@ export interface ExpensesSummary {
   logistics: ExpensesKpiMetric;
   promotion: ExpensesKpiMetric;
   storage: ExpensesKpiMetric;
-  compare_month: number | null;
-  compare_year: number | null;
+  revenue: number;
+  promotion_revenue_share_pct: number | null;
+  compare_period_from: string | null;
+  compare_period_to: string | null;
 }
 
 export interface ExpensesServiceItem {

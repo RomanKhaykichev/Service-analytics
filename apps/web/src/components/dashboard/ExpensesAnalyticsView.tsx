@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import {
   Bar,
   BarChart,
@@ -16,15 +16,19 @@ import {
 import { Briefcase, Flame, Info, Package, Truck } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useExpensesBreakdown } from "@/hooks/useExpensesBreakdown";
-import { formatMillions, formatMoneyNoDecimals } from "@/lib/formatters";
+import { formatMillions, formatMoneyNoDecimals, formatPercent } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip as UiTooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { parseISO } from "date-fns";
 
 interface ExpensesAnalyticsViewProps {
   dateFrom: string;
   dateTo: string;
   shop?: string | null;
+  boundsLoading?: boolean;
+  minDate?: string | null;
+  maxDate?: string | null;
 }
 
 const SERVICE_COLORS: Record<string, string> = {
@@ -54,23 +58,23 @@ const FALLBACK_PALETTE = [
   "#0EA5E9",
 ];
 
-const MONTH_DATIVE_RU = [
+const MONTH_GENITIVE_RU = [
   "",
-  "январю",
-  "февралю",
-  "марту",
-  "апрелю",
-  "маю",
-  "июню",
-  "июлю",
-  "августу",
-  "сентябрю",
-  "октябрю",
-  "ноябрю",
-  "декабрю",
+  "января",
+  "февраля",
+  "марта",
+  "апреля",
+  "мая",
+  "июня",
+  "июля",
+  "августа",
+  "сентября",
+  "октября",
+  "ноября",
+  "декабря",
 ];
 
-const MONTH_DATIVE_UZ = [
+const MONTH_GENITIVE_UZ = [
   "",
   "yanvar",
   "fevral",
@@ -86,6 +90,20 @@ const MONTH_DATIVE_UZ = [
   "dekabr",
 ];
 
+function formatComparePeriodRange(from: string, to: string, language: string): string {
+  const start = parseISO(from);
+  const end = parseISO(to);
+  const months = language === "uz" ? MONTH_GENITIVE_UZ : MONTH_GENITIVE_RU;
+
+  if (start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()) {
+    return `${start.getDate()}–${end.getDate()} ${months[start.getMonth() + 1]}`;
+  }
+  return (
+    `${start.getDate()} ${months[start.getMonth() + 1]} – ` +
+    `${end.getDate()} ${months[end.getMonth() + 1]}`
+  );
+}
+
 function colorForService(name: string, index: number): string {
   if (SERVICE_COLORS[name]) return SERVICE_COLORS[name];
   const lower = name.toLowerCase();
@@ -98,22 +116,17 @@ function colorForService(name: string, index: number): string {
 function TrendBadge({
   changePct,
   compareLabel,
-  tone,
 }: {
   changePct: number | null | undefined;
   compareLabel: string;
-  tone: "purple" | "orange" | "cyan";
 }) {
   if (changePct === null || changePct === undefined) {
     return <span className="text-xs text-muted-foreground">—</span>;
   }
   const up = changePct >= 0;
-  const toneClass =
-    tone === "purple"
-      ? "bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300"
-      : tone === "orange"
-        ? "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300"
-        : "bg-cyan-100 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300";
+  const toneClass = up
+    ? "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300"
+    : "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300";
 
   return (
     <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium", toneClass)}>
@@ -134,7 +147,7 @@ function KpiCard({
   icon: Icon,
   iconWrapClass,
   iconClass,
-  tone,
+  cornerExtra,
 }: {
   title: string;
   amount: number;
@@ -143,10 +156,10 @@ function KpiCard({
   icon: typeof Briefcase;
   iconWrapClass: string;
   iconClass: string;
-  tone: "purple" | "orange" | "cyan";
+  cornerExtra?: ReactNode;
 }) {
   return (
-    <div className="bg-card rounded-xl border border-border shadow-sm p-5 animate-fade-in">
+    <div className="relative bg-card rounded-xl border border-border shadow-sm p-5 animate-fade-in">
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm text-muted-foreground">{title}</p>
         <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center shrink-0", iconWrapClass)}>
@@ -157,8 +170,11 @@ function KpiCard({
         {formatMoneyNoDecimals(amount, "сум")}
       </p>
       <div className="mt-3">
-        <TrendBadge changePct={changePct} compareLabel={compareLabel} tone={tone} />
+        <TrendBadge changePct={changePct} compareLabel={compareLabel} />
       </div>
+      {cornerExtra ? (
+        <div className="absolute bottom-5 right-5">{cornerExtra}</div>
+      ) : null}
     </div>
   );
 }
@@ -181,23 +197,29 @@ function ChartTitle({ title, hint }: { title: string; hint?: string }) {
   );
 }
 
-export function ExpensesAnalyticsView({ dateFrom, dateTo, shop }: ExpensesAnalyticsViewProps) {
+export function ExpensesAnalyticsView({
+  dateFrom,
+  dateTo,
+  shop,
+  boundsLoading = false,
+  minDate,
+  maxDate,
+}: ExpensesAnalyticsViewProps) {
   const { t, language } = useLanguage();
   const { summary, services, weekly, loading, error } = useExpensesBreakdown({
     dateFrom,
     dateTo,
     shop: shop && shop !== "all" ? shop : null,
+    enabled: !boundsLoading,
   });
 
   const compareLabel = useMemo(() => {
-    const month = summary?.compare_month;
-    const year = summary?.compare_year;
-    if (!month || !year) return "";
-    if (language === "uz") {
-      return `${MONTH_DATIVE_UZ[month]} ${year} ga`;
-    }
-    return `к ${MONTH_DATIVE_RU[month]} ${year}`;
-  }, [summary?.compare_month, summary?.compare_year, language]);
+    const from = summary?.compare_period_from;
+    const to = summary?.compare_period_to;
+    if (!from || !to) return "";
+    const range = formatComparePeriodRange(from, to, language);
+    return language === "uz" ? `${range} ga` : `к ${range}`;
+  }, [summary?.compare_period_from, summary?.compare_period_to, language]);
 
   const colorByName = useMemo(() => {
     const map: Record<string, string> = {};
@@ -256,7 +278,7 @@ export function ExpensesAnalyticsView({ dateFrom, dateTo, shop }: ExpensesAnalyt
     [services],
   );
 
-  if (loading) {
+  if (loading || boundsLoading) {
     return (
       <div className="mt-6 space-y-4 animate-fade-in">
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -282,9 +304,17 @@ export function ExpensesAnalyticsView({ dateFrom, dateTo, shop }: ExpensesAnalyt
   }
 
   const totalAmount = chartTotal;
+  const hasChartData = barData.length > 0;
 
   return (
     <div className="mt-6 space-y-4 animate-fade-in">
+      {!hasChartData && minDate && maxDate && (
+        <p className="text-sm text-muted-foreground rounded-lg border border-border bg-muted/30 px-4 py-3">
+          {language === "uz"
+            ? `Tanlangan davr (${dateFrom} — ${dateTo}) uchun ma'lumot yo'q. Mavjud davr: ${minDate} — ${maxDate}.`
+            : `За выбранный период (${dateFrom} — ${dateTo}) нет данных. Доступный диапазон: ${minDate} — ${maxDate}.`}
+        </p>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <KpiCard
           title={t("expensesAnalytics.total")}
@@ -294,7 +324,6 @@ export function ExpensesAnalyticsView({ dateFrom, dateTo, shop }: ExpensesAnalyt
           icon={Briefcase}
           iconWrapClass="bg-violet-100 dark:bg-violet-950/40"
           iconClass="text-violet-600"
-          tone="purple"
         />
         <KpiCard
           title={t("expensesAnalytics.logistics")}
@@ -304,7 +333,6 @@ export function ExpensesAnalyticsView({ dateFrom, dateTo, shop }: ExpensesAnalyt
           icon={Truck}
           iconWrapClass="bg-violet-100 dark:bg-violet-950/40"
           iconClass="text-violet-600"
-          tone="purple"
         />
         <KpiCard
           title={t("expensesAnalytics.promotion")}
@@ -314,7 +342,18 @@ export function ExpensesAnalyticsView({ dateFrom, dateTo, shop }: ExpensesAnalyt
           icon={Flame}
           iconWrapClass="bg-orange-100 dark:bg-orange-950/40"
           iconClass="text-orange-600"
-          tone="orange"
+          cornerExtra={
+            summary?.promotion_revenue_share_pct != null ? (
+              <UiTooltip>
+                <TooltipTrigger asChild>
+                  <span className="text-xl font-bold text-orange-600 dark:text-orange-400 tabular-nums cursor-default">
+                    {formatPercent(summary.promotion_revenue_share_pct)}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{t("expensesAnalytics.promotionAdShare")}</TooltipContent>
+              </UiTooltip>
+            ) : undefined
+          }
         />
         <KpiCard
           title={t("expensesAnalytics.storage")}
@@ -324,7 +363,6 @@ export function ExpensesAnalyticsView({ dateFrom, dateTo, shop }: ExpensesAnalyt
           icon={Package}
           iconWrapClass="bg-cyan-100 dark:bg-cyan-950/40"
           iconClass="text-cyan-600"
-          tone="cyan"
         />
       </div>
 
