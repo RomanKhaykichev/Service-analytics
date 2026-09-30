@@ -60,6 +60,9 @@ htmlcov/
 
 # Local config files
 *.local.*
+# Desktop Docker edition (names match *.local.* above)
+!docker-compose.local.yml
+!.env.local.example
 
 # uploads / user files
 apps/**/uploads/
