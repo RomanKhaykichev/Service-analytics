@@ -1,18 +1,21 @@
 @echo off
 setlocal EnableExtensions
 cd /d "%~dp0"
-chcp 65001 >nul
+
+if exist "C:\Program Files\Docker\Docker\resources\bin\docker.exe" (
+  set "PATH=C:\Program Files\Docker\Docker\resources\bin;%PATH%"
+)
 
 where docker >nul 2>&1
 if errorlevel 1 (
-  echo Docker не найден. Установите Docker Desktop и повторите.
+  echo Docker was not found. Install Docker Desktop, then CLOSE this window and open a new PowerShell.
   pause
   exit /b 1
 )
 
 docker info >nul 2>&1
 if errorlevel 1 (
-  echo Docker Desktop не запущен. Откройте его и дождитесь зелёного значка, затем снова start.bat.
+  echo Docker Desktop is not running. Start it and wait until the whale icon is idle, then run start.bat again.
   pause
   exit /b 1
 )
@@ -20,31 +23,32 @@ if errorlevel 1 (
 if not exist ".env.local" (
   if exist ".env.local.example" (
     copy /Y ".env.local.example" ".env.local" >nul
-    echo Создан файл .env.local — при желании смените пароли внутри.
+    echo Created .env.local from the example file.
   ) else (
-    echo Нет .env.local.example — нечем заполнить окружение.
+    echo Missing .env.local.example
     pause
     exit /b 1
   )
 )
 
-echo Запуск PROFiboard ^(первый раз может занять 5–15 минут^)...
+echo Starting PROFiboard. First run can take 5-15 minutes...
 docker compose -f docker-compose.local.yml --env-file .env.local up -d --build
 if errorlevel 1 (
-  echo Не удалось запустить. Если порт 8080 занят, закройте другой сервер или смените WEB_PORT в .env.local.
+  echo Start failed. If port 8080 is busy, close the other app or change WEB_PORT in .env.local
   pause
   exit /b 1
 )
 
-echo Ожидание сайта...
-timeout /t 3 /nobreak >nul
+echo Waiting for the site...
+timeout /t 5 /nobreak >nul
 start "" "http://localhost:8080"
 
 echo.
-echo PROFiboard: http://localhost:8080
-echo Код SMS ^(если Eskiz не настроен^):
+echo Open: http://localhost:8080
+echo SMS code log:
 echo   docker compose -f docker-compose.local.yml --env-file .env.local logs api --tail 80
-echo Остановка: stop.bat
+echo Stop: stop.bat
 echo.
+pause
 endlocal
 exit /b 0

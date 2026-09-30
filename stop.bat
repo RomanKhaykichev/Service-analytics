@@ -1,11 +1,14 @@
 @echo off
 setlocal EnableExtensions
 cd /d "%~dp0"
-chcp 65001 >nul
+
+if exist "C:\Program Files\Docker\Docker\resources\bin\docker.exe" (
+  set "PATH=C:\Program Files\Docker\Docker\resources\bin;%PATH%"
+)
 
 where docker >nul 2>&1
 if errorlevel 1 (
-  echo Docker не найден.
+  echo Docker was not found.
   pause
   exit /b 1
 )
@@ -17,11 +20,12 @@ if exist ".env.local" (
 )
 
 if errorlevel 1 (
-  echo Не удалось остановить контейнеры.
+  echo Failed to stop containers.
   pause
   exit /b 1
 )
 
-echo PROFiboard остановлен. Данные в Docker сохранились. Снова: start.bat
+echo PROFiboard stopped. Data is kept. Start again with start.bat
+pause
 endlocal
 exit /b 0
