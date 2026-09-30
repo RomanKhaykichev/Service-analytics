@@ -21,11 +21,10 @@ COPY apps/api/alembic/ ./alembic/
 COPY apps/api/alembic.ini ./
 COPY apps/api/scripts/ ./scripts/
 
-# Make entrypoint executable
-RUN chmod +x ./scripts/entrypoint.sh
+# Windows checkouts often copy CRLF; that makes bash fail before migrations run.
+RUN sed -i 's/\r$//' ./scripts/entrypoint.sh ./scripts/wait_for_db.py \
+    && chmod +x ./scripts/entrypoint.sh
 
-# Expose port
 EXPOSE 8000
 
-# Use entrypoint script (runs migrations before starting API)
-ENTRYPOINT ["./scripts/entrypoint.sh"]
+ENTRYPOINT ["/bin/bash", "./scripts/entrypoint.sh"]

@@ -15,7 +15,9 @@
 
 Файлы `start.bat` / `stop.bat` только на английском (cmd на Windows ломает кириллицу). Если на том ПК старая копия — скопируйте эти два файла заново.
 
-Остановка: `stop.bat` (данные не удаляются).
+Остановка: `stop.bat` (данные не удаляются). Логи API: `logs-api.bat`.
+
+Если `start.bat` пишет, что API unhealthy — замените в папке обновлённые файлы (`start.bat`, `docker-compose.local.yml`, `apps/api/Dockerfile`, `apps/api/scripts/`) и снова запустите `.\start.bat`.
 
 ## SMS без Eskiz
 
