@@ -277,6 +277,10 @@ def main():
         conn.execute(text(f"ALTER TABLE {schema}.fact_leftout_snapshot ADD COLUMN IF NOT EXISTS snap_id bigserial"))
         conn.execute(text(f"ALTER TABLE {schema}.fact_leftout_snapshot ADD COLUMN IF NOT EXISTS loaded_at timestamptz NOT NULL DEFAULT now()"))
         conn.execute(text(f"ALTER TABLE {schema}.fact_leftout_snapshot ADD COLUMN IF NOT EXISTS shop_raw text"))
+        conn.execute(text(f"ALTER TABLE IF EXISTS {schema}.fact_leftout_old_snapshot ADD COLUMN IF NOT EXISTS loaded_at timestamptz NOT NULL DEFAULT now()"))
+        conn.execute(text(f"ALTER TABLE IF EXISTS {schema}.fact_leftout_old_snapshot ADD COLUMN IF NOT EXISTS fbs_qty integer NOT NULL DEFAULT 0"))
+        conn.execute(text(f"ALTER TABLE IF EXISTS {schema}.fact_leftout_old_snapshot ADD COLUMN IF NOT EXISTS in_sale_qty integer NOT NULL DEFAULT 0"))
+        conn.execute(text(f"ALTER TABLE IF EXISTS {schema}.fact_leftout_old_snapshot ADD COLUMN IF NOT EXISTS barcode text"))
         conn.commit()
 
         # manual_expenses — доп. расходы (вкладка «Доп. расходы»)

@@ -94,10 +94,12 @@ def upgrade() -> None:
                 "ADD COLUMN IF NOT EXISTS barcode text"
             )
         )
-    op.execute(
-        text(
-            f"""
-            CREATE OR REPLACE VIEW {SCHEMA}.v_current_batch AS
+        # CREATE VIEW must run after the ALTER statements have committed.
+        # Keep it in this autocommit block so each statement is visible to the next.
+        op.execute(
+            text(
+                f"""
+                CREATE OR REPLACE VIEW {SCHEMA}.v_current_batch AS
             SELECT DISTINCT ON (user_id)
                 user_id,
                 upload_batch_id,

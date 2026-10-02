@@ -31,6 +31,38 @@ if not exist ".env.local" (
   )
 )
 
+echo Starting database...
+docker compose -f docker-compose.local.yml --env-file .env.local up -d db
+if errorlevel 1 (
+  echo Could not start the database.
+  pause
+  exit /b 1
+)
+
+set /a d=0
+:waitdb
+docker compose -f docker-compose.local.yml --env-file .env.local exec -T db pg_isready >nul 2>&1
+if not errorlevel 1 goto dbready
+set /a d+=1
+if %d% GEQ 45 (
+  echo Database did not become ready.
+  docker compose -f docker-compose.local.yml --env-file .env.local logs db --tail 40
+  pause
+  exit /b 1
+)
+echo Waiting for database... %d%/45
+timeout /t 2 /nobreak >nul
+goto waitdb
+
+:dbready
+echo Adding missing columns if needed...
+docker exec profiboard-local-db sh -c "psql -U $POSTGRES_USER -d $POSTGRES_DB -c 'ALTER TABLE IF EXISTS app.fact_leftout_snapshot ADD COLUMN IF NOT EXISTS snap_id bigserial'"
+docker exec profiboard-local-db sh -c "psql -U $POSTGRES_USER -d $POSTGRES_DB -c 'ALTER TABLE IF EXISTS app.fact_leftout_snapshot ADD COLUMN IF NOT EXISTS loaded_at timestamptz NOT NULL DEFAULT now()'"
+docker exec profiboard-local-db sh -c "psql -U $POSTGRES_USER -d $POSTGRES_DB -c 'ALTER TABLE IF EXISTS app.fact_leftout_old_snapshot ADD COLUMN IF NOT EXISTS loaded_at timestamptz NOT NULL DEFAULT now()'"
+docker exec profiboard-local-db sh -c "psql -U $POSTGRES_USER -d $POSTGRES_DB -c 'ALTER TABLE IF EXISTS app.fact_leftout_old_snapshot ADD COLUMN IF NOT EXISTS fbs_qty integer NOT NULL DEFAULT 0'"
+docker exec profiboard-local-db sh -c "psql -U $POSTGRES_USER -d $POSTGRES_DB -c 'ALTER TABLE IF EXISTS app.fact_leftout_old_snapshot ADD COLUMN IF NOT EXISTS in_sale_qty integer NOT NULL DEFAULT 0'"
+docker exec profiboard-local-db sh -c "psql -U $POSTGRES_USER -d $POSTGRES_DB -c 'ALTER TABLE IF EXISTS app.fact_leftout_old_snapshot ADD COLUMN IF NOT EXISTS barcode text'"
+
 echo Starting PROFiboard. First run can take 5-15 minutes...
 docker compose -f docker-compose.local.yml --env-file .env.local up -d --build
 if errorlevel 1 (
