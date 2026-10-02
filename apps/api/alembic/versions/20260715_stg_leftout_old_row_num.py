@@ -25,16 +25,15 @@ def upgrade() -> None:
     op.execute(
         text(
             f"""
-            ALTER TABLE {SCHEMA}.stg_leftout_old
-            ADD COLUMN IF NOT EXISTS row_num int4
-            """
-        )
-    )
-    op.execute(
-        text(
-            f"""
-            ALTER TABLE {SCHEMA}.stg_leftout_old
-            ADD COLUMN IF NOT EXISTS data jsonb
+            DO $$
+            BEGIN
+                IF to_regclass('{SCHEMA}.stg_leftout_old') IS NOT NULL THEN
+                    ALTER TABLE {SCHEMA}.stg_leftout_old
+                    ADD COLUMN IF NOT EXISTS row_num int4;
+                    ALTER TABLE {SCHEMA}.stg_leftout_old
+                    ADD COLUMN IF NOT EXISTS data jsonb;
+                END IF;
+            END $$;
             """
         )
     )

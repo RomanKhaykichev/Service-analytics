@@ -18,6 +18,32 @@ SCHEMA = "app"
 
 
 def upgrade() -> None:
+    # Fresh/local DBs may have fact_* tables without columns the original SQL schema had.
+    op.execute(
+        text(
+            f"""
+            DO $$
+            BEGIN
+                IF to_regclass('{SCHEMA}.fact_leftout_snapshot') IS NOT NULL THEN
+                    ALTER TABLE {SCHEMA}.fact_leftout_snapshot
+                        ADD COLUMN IF NOT EXISTS snap_id bigserial;
+                    ALTER TABLE {SCHEMA}.fact_leftout_snapshot
+                        ADD COLUMN IF NOT EXISTS loaded_at timestamptz NOT NULL DEFAULT now();
+                END IF;
+                IF to_regclass('{SCHEMA}.fact_leftout_old_snapshot') IS NOT NULL THEN
+                    ALTER TABLE {SCHEMA}.fact_leftout_old_snapshot
+                        ADD COLUMN IF NOT EXISTS loaded_at timestamptz NOT NULL DEFAULT now();
+                    ALTER TABLE {SCHEMA}.fact_leftout_old_snapshot
+                        ADD COLUMN IF NOT EXISTS fbs_qty integer NOT NULL DEFAULT 0;
+                    ALTER TABLE {SCHEMA}.fact_leftout_old_snapshot
+                        ADD COLUMN IF NOT EXISTS in_sale_qty integer NOT NULL DEFAULT 0;
+                    ALTER TABLE {SCHEMA}.fact_leftout_old_snapshot
+                        ADD COLUMN IF NOT EXISTS barcode text;
+                END IF;
+            END $$;
+            """
+        )
+    )
     op.execute(
         text(
             f"""

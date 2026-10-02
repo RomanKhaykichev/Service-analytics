@@ -190,6 +190,8 @@ def main():
             )
         """))
         conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_fact_storage_snapshot_user_batch ON {schema}.fact_storage_snapshot (user_id, upload_batch_id)"))
+        conn.execute(text(f"ALTER TABLE {schema}.fact_storage_snapshot ADD COLUMN IF NOT EXISTS snap_id bigserial"))
+        conn.execute(text(f"ALTER TABLE {schema}.fact_storage_snapshot ADD COLUMN IF NOT EXISTS loaded_at timestamptz NOT NULL DEFAULT now()"))
         conn.commit()
 
         # map_shop_sku — привязка barcode/sku к магазину (для sales/leftout)
@@ -270,6 +272,9 @@ def main():
             )
         """))
         conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_fact_leftout_snapshot_user_batch ON {schema}.fact_leftout_snapshot (user_id, upload_batch_id)"))
+        conn.execute(text(f"ALTER TABLE {schema}.fact_leftout_snapshot ADD COLUMN IF NOT EXISTS snap_id bigserial"))
+        conn.execute(text(f"ALTER TABLE {schema}.fact_leftout_snapshot ADD COLUMN IF NOT EXISTS loaded_at timestamptz NOT NULL DEFAULT now()"))
+        conn.execute(text(f"ALTER TABLE {schema}.fact_leftout_snapshot ADD COLUMN IF NOT EXISTS shop_raw text"))
         conn.commit()
 
         # manual_expenses — доп. расходы (вкладка «Доп. расходы»)
