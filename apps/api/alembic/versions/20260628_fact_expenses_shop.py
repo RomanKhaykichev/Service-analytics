@@ -17,9 +17,23 @@ SCHEMA = "app"
 
 
 def upgrade() -> None:
-    op.execute(text(f"ALTER TABLE {SCHEMA}.stg_expenses ADD COLUMN IF NOT EXISTS shop_raw text"))
-    op.execute(text(f"ALTER TABLE {SCHEMA}.fact_expenses ADD COLUMN IF NOT EXISTS shop_raw text"))
-    op.execute(text(f"ALTER TABLE {SCHEMA}.fact_expenses ADD COLUMN IF NOT EXISTS shop_id uuid"))
+    # Staging/fact tables come from db/ SQL or ensure_import_tables.py, not this chain.
+    op.execute(
+        text(
+            f"""
+            DO $$
+            BEGIN
+                IF to_regclass('{SCHEMA}.stg_expenses') IS NOT NULL THEN
+                    ALTER TABLE {SCHEMA}.stg_expenses ADD COLUMN IF NOT EXISTS shop_raw text;
+                END IF;
+                IF to_regclass('{SCHEMA}.fact_expenses') IS NOT NULL THEN
+                    ALTER TABLE {SCHEMA}.fact_expenses ADD COLUMN IF NOT EXISTS shop_raw text;
+                    ALTER TABLE {SCHEMA}.fact_expenses ADD COLUMN IF NOT EXISTS shop_id uuid;
+                END IF;
+            END $$;
+            """
+        )
+    )
 
 
 def downgrade() -> None:

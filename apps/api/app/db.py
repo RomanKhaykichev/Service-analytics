@@ -60,9 +60,25 @@ def ensure_fact_expenses_shop_columns() -> None:
     schema = settings.DB_SCHEMA
     try:
         with engine.begin() as conn:
-            conn.execute(text(f"ALTER TABLE {schema}.stg_expenses ADD COLUMN IF NOT EXISTS shop_raw text"))
-            conn.execute(text(f"ALTER TABLE {schema}.fact_expenses ADD COLUMN IF NOT EXISTS shop_raw text"))
-            conn.execute(text(f"ALTER TABLE {schema}.fact_expenses ADD COLUMN IF NOT EXISTS shop_id uuid"))
+            conn.execute(
+                text(
+                    f"""
+                    DO $$
+                    BEGIN
+                        IF to_regclass('{schema}.stg_expenses') IS NOT NULL THEN
+                            ALTER TABLE {schema}.stg_expenses
+                            ADD COLUMN IF NOT EXISTS shop_raw text;
+                        END IF;
+                        IF to_regclass('{schema}.fact_expenses') IS NOT NULL THEN
+                            ALTER TABLE {schema}.fact_expenses
+                            ADD COLUMN IF NOT EXISTS shop_raw text;
+                            ALTER TABLE {schema}.fact_expenses
+                            ADD COLUMN IF NOT EXISTS shop_id uuid;
+                        END IF;
+                    END $$;
+                    """
+                )
+            )
         logger.info("fact_expenses shop columns ensured (shop_raw, shop_id)")
     except Exception as e:
         logger.warning("Could not ensure fact_expenses shop columns: %s", e)

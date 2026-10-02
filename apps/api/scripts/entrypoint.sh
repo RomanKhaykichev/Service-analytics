@@ -5,13 +5,19 @@ echo "=========================================="
 echo "Service Analytics API - Starting..."
 echo "=========================================="
 
+cd /app
 echo "Waiting for database to be ready..."
 python /app/scripts/wait_for_db.py
 
 echo "=========================================="
+echo "Ensuring baseline tables (empty local DB)..."
+echo "=========================================="
+python /app/scripts/ensure_import_tables.py
+python /app/scripts/ensure_auth_tables.py
+
+echo "=========================================="
 echo "Running Alembic migrations..."
 echo "=========================================="
-cd /app
 python -m alembic upgrade head
 
 echo "Migrations completed successfully!"

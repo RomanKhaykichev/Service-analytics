@@ -17,7 +17,7 @@
 
 Остановка: `stop.bat` (данные не удаляются). Логи API: `logs-api.bat`.
 
-Если `start.bat` пишет, что API unhealthy — замените в папке обновлённые файлы (`start.bat`, `docker-compose.local.yml`, `apps/api/Dockerfile`, `apps/api/scripts/`) и снова запустите `.\start.bat`.
+Если `start.bat` пишет, что API unhealthy — замените обновлённые файлы (`start.bat`, `docker-compose.local.yml`, `apps/api/`) и снова `.\start.bat`. Том БД (`pgdata_local`) сбрасывать не нужно: миграция догонит с того места, где остановилась.
 
 ## SMS без Eskiz
 

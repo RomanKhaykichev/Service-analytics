@@ -19,8 +19,15 @@ SCHEMA = "app"
 def upgrade() -> None:
     op.execute(
         text(
-            f"ALTER TABLE {SCHEMA}.fact_leftout_old_snapshot "
-            "ADD COLUMN IF NOT EXISTS fbs_qty integer NOT NULL DEFAULT 0"
+            f"""
+            DO $$
+            BEGIN
+                IF to_regclass('{SCHEMA}.fact_leftout_old_snapshot') IS NOT NULL THEN
+                    ALTER TABLE {SCHEMA}.fact_leftout_old_snapshot
+                    ADD COLUMN IF NOT EXISTS fbs_qty integer NOT NULL DEFAULT 0;
+                END IF;
+            END $$;
+            """
         )
     )
 

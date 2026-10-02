@@ -177,24 +177,27 @@ def main():
         """))
         conn.commit()
         conn.execute(text(f"""
-            ALTER TABLE {schema}.upload_batch
-            ADD CONSTRAINT upload_batch_user_id_fkey
-            FOREIGN KEY (user_id) REFERENCES {schema}.users(id) ON DELETE CASCADE
+            DO $$
+            BEGIN
+                ALTER TABLE {schema}.upload_batch
+                ADD CONSTRAINT upload_batch_user_id_fkey
+                FOREIGN KEY (user_id) REFERENCES {schema}.users(id) ON DELETE CASCADE;
+            EXCEPTION
+                WHEN duplicate_object THEN NULL;
+            END $$;
         """))
         conn.commit()
 
-    # Убрать FK manual_expenses.user_id -> user_account, если есть (доп. расходы привязаны к app.users)
-    try:
         conn.execute(text(f"""
-            ALTER TABLE {schema}.manual_expenses
-            DROP CONSTRAINT IF EXISTS manual_expenses_user_id_fkey
+            DO $$
+            BEGIN
+                IF to_regclass('{schema}.manual_expenses') IS NOT NULL THEN
+                    ALTER TABLE {schema}.manual_expenses
+                    DROP CONSTRAINT IF EXISTS manual_expenses_user_id_fkey;
+                END IF;
+            END $$;
         """))
         conn.commit()
-    except Exception as e:
-        # Таблица может не существовать или constraint уже снят
-        if "does not exist" not in str(e).lower():
-            print(f"  (manual_expenses FK drop skipped: {e})")
-        conn.rollback()
 
     print("OK: схема и таблицы авторизации и загрузки созданы (или уже существуют).")
     print(
