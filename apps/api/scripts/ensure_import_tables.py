@@ -243,6 +243,7 @@ def main():
 
         conn.execute(text(f"""
             CREATE TABLE IF NOT EXISTS {schema}.fact_leftout_snapshot (
+                snap_id bigserial PRIMARY KEY,
                 user_id uuid NOT NULL,
                 upload_batch_id uuid NOT NULL,
                 shop_id uuid NOT NULL,
@@ -268,6 +269,7 @@ def main():
                 defect_stock int DEFAULT 0,
                 potential_per_unit numeric(18,2),
                 potential_total numeric(18,2),
+                loaded_at timestamptz NOT NULL DEFAULT now(),
                 UNIQUE (user_id, upload_batch_id, shop_id, sku)
             )
         """))

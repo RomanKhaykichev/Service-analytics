@@ -18,32 +18,82 @@ SCHEMA = "app"
 
 
 def upgrade() -> None:
-    # Fresh/local DBs may have fact_* tables without columns the original SQL schema had.
-    op.execute(
-        text(
-            f"""
-            DO $$
-            BEGIN
-                IF to_regclass('{SCHEMA}.fact_leftout_snapshot') IS NOT NULL THEN
-                    ALTER TABLE {SCHEMA}.fact_leftout_snapshot
-                        ADD COLUMN IF NOT EXISTS snap_id bigserial;
-                    ALTER TABLE {SCHEMA}.fact_leftout_snapshot
-                        ADD COLUMN IF NOT EXISTS loaded_at timestamptz NOT NULL DEFAULT now();
-                END IF;
-                IF to_regclass('{SCHEMA}.fact_leftout_old_snapshot') IS NOT NULL THEN
-                    ALTER TABLE {SCHEMA}.fact_leftout_old_snapshot
-                        ADD COLUMN IF NOT EXISTS loaded_at timestamptz NOT NULL DEFAULT now();
-                    ALTER TABLE {SCHEMA}.fact_leftout_old_snapshot
-                        ADD COLUMN IF NOT EXISTS fbs_qty integer NOT NULL DEFAULT 0;
-                    ALTER TABLE {SCHEMA}.fact_leftout_old_snapshot
-                        ADD COLUMN IF NOT EXISTS in_sale_qty integer NOT NULL DEFAULT 0;
-                    ALTER TABLE {SCHEMA}.fact_leftout_old_snapshot
-                        ADD COLUMN IF NOT EXISTS barcode text;
-                END IF;
-            END $$;
-            """
+    # Local DBs often get fact_leftout_snapshot from ensure_import_tables without snap_id.
+    # PostgreSQL will not see a column added inside a DO $$ block (or the same
+    # Alembic transaction) when parsing CREATE VIEW, so commit the DDL first.
+    with op.get_context().autocommit_block():
+        op.execute(
+            text(
+                f"""
+                CREATE TABLE IF NOT EXISTS {SCHEMA}.fact_leftout_snapshot (
+                    snap_id bigserial PRIMARY KEY,
+                    user_id uuid NOT NULL,
+                    upload_batch_id uuid NOT NULL,
+                    shop_id uuid NOT NULL,
+                    shop_raw text,
+                    product_name text,
+                    product_id text,
+                    sku text NOT NULL,
+                    barcode text,
+                    barcode_norm text,
+                    ending text,
+                    availability_indicator text,
+                    planned_end_date date,
+                    coverage_days numeric(18,4),
+                    recommended_qty int,
+                    fbs_stock int DEFAULT 0,
+                    marketplace_side int DEFAULT 0,
+                    in_supply int DEFAULT 0,
+                    in_sale int DEFAULT 0,
+                    to_customer int DEFAULT 0,
+                    from_customer int DEFAULT 0,
+                    sdh_stock int DEFAULT 0,
+                    photo_stock int DEFAULT 0,
+                    defect_stock int DEFAULT 0,
+                    potential_per_unit numeric(18,2),
+                    potential_total numeric(18,2),
+                    loaded_at timestamptz NOT NULL DEFAULT now(),
+                    UNIQUE (user_id, upload_batch_id, shop_id, sku)
+                )
+                """
+            )
         )
-    )
+        op.execute(
+            text(
+                f"ALTER TABLE IF EXISTS {SCHEMA}.fact_leftout_snapshot "
+                "ADD COLUMN IF NOT EXISTS snap_id bigserial"
+            )
+        )
+        op.execute(
+            text(
+                f"ALTER TABLE IF EXISTS {SCHEMA}.fact_leftout_snapshot "
+                "ADD COLUMN IF NOT EXISTS loaded_at timestamptz NOT NULL DEFAULT now()"
+            )
+        )
+        op.execute(
+            text(
+                f"ALTER TABLE IF EXISTS {SCHEMA}.fact_leftout_old_snapshot "
+                "ADD COLUMN IF NOT EXISTS loaded_at timestamptz NOT NULL DEFAULT now()"
+            )
+        )
+        op.execute(
+            text(
+                f"ALTER TABLE IF EXISTS {SCHEMA}.fact_leftout_old_snapshot "
+                "ADD COLUMN IF NOT EXISTS fbs_qty integer NOT NULL DEFAULT 0"
+            )
+        )
+        op.execute(
+            text(
+                f"ALTER TABLE IF EXISTS {SCHEMA}.fact_leftout_old_snapshot "
+                "ADD COLUMN IF NOT EXISTS in_sale_qty integer NOT NULL DEFAULT 0"
+            )
+        )
+        op.execute(
+            text(
+                f"ALTER TABLE IF EXISTS {SCHEMA}.fact_leftout_old_snapshot "
+                "ADD COLUMN IF NOT EXISTS barcode text"
+            )
+        )
     op.execute(
         text(
             f"""
